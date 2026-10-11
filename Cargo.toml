@@ -57,3 +57,10 @@ codegen-units = 1
 panic = "abort"
 strip = true
 debug = false
+
+# WebAssembly builds keep the `target_features` custom section (`strip = true` would drop it), so
+# xtask can derive wasm-opt's --enable flags and assert on the final feature set. wasm-opt strips
+# the names section afterwards.
+[profile.wasm]
+inherits = "release"
+strip = "debuginfo"
