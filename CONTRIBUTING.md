@@ -3,7 +3,8 @@
 ## Layering (GDD §61.7)
 
 Lower layers never import higher ones. `sim-core` depends on nothing but `libm`; `protocol` and
-`content` depend only on `libm`/std. `cargo xtask check-layers` enforces this. In TypeScript,
+`content` depend on no other crate. `cargo xtask check-layers` enforces an explicit allow-list per
+crate (the table is in `crates/xtask/src/layers.rs`). In TypeScript,
 `platform-web`, `render` and `tools` never import `app-shell` (dependency-cruiser).
 
 ## Determinism (ADR-10)
