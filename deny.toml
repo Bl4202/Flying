@@ -21,6 +21,8 @@ allow = [
     "ISC",
     "MPL-2.0",
     "Unicode-3.0",
+    # Permissive, BSD-like; added when wasmparser pulled in foldhash. Recorded in ADR-21.
+    "Zlib",
 ]
 confidence-threshold = 0.9
 unused-allowed-license = "allow"
