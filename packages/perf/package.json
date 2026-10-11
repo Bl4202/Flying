@@ -1,0 +1,15 @@
+{
+  "name": "@flying/perf",
+  "private": true,
+  "version": "0.0.2",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@flying/platform-web": "workspace:*",
+    "@flying/sim-bridge": "workspace:*",
+    "@flying/sim-host": "workspace:*",
+    "@flying/render": "workspace:*"
+  }
+}

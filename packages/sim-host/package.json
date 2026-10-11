@@ -1,0 +1,13 @@
+{
+  "name": "@flying/sim-host",
+  "private": true,
+  "version": "0.0.2",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@flying/platform-web": "workspace:*",
+    "@flying/sim-bridge": "workspace:*"
+  }
+}

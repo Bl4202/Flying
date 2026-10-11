@@ -9,7 +9,10 @@
 #![deny(missing_docs)]
 
 pub mod dmath;
+pub mod frame_math;
 pub mod hash;
+pub mod layout;
+pub mod math;
 pub mod probe;
 pub mod rng;
 mod sim;

@@ -1,0 +1,12 @@
+{
+  "name": "@flying/sim-bridge",
+  "private": true,
+  "version": "0.0.2",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@flying/platform-web": "workspace:*"
+  }
+}

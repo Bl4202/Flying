@@ -202,19 +202,119 @@ importers:
 
   packages/app-shell:
     dependencies:
+      '@flying/audio':
+        specifier: workspace:*
+        version: link:../audio
+      '@flying/input':
+        specifier: workspace:*
+        version: link:../input
+      '@flying/perf':
+        specifier: workspace:*
+        version: link:../perf
+      '@flying/platform-web':
+        specifier: workspace:*
+        version: link:../platform-web
+      '@flying/render':
+        specifier: workspace:*
+        version: link:../render
+      '@flying/sim-bridge':
+        specifier: workspace:*
+        version: link:../sim-bridge
+      '@flying/sim-host':
+        specifier: workspace:*
+        version: link:../sim-host
+      '@flying/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@flying/ui':
+        specifier: workspace:*
+        version: link:../ui
+
+  packages/audio:
+    dependencies:
       '@flying/platform-web':
         specifier: workspace:*
         version: link:../platform-web
 
+  packages/input:
+    dependencies:
+      '@flying/platform-web':
+        specifier: workspace:*
+        version: link:../platform-web
+      '@flying/sim-bridge':
+        specifier: workspace:*
+        version: link:../sim-bridge
+
+  packages/perf:
+    dependencies:
+      '@flying/platform-web':
+        specifier: workspace:*
+        version: link:../platform-web
+      '@flying/render':
+        specifier: workspace:*
+        version: link:../render
+      '@flying/sim-bridge':
+        specifier: workspace:*
+        version: link:../sim-bridge
+      '@flying/sim-host':
+        specifier: workspace:*
+        version: link:../sim-host
+
   packages/platform-web: {}
 
-  packages/render: {}
+  packages/render:
+    dependencies:
+      '@flying/platform-web':
+        specifier: workspace:*
+        version: link:../platform-web
+      '@flying/sim-bridge':
+        specifier: workspace:*
+        version: link:../sim-bridge
+
+  packages/sim-bridge:
+    dependencies:
+      '@flying/platform-web':
+        specifier: workspace:*
+        version: link:../platform-web
+
+  packages/sim-host:
+    dependencies:
+      '@flying/platform-web':
+        specifier: workspace:*
+        version: link:../platform-web
+      '@flying/sim-bridge':
+        specifier: workspace:*
+        version: link:../sim-bridge
 
   packages/tools:
     dependencies:
       '@flying/platform-web':
         specifier: workspace:*
         version: link:../platform-web
+
+  packages/ui:
+    dependencies:
+      '@flying/audio':
+        specifier: workspace:*
+        version: link:../audio
+      '@flying/input':
+        specifier: workspace:*
+        version: link:../input
+      '@flying/perf':
+        specifier: workspace:*
+        version: link:../perf
+      '@flying/platform-web':
+        specifier: workspace:*
+        version: link:../platform-web
+      '@flying/render':
+        specifier: workspace:*
+        version: link:../render
+      '@flying/sim-bridge':
+        specifier: workspace:*
+        version: link:../sim-bridge
+      '@flying/sim-host':
+        specifier: workspace:*
+        version: link:../sim-host
 
 packages:
 

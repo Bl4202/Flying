@@ -1,9 +1,17 @@
 {
   "name": "@flying/app-shell",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
   "dependencies": {
-    "@flying/platform-web": "workspace:*"
+    "@flying/audio": "workspace:*",
+    "@flying/input": "workspace:*",
+    "@flying/perf": "workspace:*",
+    "@flying/platform-web": "workspace:*",
+    "@flying/render": "workspace:*",
+    "@flying/sim-bridge": "workspace:*",
+    "@flying/sim-host": "workspace:*",
+    "@flying/tools": "workspace:*",
+    "@flying/ui": "workspace:*"
   }
 }
