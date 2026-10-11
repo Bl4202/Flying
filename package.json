@@ -1,15 +1,15 @@
 {
   "name": "flying",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Real-world sandbox combat flight simulator (browser-native)",
   "type": "module",
   "engines": {
     "node": ">=24.21.0"
   },
   "scripts": {
-    "typecheck": "tsc -p packages/platform-web && tsc -p packages/tools && tsc -p packages/app-shell && tsc -p .",
-    "lint:rust": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo deny check && cargo xtask check-layers",
+    "typecheck": "pnpm -r exec tsc -p . && tsc -p .",
+    "lint:rust": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo deny check && cargo xtask check-layers && cargo xtask gen-abi --check",
     "lint:ts": "eslint . && prettier --check .",
     "depcruise": "depcruise packages --config .dependency-cruiser.cjs",
     "wgsl:check": "node packages/tools/src/wgsl-check.ts",

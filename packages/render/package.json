@@ -1,6 +1,14 @@
 {
   "name": "@flying/render",
   "private": true,
-  "version": "0.0.1",
-  "description": "WGSL sources (renderer code arrives in v0.0b)"
+  "version": "0.0.2",
+  "type": "module",
+  "description": "Renderer seam, WebGPU and WebGL2 backends, WGSL sources",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@flying/platform-web": "workspace:*",
+    "@flying/sim-bridge": "workspace:*"
+  }
 }
