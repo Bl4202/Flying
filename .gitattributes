@@ -1,0 +1,9 @@
+* text=auto eol=lf
+*.wasm binary
+*.png binary
+*.jpg binary
+*.ktx2 binary
+*.glb binary
+*.gpk binary
+pnpm-lock.yaml -diff
+Cargo.lock -diff
