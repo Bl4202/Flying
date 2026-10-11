@@ -27,6 +27,13 @@ interface SwScope {
 const scope = self as unknown as SwScope;
 const CACHE_PREFIX = 'fg-';
 const CACHE = `${CACHE_PREFIX}${__BUILD_ID__}`;
+/**
+ * Entries are stored from requests the worker builds itself, which carry no `Origin` header, while
+ * the page's `crossorigin` module and stylesheet requests do. A host that answers `Vary: Origin`
+ * would therefore make every lookup miss (and offline there is nothing to fall back to). The cache
+ * is per build and the assets are content-addressed, so `Vary` carries no information here.
+ */
+const MATCH: CacheQueryOptions = { ignoreVary: true };
 
 interface BuildManifest {
   files: string[];
@@ -64,11 +71,11 @@ async function respond(request: Request, route: 'navigation' | 'asset'): Promise
       }
       return withSecurityHeaders(fresh);
     } catch {
-      const shell = await cache.match(new URL('./', scope.registration.scope).href);
+      const shell = await cache.match(new URL('./', scope.registration.scope).href, MATCH);
       return shell ? withSecurityHeaders(shell) : Response.error();
     }
   }
-  const hit = await cache.match(request);
+  const hit = await cache.match(request, MATCH);
   if (hit) {
     return withSecurityHeaders(hit);
   }
