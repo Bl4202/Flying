@@ -1,0 +1,6 @@
+{
+  "name": "@flying/render",
+  "private": true,
+  "version": "0.0.1",
+  "description": "WGSL sources (renderer code arrives in v0.0b)"
+}

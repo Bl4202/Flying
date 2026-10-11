@@ -35,7 +35,7 @@ Rust (pinned by `rust-toolchain.toml`; the threads WASM build also uses the nigh
 | `pnpm determinism` | native vs WASM state hash after 10⁶ ticks, plus golden |
 | `pnpm repro` | two clean builds, byte-compare |
 | `pnpm e2e` | Playwright against the production build |
-| `pnpm ci` | everything above, in CI order |
+| `pnpm verify` | everything above, in CI order |
 
 ## Licence
 

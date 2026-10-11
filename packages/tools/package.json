@@ -1,0 +1,9 @@
+{
+  "name": "@flying/tools",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "dependencies": {
+    "@flying/platform-web": "workspace:*"
+  }
+}

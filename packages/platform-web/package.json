@@ -1,0 +1,16 @@
+{
+  "name": "@flying/platform-web",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./headers": "./src/headers.ts",
+    "./sw-headers": "./src/sw-headers.ts",
+    "./features": "./src/features.ts",
+    "./wasm-loader": "./src/wasm-loader.ts",
+    "./sw-register": "./src/sw-register.ts",
+    "./sw-routing": "./src/sw-routing.ts",
+    "./trusted-types": "./src/trusted-types.ts"
+  }
+}
