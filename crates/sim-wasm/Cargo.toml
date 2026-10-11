@@ -1,0 +1,30 @@
+[package]
+name = "sim-wasm"
+description = "Hand-written C ABI over sim-core for WebAssembly (GDD 61.4.4)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# Not `workspace = true`: this is the one audited crate allowed to use unsafe (see UNSAFE.md).
+[lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+cast_precision_loss = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+many_single_char_names = "allow"
+similar_names = "allow"
+module_name_repetitions = "allow"
+
+[dependencies]
+sim-core.workspace = true

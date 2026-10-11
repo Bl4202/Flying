@@ -1,0 +1,9 @@
+[alias]
+xtask = "run --quiet --package xtask --"
+
+# Wasm rustflags are intentionally NOT set here. `cargo xtask wasm` passes them per variant so the
+# single-thread and threads builds cannot leak flags into each other, and so no build ever gets
+# fast-math or relaxed-simd by accident.
+
+[term]
+color = "auto"

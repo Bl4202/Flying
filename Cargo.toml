@@ -1,0 +1,59 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/sim-core",
+    "crates/sim-wasm",
+    "crates/protocol",
+    "crates/content",
+    "crates/cli",
+    "crates/server",
+    "crates/xtask",
+]
+default-members = [
+    "crates/sim-core",
+    "crates/protocol",
+    "crates/content",
+    "crates/cli",
+    "crates/server",
+    "crates/xtask",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+license = "LicenseRef-Proprietary"
+repository = "https://github.com/Bl4202/Flying"
+
+[workspace.dependencies]
+# Default features off: the `arch` feature would let libm use target intrinsics,
+# which would break cross-architecture bit-exactness (ADR-10).
+libm = { version = "=0.2.16", default-features = false }
+sim-core = { path = "crates/sim-core" }
+protocol = { path = "crates/protocol" }
+content = { path = "crates/content" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Pedantic lints that fight numeric simulation code more than they help.
+cast_precision_loss = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+many_single_char_names = "allow"
+similar_names = "allow"
+module_name_repetitions = "allow"
+
+# Determinism-critical: no fast-math, bit-reproducible output (ADR-10).
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false

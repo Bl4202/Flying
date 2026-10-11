@@ -1,0 +1,19 @@
+[package]
+name = "cli"
+description = "Developer command line for the simulation core (`fg`)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "fg"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+sim-core.workspace = true

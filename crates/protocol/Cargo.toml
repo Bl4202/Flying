@@ -1,0 +1,12 @@
+[package]
+name = "protocol"
+description = "Wire-protocol version constants and message types (stub until v0.5)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,37 @@
+# ADR-10: transcendental functions must come from `sim_core::dmath` (software libm),
+# never from the platform's libm via std. sqrt and basic ops are IEEE-exact and allowed.
+disallowed-methods = [
+    { path = "f64::sin", reason = "use sim_core::dmath::sin (ADR-10)" },
+    { path = "f64::cos", reason = "use sim_core::dmath::cos (ADR-10)" },
+    { path = "f64::tan", reason = "use sim_core::dmath::tan (ADR-10)" },
+    { path = "f64::asin", reason = "use sim_core::dmath::asin (ADR-10)" },
+    { path = "f64::acos", reason = "use sim_core::dmath::acos (ADR-10)" },
+    { path = "f64::atan", reason = "use sim_core::dmath::atan (ADR-10)" },
+    { path = "f64::atan2", reason = "use sim_core::dmath::atan2 (ADR-10)" },
+    { path = "f64::sinh", reason = "use sim_core::dmath (ADR-10)" },
+    { path = "f64::cosh", reason = "use sim_core::dmath (ADR-10)" },
+    { path = "f64::tanh", reason = "use sim_core::dmath (ADR-10)" },
+    { path = "f64::exp", reason = "use sim_core::dmath::exp (ADR-10)" },
+    { path = "f64::exp2", reason = "use sim_core::dmath (ADR-10)" },
+    { path = "f64::exp_m1", reason = "use sim_core::dmath (ADR-10)" },
+    { path = "f64::ln", reason = "use sim_core::dmath::ln (ADR-10)" },
+    { path = "f64::ln_1p", reason = "use sim_core::dmath (ADR-10)" },
+    { path = "f64::log", reason = "use sim_core::dmath (ADR-10)" },
+    { path = "f64::log2", reason = "use sim_core::dmath (ADR-10)" },
+    { path = "f64::log10", reason = "use sim_core::dmath (ADR-10)" },
+    { path = "f64::powf", reason = "use sim_core::dmath::pow (ADR-10)" },
+    { path = "f64::powi", reason = "powi lowers to a compiler-rt call; use repeated multiplication or dmath::pow (ADR-10)" },
+    { path = "f64::cbrt", reason = "use sim_core::dmath (ADR-10)" },
+    { path = "f64::hypot", reason = "use sim_core::dmath (ADR-10)" },
+    { path = "f64::mul_add", reason = "fused multiply-add is not bit-identical across targets (ADR-10)" },
+    { path = "f32::sin", reason = "sim state is f64; transcendentals via dmath (ADR-10)" },
+    { path = "f32::cos", reason = "sim state is f64; transcendentals via dmath (ADR-10)" },
+    { path = "f32::exp", reason = "sim state is f64; transcendentals via dmath (ADR-10)" },
+    { path = "f32::powf", reason = "sim state is f64; transcendentals via dmath (ADR-10)" },
+    { path = "f32::mul_add", reason = "fused multiply-add is not bit-identical across targets (ADR-10)" },
+]
+
+disallowed-types = [
+    { path = "std::collections::HashMap", reason = "iteration order is non-deterministic; use BTreeMap or a sorted Vec (ADR-10)" },
+    { path = "std::collections::HashSet", reason = "iteration order is non-deterministic; use BTreeSet or a sorted Vec (ADR-10)" },
+]
