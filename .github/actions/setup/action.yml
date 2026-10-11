@@ -1,0 +1,49 @@
+name: setup
+description: Toolchains, build tools and dependencies for one CI job
+inputs:
+  node:
+    description: Install Node, pnpm and JS dependencies
+    default: 'true'
+  nightly:
+    description: Also install the pinned nightly (needed for the threads WASM build)
+    default: 'false'
+  tools:
+    description: Space-separated build tools to install (binaryen cargo-deny naga)
+    default: ''
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      if: inputs.node == 'true'
+      with:
+        node-version-file: .node-version
+    - name: Enable pnpm and install JS dependencies
+      if: inputs.node == 'true'
+      shell: bash
+      run: |
+        corepack enable
+        pnpm install --frozen-lockfile
+    - name: Cache cargo registry
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+        key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: cargo-${{ runner.os }}-
+    - name: Cache naga
+      if: contains(inputs.tools, 'naga')
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.local/bin/naga
+        key: naga-${{ runner.os }}-${{ hashFiles('tools/ci/install-tools.sh') }}
+    - name: Install Rust
+      shell: bash
+      run: tools/ci/install-rust.sh ${{ inputs.nightly == 'true' && '--nightly' || '' }}
+    - name: Install build tools
+      if: inputs.tools != ''
+      shell: bash
+      run: |
+        tools/ci/install-tools.sh ${{ inputs.tools }}
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
