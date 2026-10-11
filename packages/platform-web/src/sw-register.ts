@@ -64,10 +64,31 @@ function waitForController(ms: number): Promise<void> {
   });
 }
 
+/** Rejects if `promise` has not settled within `ms`. */
+export function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${what} timed out after ${String(ms)} ms`));
+    }, ms);
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(timer);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      },
+    );
+  });
+}
+
 export interface RegisterOptions {
   swUrl: string;
   scope: string;
   controllerWaitMs?: number;
+  /** Upper bound for register + ready; a blocked or broken worker must not hang boot. */
+  registerTimeoutMs?: number;
 }
 
 /**
@@ -81,8 +102,14 @@ export async function ensureIsolation(
   let swFailed = false;
   if (swSupported) {
     try {
-      await navigator.serviceWorker.register(scriptUrl(opts.swUrl), { scope: opts.scope });
-      await navigator.serviceWorker.ready;
+      await withTimeout(
+        (async () => {
+          await navigator.serviceWorker.register(scriptUrl(opts.swUrl), { scope: opts.scope });
+          await navigator.serviceWorker.ready;
+        })(),
+        opts.registerTimeoutMs ?? 5000,
+        'service worker registration',
+      );
       await waitForController(opts.controllerWaitMs ?? 3000);
     } catch {
       swFailed = true;

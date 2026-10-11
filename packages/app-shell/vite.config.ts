@@ -76,12 +76,12 @@ function serviceWorker(buildId: string): Plugin {
   };
 }
 
-export default defineConfig(({ command }) => {
+export default defineConfig(({ command, isPreview }) => {
   const buildId = gitSha();
   const headersOn = process.env['HEADERS'] !== 'off';
   return {
     root: import.meta.dirname,
-    base: process.env['BASE_PATH'] ?? (command === 'build' ? STAGING_BASE : '/'),
+    base: process.env['BASE_PATH'] ?? (command === 'build' || isPreview ? STAGING_BASE : '/'),
     define: {
       __BUILD_ID__: JSON.stringify(buildId),
       __THREADS_INITIAL_PAGES__: JSON.stringify(threadsInitialPages(command)),
