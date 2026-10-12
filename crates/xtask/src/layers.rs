@@ -10,9 +10,20 @@ use serde_json::Value;
 
 /// `(crate, allowed dependencies)`. `xtask` is tooling and is not constrained.
 const RULES: &[(&str, &[&str])] = &[
-    ("sim-core", &["libm"]),
+    ("sim-core", &["libm", "content"]),
     ("protocol", &[]),
     ("content", &[]),
+    (
+        "content-bake",
+        &[
+            "content",
+            "schemars",
+            "serde",
+            "serde_json",
+            "serde_path_to_error",
+            "sha2",
+        ],
+    ),
     ("sim-wasm", &["sim-core"]),
     ("cli", &["sim-core"]),
     ("server", &["sim-core", "protocol"]),
@@ -108,9 +119,10 @@ mod tests {
 
     fn good() -> BTreeMap<String, Vec<String>> {
         map(&[
-            ("sim-core", &["libm"]),
+            ("sim-core", &["libm", "content"]),
             ("protocol", &[]),
             ("content", &[]),
+            ("content-bake", &["content", "serde_json", "sha2"]),
             ("sim-wasm", &["sim-core"]),
             ("cli", &["sim-core"]),
             ("server", &["protocol", "sim-core"]),
@@ -129,6 +141,25 @@ mod tests {
         g.get_mut("sim-core").unwrap().push("protocol".into());
         let err = violations(&g).unwrap_err();
         assert!(err.contains("`sim-core` depends on `protocol`"), "{err}");
+    }
+
+    #[test]
+    fn the_runtime_content_crate_stays_dependency_free() {
+        let mut g = good();
+        g.get_mut("content").unwrap().push("serde".into());
+        let err = violations(&g).unwrap_err();
+        assert!(err.contains("`content` depends on `serde`"), "{err}");
+    }
+
+    #[test]
+    fn the_baker_may_not_leak_into_the_sim() {
+        let mut g = good();
+        g.get_mut("sim-core").unwrap().push("content-bake".into());
+        let err = violations(&g).unwrap_err();
+        assert!(
+            err.contains("`sim-core` depends on `content-bake`"),
+            "{err}"
+        );
     }
 
     #[test]

@@ -1,6 +1,8 @@
 dist/
 target/
 wasm-out/
+content-out/
+content/schemas/
 node_modules/
 pnpm-lock.yaml
 Cargo.lock

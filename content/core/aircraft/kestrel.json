@@ -1,0 +1,41 @@
+{
+  "schema": "aircraft/1",
+  "id": "core:ac/kestrel",
+  "name_key": "ac.kestrel.name",
+  "category": "light_fighter",
+  "era": "G4",
+  "crew": 1,
+  "hardpoints": 9,
+  "mass": {
+    "empty_kg": 8400,
+    "internal_fuel_kg": 3100,
+    "max_takeoff_kg": 14500,
+    "inertia_kgm2": [13000, 76000, 86000],
+    "inertia_xz_kgm2": 1300
+  },
+  "geometry": {
+    "wing_area_m2": 28.0,
+    "span_m": 9.8,
+    "mac_m": 3.2
+  },
+  "engines": {
+    "count": 1,
+    "thrust_military_n": 79000,
+    "thrust_afterburner_n": 128000
+  },
+  "aero": {
+    "cd0": 0.0235,
+    "induced_k": 0.135,
+    "cl_alpha_per_rad": 3.6,
+    "cl_max": 1.6,
+    "static_margin_mac": 0.06,
+    "sas_required": false
+  },
+  "limits": {
+    "n_max": 9.0,
+    "n_min": -3.0,
+    "mmo": 2.0,
+    "vmo_ms": 360,
+    "service_ceiling_m": 15500
+  }
+}

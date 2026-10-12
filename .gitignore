@@ -8,6 +8,7 @@ node_modules/
 # Build output
 /dist/
 /wasm-out/
+/content-out/
 *.tsbuildinfo
 coverage/
 

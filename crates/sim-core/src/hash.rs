@@ -77,26 +77,30 @@ pub struct SubsystemHashes {
     pub observer: u64,
     /// Validated input state, including the scripted pilot.
     pub input: u64,
-    /// Hash of the five above, in that order.
+    /// The loaded content pack's identity (zero-content packs hash too).
+    pub content: u64,
+    /// Hash of the six above, in that order.
     pub combined: u64,
 }
 
 impl SubsystemHashes {
     /// Combines the subsystem hashes.
     #[must_use]
-    pub fn new(tick: u64, rng: u64, bodies: u64, observer: u64, input: u64) -> Self {
+    pub fn new(tick: u64, rng: u64, bodies: u64, observer: u64, input: u64, content: u64) -> Self {
         let mut h = StateHasher::new();
         h.write_u64(tick);
         h.write_u64(rng);
         h.write_u64(bodies);
         h.write_u64(observer);
         h.write_u64(input);
+        h.write_u64(content);
         Self {
             tick,
             rng,
             bodies,
             observer,
             input,
+            content,
             combined: h.finish(),
         }
     }
@@ -135,13 +139,14 @@ mod tests {
 
     #[test]
     fn combined_depends_on_every_part() {
-        let base = SubsystemHashes::new(1, 2, 3, 4, 5);
+        let base = SubsystemHashes::new(1, 2, 3, 4, 5, 6);
         for changed in [
-            SubsystemHashes::new(9, 2, 3, 4, 5),
-            SubsystemHashes::new(1, 9, 3, 4, 5),
-            SubsystemHashes::new(1, 2, 9, 4, 5),
-            SubsystemHashes::new(1, 2, 3, 9, 5),
-            SubsystemHashes::new(1, 2, 3, 4, 9),
+            SubsystemHashes::new(9, 2, 3, 4, 5, 6),
+            SubsystemHashes::new(1, 9, 3, 4, 5, 6),
+            SubsystemHashes::new(1, 2, 9, 4, 5, 6),
+            SubsystemHashes::new(1, 2, 3, 9, 5, 6),
+            SubsystemHashes::new(1, 2, 3, 4, 9, 6),
+            SubsystemHashes::new(1, 2, 3, 4, 5, 9),
         ] {
             assert_ne!(base.combined, changed.combined);
         }
