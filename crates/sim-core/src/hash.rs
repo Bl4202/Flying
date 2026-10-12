@@ -67,28 +67,36 @@ impl StateHasher {
 /// Per-subsystem hashes plus the combined hash, so a mismatch can be localised.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SubsystemHashes {
-    /// Tick counter and core state.
+    /// Tick counter, core state and master seed.
     pub tick: u64,
-    /// All random stream states.
+    /// The probe world's random stream states.
     pub rng: u64,
     /// Probe-world body state.
     pub bodies: u64,
-    /// Hash of the three above, in that order.
+    /// Observer (the player's stand-in body) state.
+    pub observer: u64,
+    /// Validated input state, including the scripted pilot.
+    pub input: u64,
+    /// Hash of the five above, in that order.
     pub combined: u64,
 }
 
 impl SubsystemHashes {
-    /// Combines the three subsystem hashes.
+    /// Combines the subsystem hashes.
     #[must_use]
-    pub fn new(tick: u64, rng: u64, bodies: u64) -> Self {
+    pub fn new(tick: u64, rng: u64, bodies: u64, observer: u64, input: u64) -> Self {
         let mut h = StateHasher::new();
         h.write_u64(tick);
         h.write_u64(rng);
         h.write_u64(bodies);
+        h.write_u64(observer);
+        h.write_u64(input);
         Self {
             tick,
             rng,
             bodies,
+            observer,
+            input,
             combined: h.finish(),
         }
     }
@@ -127,9 +135,15 @@ mod tests {
 
     #[test]
     fn combined_depends_on_every_part() {
-        let base = SubsystemHashes::new(1, 2, 3);
-        assert_ne!(base.combined, SubsystemHashes::new(9, 2, 3).combined);
-        assert_ne!(base.combined, SubsystemHashes::new(1, 9, 3).combined);
-        assert_ne!(base.combined, SubsystemHashes::new(1, 2, 9).combined);
+        let base = SubsystemHashes::new(1, 2, 3, 4, 5);
+        for changed in [
+            SubsystemHashes::new(9, 2, 3, 4, 5),
+            SubsystemHashes::new(1, 9, 3, 4, 5),
+            SubsystemHashes::new(1, 2, 9, 4, 5),
+            SubsystemHashes::new(1, 2, 3, 9, 5),
+            SubsystemHashes::new(1, 2, 3, 4, 9),
+        ] {
+            assert_ne!(base.combined, changed.combined);
+        }
     }
 }

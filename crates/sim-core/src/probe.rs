@@ -180,6 +180,12 @@ impl ProbeWorld {
         self.pos_bf[i]
     }
 
+    /// Attitude of body `i` as `[w, x, y, z]` (unit quaternion).
+    #[must_use]
+    pub fn quat(&self, i: usize) -> [f64; 4] {
+        self.quat[i]
+    }
+
     /// Hash of all body state, in index order.
     #[must_use]
     pub fn hash_bodies(&self) -> u64 {
