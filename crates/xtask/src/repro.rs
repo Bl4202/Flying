@@ -18,6 +18,7 @@ const SKIP: &[&str] = &[
     "node_modules",
     "dist",
     "wasm-out",
+    "content-out",
     ".git",
     "test-results",
     "playwright-report",
@@ -51,7 +52,10 @@ pub fn run_command() -> Result<(), String> {
 }
 
 fn count(v: &Value) -> usize {
-    v["wasm"].as_array().map_or(0, Vec::len) + v["dist"].as_array().map_or(0, Vec::len)
+    ["wasm", "content", "dist"]
+        .iter()
+        .map(|part| v[*part].as_array().map_or(0, Vec::len))
+        .sum()
 }
 
 fn build_and_manifest(dir: &Path, install: bool) -> Result<Value, String> {
@@ -59,6 +63,7 @@ fn build_and_manifest(dir: &Path, install: bool) -> Result<Value, String> {
         "target/wasm-single",
         "target/wasm-threads",
         "wasm-out",
+        "content-out",
         "dist",
     ] {
         let p = dir.join(d);
@@ -72,6 +77,7 @@ fn build_and_manifest(dir: &Path, install: bool) -> Result<Value, String> {
         sh(Command::new("pnpm").args(["install", "--frozen-lockfile", "--prefer-offline"]))?;
     }
     sh(Command::new("cargo").args(["xtask", "wasm"]))?;
+    sh(Command::new("cargo").args(["xtask", "content"]))?;
     sh(Command::new("pnpm").args(["build:web"]))?;
     let manifest = |target: &str, out: &str| -> Result<Value, String> {
         sh(Command::new("node").args([
@@ -85,13 +91,14 @@ fn build_and_manifest(dir: &Path, install: bool) -> Result<Value, String> {
     };
     Ok(serde_json::json!({
         "wasm": manifest("wasm-out", "target/repro-wasm.json")?,
+        "content": manifest("content-out", "target/repro-content.json")?,
         "dist": manifest("dist", "target/repro-dist.json")?,
     }))
 }
 
 fn describe_diff(a: &Value, b: &Value) -> String {
     let mut lines = Vec::new();
-    for part in ["wasm", "dist"] {
+    for part in ["wasm", "content", "dist"] {
         let (xa, xb) = (a[part].as_array(), b[part].as_array());
         let (Some(xa), Some(xb)) = (xa, xb) else {
             continue;

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`pack.json`: identity and compatibility of one content pack (GDD 62.4).",
+  "properties": {
+    "authors": {
+      "description": "Who made it.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "game": {
+      "description": "Range of game versions the pack works with.",
+      "type": "string"
+    },
+    "id": {
+      "description": "Pack id and the namespace of every id inside it.",
+      "minLength": 1,
+      "type": "string"
+    },
+    "license": {
+      "description": "Licence of the pack's content.",
+      "type": "string"
+    },
+    "schema": {
+      "const": "pack/1",
+      "description": "Format tag, always `pack/1`.",
+      "type": "string"
+    },
+    "version": {
+      "description": "Pack version (`major.minor.patch`).",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "version",
+    "game",
+    "license",
+    "authors"
+  ],
+  "title": "PackFile",
+  "type": "object"
+}

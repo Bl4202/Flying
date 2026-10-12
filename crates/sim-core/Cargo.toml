@@ -12,4 +12,5 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+content.workspace = true
 libm.workspace = true

@@ -1,0 +1,340 @@
+{
+  "$defs": {
+    "Aero": {
+      "additionalProperties": false,
+      "description": "Aerodynamic reference data.",
+      "properties": {
+        "cd0": {
+          "description": "Zero-lift drag coefficient.",
+          "format": "double",
+          "maximum": 0.5,
+          "minimum": 0.001,
+          "type": "number"
+        },
+        "cl_alpha_per_rad": {
+          "description": "Lift-curve slope.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.5,
+          "type": "number",
+          "x-unit": "1/rad"
+        },
+        "cl_max": {
+          "description": "Clean maximum lift coefficient at low Mach.",
+          "format": "double",
+          "maximum": 5.0,
+          "minimum": 0.1,
+          "type": "number"
+        },
+        "induced_k": {
+          "description": "Induced-drag factor K.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.001,
+          "type": "number"
+        },
+        "sas_required": {
+          "description": "True if the airframe cannot be flown without stability augmentation.",
+          "type": "boolean"
+        },
+        "static_margin_mac": {
+          "description": "Static margin as a fraction of the mean aerodynamic chord (negative if unstable).",
+          "format": "double",
+          "maximum": 0.5,
+          "minimum": -0.5,
+          "type": "number",
+          "x-unit": "fraction of MAC"
+        }
+      },
+      "required": [
+        "cd0",
+        "induced_k",
+        "cl_alpha_per_rad",
+        "cl_max",
+        "static_margin_mac",
+        "sas_required"
+      ],
+      "type": "object"
+    },
+    "Engines": {
+      "additionalProperties": false,
+      "description": "Propulsion.",
+      "properties": {
+        "count": {
+          "description": "Number of engines.",
+          "format": "uint8",
+          "maximum": 8,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "thrust_afterburner_n": {
+          "description": "Sea-level static thrust with afterburner, all engines (equal to military if none).",
+          "format": "double",
+          "maximum": 5000000.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "N"
+        },
+        "thrust_military_n": {
+          "description": "Sea-level static thrust at military power, all engines.",
+          "format": "double",
+          "maximum": 5000000.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "N"
+        }
+      },
+      "required": [
+        "count",
+        "thrust_military_n",
+        "thrust_afterburner_n"
+      ],
+      "type": "object"
+    },
+    "Geometry": {
+      "additionalProperties": false,
+      "description": "Wing geometry.",
+      "properties": {
+        "mac_m": {
+          "description": "Mean aerodynamic chord.",
+          "format": "double",
+          "maximum": 50.0,
+          "minimum": 0.1,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "span_m": {
+          "description": "Wing span.",
+          "format": "double",
+          "maximum": 100.0,
+          "minimum": 0.1,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "wing_area_m2": {
+          "description": "Wing reference area.",
+          "format": "double",
+          "maximum": 1000.0,
+          "minimum": 0.1,
+          "type": "number",
+          "x-unit": "m2"
+        }
+      },
+      "required": [
+        "wing_area_m2",
+        "span_m",
+        "mac_m"
+      ],
+      "type": "object"
+    },
+    "Limits": {
+      "additionalProperties": false,
+      "description": "Structural and operating limits.",
+      "properties": {
+        "mmo": {
+          "description": "Maximum operating Mach number.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.1,
+          "type": "number"
+        },
+        "n_max": {
+          "description": "Structural positive load factor.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "g"
+        },
+        "n_min": {
+          "description": "Structural negative load factor (below zero).",
+          "format": "double",
+          "maximum": -0.1,
+          "minimum": -20.0,
+          "type": "number",
+          "x-unit": "g"
+        },
+        "service_ceiling_m": {
+          "description": "Service ceiling.",
+          "format": "double",
+          "maximum": 40000.0,
+          "minimum": 100.0,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "vmo_ms": {
+          "description": "Maximum operating speed.",
+          "format": "double",
+          "maximum": 2000.0,
+          "minimum": 10.0,
+          "type": "number",
+          "x-unit": "m/s"
+        }
+      },
+      "required": [
+        "n_max",
+        "n_min",
+        "mmo",
+        "vmo_ms",
+        "service_ceiling_m"
+      ],
+      "type": "object"
+    },
+    "Mass": {
+      "additionalProperties": false,
+      "description": "Mass properties.",
+      "properties": {
+        "empty_kg": {
+          "description": "Empty mass.",
+          "format": "double",
+          "maximum": 1000000.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "kg"
+        },
+        "inertia_kgm2": {
+          "description": "Roll, pitch and yaw inertia at reference weight.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "kg m2"
+        },
+        "inertia_xz_kgm2": {
+          "default": 0.0,
+          "description": "Product of inertia XZ (zero for a symmetric airframe).",
+          "format": "double",
+          "type": "number",
+          "x-unit": "kg m2"
+        },
+        "internal_fuel_kg": {
+          "description": "Internal fuel.",
+          "format": "double",
+          "maximum": 1000000.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "kg"
+        },
+        "max_takeoff_kg": {
+          "description": "Maximum take-off mass.",
+          "format": "double",
+          "maximum": 1000000.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "kg"
+        }
+      },
+      "required": [
+        "empty_kg",
+        "internal_fuel_kg",
+        "max_takeoff_kg",
+        "inertia_kgm2"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One aircraft (GDD 62.2, Appendix C).",
+  "properties": {
+    "aero": {
+      "$ref": "#/$defs/Aero",
+      "description": "Aerodynamic reference data."
+    },
+    "category": {
+      "description": "Role.",
+      "enum": [
+        "light_fighter",
+        "multirole_fighter",
+        "heavy_fighter",
+        "interceptor",
+        "strike",
+        "cas",
+        "bomber",
+        "electronic_warfare",
+        "awacs",
+        "carrier",
+        "stealth",
+        "experimental",
+        "tanker",
+        "transport",
+        "uav"
+      ],
+      "type": "string"
+    },
+    "crew": {
+      "description": "Crew count.",
+      "format": "uint8",
+      "maximum": 16,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "engines": {
+      "$ref": "#/$defs/Engines",
+      "description": "Propulsion."
+    },
+    "era": {
+      "description": "Technology generation.",
+      "enum": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G4.5",
+        "G5"
+      ],
+      "type": "string"
+    },
+    "geometry": {
+      "$ref": "#/$defs/Geometry",
+      "description": "Wing geometry."
+    },
+    "hardpoints": {
+      "description": "Hardpoint count.",
+      "format": "uint8",
+      "maximum": 40,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "id": {
+      "description": "`namespace:type/name`, with namespace the pack id and type `ac`.",
+      "type": "string"
+    },
+    "limits": {
+      "$ref": "#/$defs/Limits",
+      "description": "Structural and operating limits."
+    },
+    "mass": {
+      "$ref": "#/$defs/Mass",
+      "description": "Mass properties."
+    },
+    "name_key": {
+      "description": "Key of the display name in the locale table.",
+      "type": "string"
+    },
+    "schema": {
+      "const": "aircraft/1",
+      "description": "Format tag, always `aircraft/1`.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "name_key",
+    "category",
+    "era",
+    "crew",
+    "hardpoints",
+    "mass",
+    "geometry",
+    "engines",
+    "aero",
+    "limits"
+  ],
+  "title": "AircraftFile",
+  "type": "object"
+}

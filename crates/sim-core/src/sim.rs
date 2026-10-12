@@ -2,6 +2,8 @@
 
 use core::fmt;
 
+use content::{CpackError, Registry};
+
 use crate::hash::{StateHasher, SubsystemHashes};
 use crate::input::{ErraticPilot, FRAME_BYTES, InputFrame};
 use crate::layout::{core_state, input_script, profile};
@@ -50,6 +52,26 @@ const _: () = {
     assert!(CoreState::Paused as usize == core_state::PAUSED);
     assert!(CoreState::Ended as usize == core_state::ENDED);
 };
+
+/// Why a content pack was not loaded.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LoadContentError {
+    /// Content can only be loaded before the core starts.
+    NotIdle,
+    /// The bytes are not a valid pack.
+    Invalid(CpackError),
+}
+
+impl fmt::Display for LoadContentError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotIdle => write!(f, "content can only be loaded while the core is idle"),
+            Self::Invalid(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for LoadContentError {}
 
 /// The deterministic simulation.
 pub struct SimCore {
@@ -117,6 +139,20 @@ impl SimCore {
         // The snapshot always says what state the core is in, even when no tick ran. It is not
         // offered to the replay sink: replays record ticks, and this snapshot repeats one.
         write_snapshot(&mut self.world, self.tick, to.code());
+    }
+
+    /// Loads a baked content pack (a `.cpack`). Only an idle core accepts one, and a pack that
+    /// fails to load changes nothing. The pack's identity becomes part of the state hash.
+    ///
+    /// # Errors
+    /// [`LoadContentError::NotIdle`] once the core has started, [`LoadContentError::Invalid`] if
+    /// the bytes are not a valid pack.
+    pub fn load_content(&mut self, bytes: &[u8]) -> Result<(), LoadContentError> {
+        if self.state != CoreState::Idle {
+            return Err(LoadContentError::NotIdle);
+        }
+        self.svc.registry = Registry::from_cpack(bytes).map_err(LoadContentError::Invalid)?;
+        Ok(())
     }
 
     /// Replaces the replay sink, which receives the snapshot of every completed tick.
@@ -328,12 +364,15 @@ impl SimCore {
         self.world.observer.hash_into(&mut o);
         let mut i = StateHasher::new();
         self.world.input.hash_into(&mut i);
+        let mut c = StateHasher::new();
+        hash_registry(&self.svc.registry, &mut c);
         SubsystemHashes::new(
             t.finish(),
             self.world.probe.hash_rng(),
             self.world.probe.hash_bodies(),
             o.finish(),
             i.finish(),
+            c.finish(),
         )
     }
 
@@ -342,6 +381,12 @@ impl SimCore {
     pub fn state_hash(&self) -> u64 {
         self.subsystem_hashes().combined
     }
+}
+
+/// The registry's identity: entry count and the pack's SHA-256, which covers every byte of content.
+fn hash_registry(reg: &Registry, h: &mut StateHasher) {
+    h.write_u64(reg.len() as u64);
+    h.write_bytes(reg.content_hash());
 }
 
 #[cfg(test)]
@@ -576,6 +621,119 @@ mod tests {
             1 + 1 + 7 + 1 + 1 + 1,
             "initial, start, 7 ticks, pause, resume, 1 tick"
         );
+    }
+
+    /// A pack with one aircraft; sim-core cannot depend on the baker, so build the bytes here.
+    fn pack(empty_kg: f32) -> Vec<u8> {
+        use content::{AircraftDef, Category, Era};
+        let def = AircraftDef {
+            name_key: "ac.test.name".into(),
+            category: Category::LightFighter,
+            era: Era::G4,
+            crew: 1,
+            engine_count: 1,
+            hardpoints: 2,
+            sas_required: false,
+            empty_kg,
+            internal_fuel_kg: 1000.0,
+            max_takeoff_kg: 6000.0,
+            wing_area_m2: 20.0,
+            span_m: 9.0,
+            mac_m: 2.5,
+            inertia_xx_kgm2: 10_000.0,
+            inertia_yy_kgm2: 50_000.0,
+            inertia_zz_kgm2: 55_000.0,
+            inertia_xz_kgm2: 0.0,
+            n_max: 9.0,
+            n_min: -3.0,
+            mmo: 2.0,
+            vmo_ms: 350.0,
+            service_ceiling_m: 15_000.0,
+            thrust_mil_n: 50_000.0,
+            thrust_ab_n: 80_000.0,
+            cd0: 0.02,
+            induced_k: 0.13,
+            cl_alpha_per_rad: 3.5,
+            cl_max: 1.5,
+            static_margin_mac: 0.05,
+        };
+        let fake_hash = |body: &[u8]| {
+            let mut h = StateHasher::new();
+            h.write_bytes(body);
+            let mut out = [0_u8; 32];
+            for (i, chunk) in out.chunks_mut(8).enumerate() {
+                chunk.copy_from_slice(&(h.finish() ^ i as u64).to_le_bytes());
+            }
+            out
+        };
+        content::cpack::write(&[("test:ac/one".into(), def)], fake_hash).unwrap()
+    }
+
+    #[test]
+    fn content_loads_while_idle_and_joins_the_state_hash() {
+        let mut c = SimCore::new(5);
+        let before = c.subsystem_hashes();
+        assert!(c.services().registry.is_empty());
+        c.load_content(&pack(3000.0)).unwrap();
+        assert_eq!(c.services().registry.len(), 1);
+        let after = c.subsystem_hashes();
+        assert_ne!(before.content, after.content);
+        assert_ne!(before.combined, after.combined);
+        // Content does not touch any other subsystem.
+        assert_eq!(
+            (
+                before.tick,
+                before.rng,
+                before.bodies,
+                before.observer,
+                before.input
+            ),
+            (
+                after.tick,
+                after.rng,
+                after.bodies,
+                after.observer,
+                after.input
+            )
+        );
+        // Different content, different identity; the same content, the same.
+        let mut d = SimCore::new(5);
+        d.load_content(&pack(3001.0)).unwrap();
+        assert_ne!(d.subsystem_hashes().content, after.content);
+        let mut e = SimCore::new(5);
+        e.load_content(&pack(3000.0)).unwrap();
+        assert_eq!(e.subsystem_hashes(), after);
+    }
+
+    #[test]
+    fn content_is_refused_once_started_and_when_invalid() {
+        let mut c = SimCore::new(5);
+        c.load_content(&pack(3000.0)).unwrap();
+        let loaded = c.subsystem_hashes();
+
+        let mut damaged = pack(3100.0);
+        let last = damaged.len() - 1;
+        damaged[last] ^= 1;
+        assert!(matches!(
+            c.load_content(&damaged),
+            Err(LoadContentError::Invalid(CpackError::Checksum { .. }))
+        ));
+        assert!(matches!(
+            c.load_content(&[1, 2, 3]),
+            Err(LoadContentError::Invalid(CpackError::Truncated))
+        ));
+        assert_eq!(
+            c.subsystem_hashes(),
+            loaded,
+            "a refused pack changes nothing"
+        );
+
+        c.start();
+        assert_eq!(
+            c.load_content(&pack(3100.0)),
+            Err(LoadContentError::NotIdle)
+        );
+        assert_eq!(c.services().registry.len(), 1);
     }
 
     #[test]

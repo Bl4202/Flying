@@ -1,0 +1,8 @@
+{
+  "schema": "pack/1",
+  "id": "core",
+  "version": "0.0.2",
+  "game": ">=0.0.2",
+  "license": "Proprietary",
+  "authors": ["Flying project"]
+}

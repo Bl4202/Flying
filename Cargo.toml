@@ -8,6 +8,7 @@ members = [
     "crates/cli",
     "crates/server",
     "crates/xtask",
+    "tools/content-bake",
 ]
 default-members = [
     "crates/sim-core",
@@ -16,6 +17,7 @@ default-members = [
     "crates/cli",
     "crates/server",
     "crates/xtask",
+    "tools/content-bake",
 ]
 
 [workspace.package]
