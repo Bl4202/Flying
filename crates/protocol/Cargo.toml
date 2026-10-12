@@ -1,6 +1,6 @@
 [package]
 name = "protocol"
-description = "Wire-protocol version constants and message types (stub until v0.5)"
+description = "Wire-protocol version, transport abstraction and loopback transport"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
