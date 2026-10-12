@@ -89,8 +89,15 @@ impl System for PublishSnapshot {
     }
 }
 
-/// Writes the snapshot for the state after `ticks_done` completed ticks.
+/// Publishes the end-of-tick snapshot and hands it to the replay sink.
 pub(crate) fn publish(world: &mut crate::world::World, ticks_done: u64, core_state: u32) {
+    write_snapshot(world, ticks_done, core_state);
+    world.replay.record(ticks_done, world.snapshot.bytes());
+}
+
+/// Writes the snapshot for the state after `ticks_done` completed ticks. Used on its own for
+/// lifecycle changes, which are not part of the replay.
+pub(crate) fn write_snapshot(world: &mut crate::world::World, ticks_done: u64, core_state: u32) {
     world.snapshot.write(&SnapshotSource {
         tick: ticks_done,
         core_state,
