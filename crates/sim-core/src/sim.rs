@@ -10,9 +10,10 @@ use crate::probe::ProbeWorld;
 use crate::profile::{ClockFn, Profiler, counter_array, write_counters};
 use crate::rng::RngStreams;
 use crate::schedule::{Schedule, TickCtx};
+use crate::seams::replay::{NullReplaySink, ReplaySink};
 use crate::services::Services;
 use crate::snapshot::SnapshotBuffer;
-use crate::systems::{default_schedule, publish};
+use crate::systems::{default_schedule, write_snapshot};
 use crate::terrain;
 use crate::time::SIM_DT;
 use crate::world::{Counters, World};
@@ -95,8 +96,9 @@ impl SimCore {
             input: crate::input::InputState::new(),
             counters: Counters::default(),
             snapshot: SnapshotBuffer::new(),
+            replay: Box::new(NullReplaySink),
         };
-        publish(&mut world, 0, CoreState::Idle.code());
+        write_snapshot(&mut world, 0, CoreState::Idle.code());
         Self {
             tick: 0,
             state: CoreState::Idle,
@@ -112,8 +114,14 @@ impl SimCore {
 
     fn set_state(&mut self, to: CoreState) {
         self.state = to;
-        // The snapshot always says what state the core is in, even when no tick ran.
-        publish(&mut self.world, self.tick, to.code());
+        // The snapshot always says what state the core is in, even when no tick ran. It is not
+        // offered to the replay sink: replays record ticks, and this snapshot repeats one.
+        write_snapshot(&mut self.world, self.tick, to.code());
+    }
+
+    /// Replaces the replay sink, which receives the snapshot of every completed tick.
+    pub fn set_replay_sink(&mut self, sink: Box<dyn ReplaySink>) {
+        self.world.replay = sink;
     }
 
     /// `Idle -> Running`. Returns false (and changes nothing) from any other state.
@@ -568,6 +576,30 @@ mod tests {
             1 + 1 + 7 + 1 + 1 + 1,
             "initial, start, 7 ticks, pause, resume, 1 tick"
         );
+    }
+
+    #[test]
+    fn the_replay_sink_sees_each_tick_once_and_no_lifecycle_snapshots() {
+        use std::sync::{Arc, Mutex};
+
+        struct Log(Arc<Mutex<Vec<(u64, usize)>>>);
+        impl ReplaySink for Log {
+            fn record(&mut self, tick: u64, snapshot: &[u8]) {
+                self.0.lock().unwrap().push((tick, snapshot.len()));
+            }
+        }
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let mut c = SimCore::new(3);
+        c.set_replay_sink(Box::new(Log(Arc::clone(&seen))));
+        c.start();
+        c.step(3);
+        c.pause();
+        c.resume();
+        c.step(2);
+        let seen = seen.lock().unwrap();
+        let size = crate::layout::snapshot::SIZE;
+        assert_eq!(*seen, (1..=5).map(|t| (t, size)).collect::<Vec<_>>());
     }
 
     #[test]

@@ -3,6 +3,7 @@
 use crate::input::InputState;
 use crate::observer::Observer;
 use crate::probe::ProbeWorld;
+use crate::seams::replay::ReplaySink;
 use crate::snapshot::SnapshotBuffer;
 
 /// Diagnostic counters kept by systems other than input (input keeps its own).
@@ -21,7 +22,6 @@ pub struct Counters {
 }
 
 /// Everything the tick pipeline reads and writes.
-#[derive(Debug)]
 pub struct World {
     /// The player's stand-in body.
     pub observer: Observer,
@@ -33,4 +33,6 @@ pub struct World {
     pub counters: Counters,
     /// The newest published snapshot.
     pub snapshot: SnapshotBuffer,
+    /// Receives every snapshot published by a tick.
+    pub replay: Box<dyn ReplaySink>,
 }
