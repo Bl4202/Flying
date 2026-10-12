@@ -106,7 +106,7 @@ export const PROFILE = {
   STAGE_MS_LAST: 16,
   STAGE_MS_EWMA: 60,
   COUNTERS: 104,
-  COUNTER_COUNT: 6,
+  COUNTER_COUNT: 8,
 } as const;
 
 export const STAGE = {
@@ -127,9 +127,11 @@ export const COUNTER = {
   INPUT_APPLIED: 0,
   INPUT_NONFINITE: 1,
   INPUT_STALE: 2,
-  OBSERVER_RESETS: 3,
-  GROUND_CLAMPS: 4,
-  SNAPSHOTS: 5,
+  INPUT_OVERFLOW: 3,
+  OBSERVER_RESETS: 4,
+  GROUND_CLAMPS: 5,
+  BOUNDARY_CLAMPS: 6,
+  SNAPSHOTS: 7,
 } as const;
 
 export const TERRAIN = {

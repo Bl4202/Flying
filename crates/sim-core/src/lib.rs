@@ -11,15 +11,26 @@
 pub mod dmath;
 pub mod frame_math;
 pub mod hash;
+pub mod input;
 pub mod layout;
 pub mod math;
+pub mod observer;
 pub mod probe;
+pub mod profile;
 pub mod rng;
+pub mod schedule;
+pub mod seams;
+pub mod services;
 mod sim;
+pub mod snapshot;
+mod systems;
+pub mod terrain;
 pub mod time;
+pub mod world;
 
 /// Default master seed for tools and tests.
 pub const DEFAULT_SEED: u64 = 0x1F1E_5EED_0000_0001;
 
 pub use hash::SubsystemHashes;
+pub use input::InputFrame;
 pub use sim::{CoreState, SimCore};
