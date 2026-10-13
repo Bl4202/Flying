@@ -6,6 +6,9 @@
   --line: #d9dbd6;
   --ok: #1e7a3c;
   --warn: #9a5b00;
+  --bad: #b3261e;
+  --focus: #0b57d0;
+  --backdrop: rgb(0 0 0 / 0.45);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -16,7 +19,15 @@
     --line: #2d3338;
     --ok: #5fcf85;
     --warn: #f0b25a;
+    --bad: #ff8a80;
+    --focus: #8ab4f8;
+    --backdrop: rgb(0 0 0 / 0.6);
   }
+}
+
+html,
+body {
+  height: 100%;
 }
 
 body {
@@ -28,10 +39,31 @@ body {
     sans-serif;
 }
 
-main {
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* The picture fills the window; everything else floats above it. */
+.stage {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+}
+
+.selftest {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  min-height: 100%;
   max-width: 44rem;
   margin: 0 auto;
   padding: 2rem 1rem;
+  background: var(--bg);
+}
+
+.selftest[hidden] {
+  display: none;
 }
 
 h1 small {
@@ -55,9 +87,12 @@ td {
 }
 
 th {
-  width: 40%;
   color: var(--muted);
   font-weight: 500;
+}
+
+.selftest th[scope='row'] {
+  width: 40%;
 }
 
 td[data-state='ok'] {
@@ -66,4 +101,244 @@ td[data-state='ok'] {
 
 td[data-state='warn'] {
   color: var(--warn);
+}
+
+/* Screens (compat check, fatal error) sit centred over a dimmed picture. */
+.screen-root {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 1rem;
+  pointer-events: none;
+}
+
+.screen-root:has(.screen) {
+  background: var(--backdrop);
+  pointer-events: auto;
+}
+
+.screen {
+  box-sizing: border-box;
+  width: min(100%, 54rem);
+  max-height: 100%;
+  overflow: auto;
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.screen h1 {
+  margin-top: 0;
+}
+
+.screen h2 {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.25rem;
+}
+
+.screen .verdict {
+  font-weight: 600;
+}
+
+.screen .hint {
+  color: var(--muted);
+  margin-bottom: 0;
+}
+
+.compat-table th,
+.compat-table td {
+  overflow-wrap: normal;
+}
+
+.compat-table .need {
+  white-space: nowrap;
+}
+
+.compat-table .remedy {
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+.compat-table .state {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.compat-table tr[data-state='ok'] .state {
+  color: var(--ok);
+}
+
+.compat-table tr[data-state='degraded'] .state {
+  color: var(--warn);
+}
+
+.compat-table tr[data-state='missing'] .state {
+  color: var(--bad);
+}
+
+.modes {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2rem 1rem;
+  margin: 0;
+}
+
+.modes dt {
+  color: var(--muted);
+}
+
+.modes dd {
+  margin: 0;
+}
+
+.codes {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-family: ui-monospace, monospace;
+}
+
+.detail {
+  max-height: 14rem;
+  overflow: auto;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  white-space: pre-wrap;
+  user-select: text;
+  font-size: 0.8rem;
+}
+
+.button {
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.button.primary {
+  border-color: var(--focus);
+  font-weight: 600;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.screen .button {
+  margin-top: 1rem;
+}
+
+/* Debug overlay: monospace rows, top left, readable over any picture. */
+.overlay-root {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 10;
+  max-width: calc(100vw - 1rem);
+  pointer-events: none;
+}
+
+.overlay {
+  box-sizing: border-box;
+  max-height: calc(100vh - 1rem);
+  overflow: auto;
+  padding: 0.5rem;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.75);
+  color: #e8eaec;
+  font:
+    12px/1.35 ui-monospace,
+    monospace;
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+}
+
+.overlay[hidden] {
+  display: none;
+}
+
+.overlay .title {
+  margin-bottom: 0.25rem;
+  color: #9aa3ab;
+}
+
+.overlay .row {
+  white-space: pre;
+}
+
+.overlay .buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.overlay .button {
+  min-height: 28px;
+  padding: 0 0.6rem;
+  background: #2d3338;
+  color: #e8eaec;
+  border-color: #4a525a;
+  font-size: 12px;
+}
+
+.overlay .out {
+  margin: 0.3rem 0 0;
+  white-space: pre-wrap;
+}
+
+.overlay .out:empty {
+  display: none;
+}
+
+.toast-root {
+  position: fixed;
+  bottom: 1rem;
+  left: 50%;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 2rem);
+  pointer-events: none;
+}
+
+.toast {
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--line);
+  border-left-width: 6px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
+}
+
+.toast[data-kind='warn'] {
+  border-left-color: var(--warn);
+}
+
+.toast[data-kind='error'] {
+  border-left-color: var(--bad);
+}
+
+.toast[data-kind='info'] {
+  border-left-color: var(--focus);
+}
+
+.loading {
+  padding: 1rem 1.5rem;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  pointer-events: auto;
 }

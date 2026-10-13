@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { build as esbuild } from 'esbuild';
 import { defineConfig, type Plugin } from 'vite';
 import { cspValue, ISOLATION_HEADERS, securityHeaders } from '@flying/platform-web/headers';
+import { wgsl } from '@flying/tools/vite-plugin-wgsl';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
 const outDir = resolve(repoRoot, 'dist');
@@ -93,7 +94,7 @@ export default defineConfig(({ command, isPreview }) => {
       __BUILD_ID__: JSON.stringify(buildId),
       __THREADS_INITIAL_PAGES__: JSON.stringify(threadsInitialPages(command)),
     },
-    plugins: [cspMeta(), serviceWorker(buildId)],
+    plugins: [wgsl(), cspMeta(), serviceWorker(buildId)],
     server: {
       headers: ISOLATION_HEADERS,
       fs: { allow: [repoRoot] },
@@ -102,7 +103,8 @@ export default defineConfig(({ command, isPreview }) => {
       // HEADERS=off emulates a static host that cannot set headers (GitHub Pages).
       headers: headersOn ? securityHeaders() : {},
     },
-    worker: { format: 'es' },
+    // The Render Worker imports the WGSL shaders too, so its bundle needs the plugin as well.
+    worker: { format: 'es', plugins: () => [wgsl()] },
     build: {
       outDir,
       emptyOutDir: true,

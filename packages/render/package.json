@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./render.worker": "./src/render.worker.ts",
     "./shader-sources": "./src/shader-sources.ts",
+    "./messages": "./src/messages.ts",
     "./renderer-contract": "./src/renderer-contract.ts",
     "./shaders/*": "./shaders/*"
   },

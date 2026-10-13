@@ -101,6 +101,7 @@ function rig(opts: { profiling?: boolean } = {}) {
       snapshotsDropped = snaps;
     },
     shared: () => shared,
+    snapshotBytes,
   };
 }
 
@@ -230,6 +231,23 @@ describe('SimLoop', () => {
     r.setDropped(4, 9);
     const s = r.loop.report();
     expect([s.inputsDropped, s.snapshotsDropped]).toEqual([4, 9]);
+  });
+
+  it('reports the observer from the newest snapshot', () => {
+    const r = rig();
+    const dv = new DataView(r.snapshotBytes.buffer);
+    dv.setFloat64(SNAPSHOT.O_POS_BF, 100.5, true);
+    dv.setFloat64(SNAPSHOT.O_POS_BF + 8, -6000, true);
+    dv.setFloat64(SNAPSHOT.O_POS_BF + 16, 1500, true);
+    dv.setFloat32(SNAPSHOT.O_QUAT, 0.5, true);
+    dv.setFloat32(SNAPSHOT.O_QUAT + 12, -0.5, true);
+    dv.setFloat32(SNAPSHOT.O_SPEED, 180, true);
+    dv.setFloat32(SNAPSHOT.O_THROTTLE, 0.5, true);
+    dv.setUint32(SNAPSHOT.H_LAST_INPUT_SEQ, 77, true);
+    const o = r.loop.report().observer;
+    expect(o.pos).toEqual([100.5, -6000, 1500]);
+    expect(o.quat).toEqual([0.5, 0, 0, -0.5]);
+    expect([o.speed, o.throttle, o.inputSeq]).toEqual([180, 0.5, 77]);
   });
 
   it('includes the core profile only while profiling', () => {

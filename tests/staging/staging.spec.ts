@@ -43,7 +43,7 @@ test('live staging serves this commit, cross-origin isolated, with the golden ha
   page.on('pageerror', (e) => problems.push(e.message));
 
   // GitHub Pages sends no COOP/COEP: the Service Worker must install, reload once and isolate.
-  await page.goto(base);
+  await page.goto(`${base}?selftest=1`);
   const cell = (id: string) => page.locator(`[data-testid="${id}"]`);
   await expect(cell('status')).toHaveText('done', { timeout: 60_000 });
   await expect(cell('isolated')).toHaveText('true');

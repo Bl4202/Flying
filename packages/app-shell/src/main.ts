@@ -1,56 +1,69 @@
+/**
+ * The composition root: decides, in order, whether this load can run at all (isolation, features,
+ * the compat check), then hands over to the self-test page or the demo. Every other module in the
+ * app takes what it needs as arguments; only this file reads the URL, the DOM roots and the
+ * stored acknowledgement.
+ */
 import {
-  chooseVariant,
-  detect,
+  detectAsync,
   ensureIsolation,
-  scriptUrl,
+  installGlobalHandlers,
+  openKv,
+  parseFlags,
+  RingLogger,
   type IsolationOutcome,
   type ServiceWorkerStatus,
 } from '@flying/platform-web';
-import { INPUT_SCRIPT } from '@flying/sim-bridge/layout';
-import coreContentUrl from '../../../content-out/core.cpack?url';
-import singleUrl from '../../../wasm-out/sim.single.wasm?url';
-import threadsUrl from '../../../wasm-out/sim.threads.wasm?url';
-import type { ProbeRequest, ProbeResult } from './probe.worker.ts';
-import probeWorkerUrl from './probe.worker.ts?worker&url';
+import {
+  evaluateCompat,
+  flowReducer,
+  INITIAL_FLOW,
+  mountCompatScreen,
+  mountFatalScreen,
+  readCompatAck,
+  shouldShowCompat,
+  t,
+  writeCompatAck,
+  type FatalSource,
+  type FlowEvent,
+  type FlowState,
+} from '@flying/ui';
+import { codeOf, startDemo, type Demo } from './demo.ts';
+import { runSelfTestPage } from './selftest-page.ts';
 
-/** Default master seed, equal to `sim_core::DEFAULT_SEED`. */
-const SEED = '1f1e5eed00000001';
-const PROBE_TICKS = 10_000;
-
-type State = 'ok' | 'warn' | '';
-
-const statusEl = document.getElementById('status');
-if (!(statusEl instanceof HTMLTableElement)) {
-  throw new Error('SYS-010: #status table missing');
-}
-const table: HTMLTableElement = statusEl;
-
-function row(id: string, label: string, value: string, state: State = ''): void {
-  let tr = table.querySelector<HTMLTableRowElement>(`tr[data-row="${id}"]`);
-  if (!tr) {
-    tr = document.createElement('tr');
-    tr.dataset['row'] = id;
-    const th = document.createElement('th');
-    th.scope = 'row';
-    th.textContent = label;
-    const td = document.createElement('td');
-    td.dataset['testid'] = id;
-    tr.append(th, td);
-    table.append(tr);
+function element(id: string): HTMLElement {
+  const el = document.getElementById(id);
+  if (!el) {
+    throw new Error(`SYS-010: #${id} is missing from the page`);
   }
-  const td = tr.querySelector('td');
-  if (td) {
-    td.textContent = value;
-    td.dataset['state'] = state;
-  }
+  return el;
 }
+
+const logger = new RingLogger();
+installGlobalHandlers(logger, window, 'main');
+
+let flow: FlowState = INITIAL_FLOW;
+function dispatch(event: FlowEvent): void {
+  flow = flowReducer(flow, event);
+}
+/** A function rather than a comparison inline, so the compiler does not carry an earlier narrowing past an `await`. */
+const isFatal = (): boolean => flow.name === 'FATAL';
 
 async function main(): Promise<void> {
-  row('status', 'Status', 'booting');
-  row('build-id', 'Build', __BUILD_ID__);
+  const flags = parseFlags(location.search);
+  for (const warning of flags.warnings) {
+    logger.warn('flags', warning);
+  }
+  document.title = t('app.name');
+  const stage = element('stage');
+  const screenRoot = element('screen-root');
+  const loading = document.createElement('p');
+  loading.className = 'loading';
+  loading.textContent = t('app.loading');
+  screenRoot.append(loading);
 
   let outcome: IsolationOutcome = crossOriginIsolated ? 'isolated' : 'degraded';
-  let sw: ServiceWorkerStatus | 'dev' = 'dev';
+  let serviceWorker: ServiceWorkerStatus | 'dev' = 'dev';
   if (import.meta.env.PROD) {
     const base = import.meta.env.BASE_URL;
     const result = await ensureIsolation({ swUrl: `${base}sw.js`, scope: base });
@@ -58,67 +71,104 @@ async function main(): Promise<void> {
       return; // the page reloads under the Service Worker; render nothing now
     }
     outcome = result.outcome;
-    sw = result.serviceWorker;
+    serviceWorker = result.serviceWorker;
   }
+  const features = await detectAsync();
+  loading.remove();
 
-  const features = detect();
-  row(
-    'isolated',
-    'Cross-origin isolated',
-    String(features.crossOriginIsolated),
-    features.crossOriginIsolated ? 'ok' : 'warn',
-  );
-  row(
-    'sab',
-    'SharedArrayBuffer',
-    String(features.sharedArrayBuffer),
-    features.sharedArrayBuffer ? 'ok' : 'warn',
-  );
-  row(
-    'mode',
-    'Mode',
-    outcome === 'isolated' ? 'full' : 'degraded',
-    outcome === 'isolated' ? 'ok' : 'warn',
-  );
-  row('sw', 'Service Worker', sw, sw === 'active' ? 'ok' : 'warn');
-
-  const variant = chooseVariant(features);
-  if (!variant) {
-    row('variant', 'WASM variant', 'none (WebAssembly SIMD required)', 'warn');
-    row('status', 'Status', 'error', 'warn');
+  if (flags.selftest === 'hash') {
+    await runSelfTestPage({ root: element('selftest-root'), features, outcome, serviceWorker });
     return;
   }
-  row('variant', 'WASM variant', variant, 'ok');
 
-  const request: ProbeRequest = {
-    variant,
-    url: variant === 'threads' ? threadsUrl : singleUrl,
-    threadsInitialPages: __THREADS_INITIAL_PAGES__,
-    contentUrl: coreContentUrl,
-    seed: SEED,
-    script: INPUT_SCRIPT.ERRATIC,
-    ticks: PROBE_TICKS,
-  };
-  const worker = new Worker(scriptUrl(probeWorkerUrl), { type: 'module' });
-  worker.onmessage = (event: MessageEvent<ProbeResult>) => {
-    const r = event.data;
-    if (r.ok) {
-      row('abi', 'Sim ABI version', String(r.abi), 'ok');
-      row('ticks', 'Ticks run', r.tick);
-      row('hash', `State hash @ ${String(PROBE_TICKS)} ticks`, r.hash);
-      row('content-hash', 'Content pack hash', r.content);
-      row('status', 'Status', 'done', 'ok');
-    } else {
-      row('status', 'Status', `error: ${r.error}`, 'warn');
+  dispatch({ type: 'begin-check' });
+  const report = evaluateCompat({ features, flags });
+  const kv = await openKv('flying');
+  const ack = await readCompatAck(kv);
+  const showScreen = shouldShowCompat({ forced: flags.compat, report, ack });
+  const firstCode = report.codes[0];
+  dispatch({
+    type: 'check-done',
+    verdict: report.verdict,
+    showScreen,
+    ...(firstCode ? { code: firstCode } : {}),
+  });
+
+  if (flow.name === 'FATAL') {
+    mountCompatScreen(screenRoot, report, {
+      onContinue: () => undefined,
+      onReload: () => {
+        location.reload();
+      },
+    });
+    return;
+  }
+  if (flow.name === 'COMPAT_CHECK') {
+    await new Promise<void>((resolve) => {
+      mountCompatScreen(screenRoot, report, {
+        onContinue: () => {
+          resolve();
+        },
+      });
+    });
+    dispatch({ type: 'acknowledge' });
+    await writeCompatAck(kv, report, Date.now());
+    screenRoot.replaceChildren();
+  }
+
+  let demo: Demo | undefined;
+  const fail = (source: FatalSource, code: string, detail: string): void => {
+    if (isFatal()) {
+      return;
     }
-    worker.terminate();
+    dispatch({ type: 'fatal', code, message: detail });
+    logger.error('main', `${code}: ${detail}`);
+    demo?.stop();
+    const tail = logger
+      .entries()
+      .slice(-30)
+      .map((e) => `${e.level} ${e.source}: ${e.message}`)
+      .join('\n');
+    mountFatalScreen(screenRoot, {
+      source,
+      code,
+      detail: `${detail}\n\n${tail}`,
+      onReload: () => {
+        location.reload();
+      },
+    });
   };
-  worker.onerror = (event) => {
-    row('status', 'Status', `error: worker failed (${event.message})`, 'warn');
-  };
-  worker.postMessage(request);
+
+  try {
+    demo = await startDemo({
+      flags,
+      features,
+      report,
+      roots: { stage, overlay: element('overlay-root'), toast: element('toast-root') },
+      flow: { dispatch },
+      fail,
+    });
+    if (isFatal()) {
+      demo.stop();
+    }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    fail('unknown', codeOf(message, 'SYS-010'), message);
+  }
 }
 
 main().catch((e: unknown) => {
-  row('status', 'Status', `error: ${e instanceof Error ? e.message : String(e)}`, 'warn');
+  const message = e instanceof Error ? e.message : String(e);
+  logger.error('main', message);
+  const status = document.getElementById('screen-root');
+  if (status) {
+    mountFatalScreen(status, {
+      source: 'unknown',
+      code: codeOf(message, 'SYS-010'),
+      detail: message,
+      onReload: () => {
+        location.reload();
+      },
+    });
+  }
 });

@@ -77,6 +77,16 @@ export interface SimStats {
   snapshotsDropped: number;
   coreState: number;
   sleeper: 'atomics' | 'timer';
+  /** The observer as of the newest snapshot. Battlefield frame (east, north, up), SI units. */
+  observer: {
+    pos: [number, number, number];
+    /** Body-to-BF attitude, `[w, x, y, z]`. */
+    quat: [number, number, number, number];
+    speed: number;
+    throttle: number;
+    /** Sequence number of the newest input frame the core had applied. */
+    inputSeq: number;
+  };
   /** The core's own stage timings, while profiling is on. */
   profile: {
     tickMsLast: number;
