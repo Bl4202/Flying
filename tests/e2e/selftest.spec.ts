@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 
-const HEADERS_URL = 'http://127.0.0.1:4173/Flying/';
-const PAGES_URL = 'http://127.0.0.1:4174/Flying/';
+/** `?selftest=1` shows the status table: what this load got and the hash after 10 000 ticks. */
+const HEADERS_URL = 'http://127.0.0.1:4173/Flying/?selftest=1';
+const PAGES_URL = 'http://127.0.0.1:4174/Flying/?selftest=1';
 
 interface Golden {
   checkpoints: { tick: number; combined: string }[];

@@ -4,9 +4,7 @@
   "version": "0.0.2",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
-  },
-  "dependencies": {
-    "@flying/platform-web": "workspace:*"
+    ".": "./src/index.ts",
+    "./audio-backend.contract": "./src/audio-backend.contract.ts"
   }
 }

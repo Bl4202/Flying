@@ -1,12 +1,13 @@
 /**
- * Probe worker: loads the sim WASM and the core content pack, steps a fixed number of ticks with
- * the scripted pilot and reports the state hash. The same setup as `cargo xtask determinism`, so
- * the result can be compared with the golden. (Replaced by the self-test worker in WP10.)
+ * Self-test worker: loads the sim WASM and the core content pack in a core of its own, steps a
+ * fixed number of ticks with the scripted pilot and reports the state hash. The same setup as
+ * `cargo xtask determinism`, so the result can be compared with the golden. It never touches the
+ * running game's core, so the overlay can run it mid-flight.
  */
 import type { Variant } from '@flying/platform-web/wasm-loader';
 import { HASH_KIND, hex64, loadSim } from '@flying/sim-bridge/sim-handle';
 
-export interface ProbeRequest {
+export interface SelfTestRequest {
   variant: Variant;
   url: string;
   threadsInitialPages: number;
@@ -19,7 +20,7 @@ export interface ProbeRequest {
   ticks: number;
 }
 
-export type ProbeResult =
+export type SelfTestResult =
   | {
       ok: true;
       variant: Variant;
@@ -32,8 +33,8 @@ export type ProbeResult =
   | { ok: false; error: string };
 
 interface WorkerScope {
-  onmessage: ((event: MessageEvent<ProbeRequest>) => void) | null;
-  postMessage(message: ProbeResult): void;
+  onmessage: ((event: MessageEvent<SelfTestRequest>) => void) | null;
+  postMessage(message: SelfTestResult): void;
 }
 
 const scope = self as unknown as WorkerScope;
@@ -44,7 +45,7 @@ scope.onmessage = (event) => {
   });
 };
 
-async function run(req: ProbeRequest): Promise<ProbeResult> {
+async function run(req: SelfTestRequest): Promise<SelfTestResult> {
   try {
     const sim = await loadSim({
       variant: req.variant,

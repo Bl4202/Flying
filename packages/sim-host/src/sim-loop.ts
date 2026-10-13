@@ -8,6 +8,7 @@ import {
   ABI,
   decodeProfile,
   INPUT_FRAME,
+  SnapshotReader,
   stampPublishTime,
   type InputSource,
   type Quantiles,
@@ -143,6 +144,11 @@ export class SimLoop {
     const now = d.nowMs();
     const tick = Number(d.sim.tick());
     const seconds = Math.max((now - this.#windowStartMs) / 1000, 1e-9);
+    const snap = new SnapshotReader(d.sim.snapshot());
+    const pos = new Float64Array(3);
+    const quat = new Float32Array(4);
+    snap.observerPos(pos);
+    snap.observerQuat(quat);
     const stats: SimStats = {
       atMs: d.sharedNowMs(),
       tick,
@@ -157,6 +163,13 @@ export class SimLoop {
       snapshotsDropped: d.snapshots.dropped(),
       coreState: d.sim.coreState(),
       sleeper: d.sleeper,
+      observer: {
+        pos: [pos[0] ?? 0, pos[1] ?? 0, pos[2] ?? 0],
+        quat: [quat[0] ?? 1, quat[1] ?? 0, quat[2] ?? 0, quat[3] ?? 0],
+        speed: snap.observerSpeed(),
+        throttle: snap.observerThrottle(),
+        inputSeq: snap.lastInputSeq(),
+      },
       profile: null,
     };
     if (this.#profiling) {

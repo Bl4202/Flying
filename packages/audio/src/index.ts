@@ -1,2 +1,3 @@
-// The AudioBackend seam and its null implementation live here (GDD 61.5).
-export {};
+export * from './backend.ts';
+export * from './gesture.ts';
+export * from './null-backend.ts';
