@@ -35,6 +35,12 @@ function threadsInitialPages(command: 'build' | 'serve'): number {
     .threads_initial_pages;
 }
 
+function requireContent(command: 'build' | 'serve'): void {
+  if (command === 'build' && !existsSync(resolve(repoRoot, 'content-out/core.cpack'))) {
+    throw new Error('content-out/core.cpack is missing: run `cargo xtask content` first');
+  }
+}
+
 /** Puts the CSP into index.html's <meta> so the very first (pre-Service-Worker) load is covered. */
 function cspMeta(): Plugin {
   return {
@@ -77,6 +83,7 @@ function serviceWorker(buildId: string): Plugin {
 }
 
 export default defineConfig(({ command, isPreview }) => {
+  requireContent(command);
   const buildId = gitSha();
   const headersOn = process.env['HEADERS'] !== 'off';
   return {

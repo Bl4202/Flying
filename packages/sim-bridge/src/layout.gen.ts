@@ -154,6 +154,15 @@ export const CORE_STATE = {
   RUNNING: 2,
   PAUSED: 3,
   ENDED: 4,
+  NONE: 255,
+} as const;
+
+export const CONTENT_STATUS = {
+  OK: 0,
+  NOT_IDLE: 1,
+  INVALID: 2,
+  NO_CORE: 3,
+  NO_BUFFER: 4,
 } as const;
 
 export const HASH_KIND = {

@@ -3,10 +3,17 @@
  * JSON-lines format as `fg hash`, so the determinism check can compare native and WASM (ADR-10).
  *
  * Usage: node wasm-hash.ts --variant single|threads --seed HEX --at T1,T2,... [--dir wasm-out]
+ *                           [--script none|erratic] [--content PATH.cpack]
  */
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { hex64, instantiateBytes, type Variant } from '@flying/platform-web/wasm-loader';
+import {
+  hex64,
+  INPUT_SCRIPTS,
+  instantiateBytes,
+  type InputScript,
+  type Variant,
+} from '@flying/platform-web/wasm-loader';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -36,7 +43,23 @@ const sim = await instantiateBytes(
   variant satisfies Variant,
   manifest.threads_initial_pages,
 );
+
+const scriptText = arg('script') ?? 'none';
+if (!(scriptText in INPUT_SCRIPTS)) {
+  console.error('--script none|erratic');
+  process.exit(2);
+}
+const contentPath = arg('content');
+
+// Same order as `fg hash`: content first (only an idle core takes it), then the script, then start.
 sim.init(BigInt(`0x${seedText.replace(/^0x/, '')}`));
+if (contentPath !== undefined) {
+  sim.loadContent(readFileSync(contentPath));
+}
+if (!sim.setInputScript(scriptText as InputScript) || !sim.start()) {
+  console.error('the core would not start');
+  process.exit(1);
+}
 
 const CHUNK = 100_000n;
 for (const target of ticks) {
@@ -50,6 +73,9 @@ for (const target of ticks) {
     tick_h: hex64(sim.hash('tick')),
     rng: hex64(sim.hash('rng')),
     bodies: hex64(sim.hash('bodies')),
+    observer: hex64(sim.hash('observer')),
+    input: hex64(sim.hash('input')),
+    content: hex64(sim.hash('content')),
   };
   console.log(JSON.stringify(line));
 }
