@@ -5,20 +5,25 @@ Staging URL: https://bl4202.github.io/Flying/ (GitHub Pages, project site for `B
 ## How a deploy happens
 
 1. A push to `main` runs `.github/workflows/ci.yml`.
-2. `lint`, `test`, `build`, `determinism`, `determinism-arm64`, `repro` and `e2e` must all pass.
+2. `lint`, `test`, `build`, `determinism`, `determinism-arm64`, `repro`, `e2e` and `perf-smoke` must
+   all pass. (`e2e-compat`, the Firefox and WebKit boot check, runs too but does not block.)
 3. `deploy-staging` downloads the `built` artifact (`dist/` from the `build` job), uploads it as the
    Pages artifact and deploys it. Nothing is rebuilt at deploy time: what was tested is what ships.
 4. `staging-smoke` loads the live URL in Chromium and checks that the deployed build id equals the
    commit, that the page becomes cross-origin isolated, runs the threads build and reports the
-   golden state hash. It polls for up to 3 minutes because Pages can serve the previous deploy for a
-   short while.
+   golden state hash (the `?selftest=1` page). It then opens the game itself and checks that the sim
+   ticks, frames are drawn and the picture is not blank. It polls for up to 3 minutes because Pages
+   can serve the previous deploy for a short while.
 
 Pull requests run everything except the two deploy jobs.
 
 ## One-time setup
 
 Repository Settings, Pages, Source: **GitHub Actions**. (CLI: `gh api -X POST repos/Bl4202/Flying/pages -f build_type=workflow`.)
-Branch protection on `main` should require the seven check jobs above.
+Branch protection on `main` should require the eight check jobs above.
+
+A nightly workflow (`perf-nightly.yml`) builds `main` and runs PS-0 for two minutes; the report is
+kept as an artifact. It never fails the build (ADR-28).
 
 ## How isolation works on Pages
 
@@ -31,8 +36,10 @@ same-origin response (ADR-22). So:
 - If workers are unavailable or blocked the app shows **Mode: degraded** and runs the single-thread
   build. That is expected, not an error.
 
-To check by hand, open the staging URL and read the status table: `Cross-origin isolated: true`,
-`Mode: full`, `WASM variant: threads`, `Build` equal to the commit SHA.
+To check by hand, open the staging URL with `?selftest=1` and read the status table:
+`Cross-origin isolated: true`, `Mode: full`, `WASM variant: threads`, `Build` equal to the commit
+SHA. The plain URL starts the game (a compat screen first, on the first visit); `?debug=1` adds the
+overlay, whose `Mode` row reads `threads · shared · atomics` when isolated.
 
 ## Rolling back
 

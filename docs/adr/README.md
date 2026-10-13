@@ -1,6 +1,6 @@
 # Architecture decision records
 
-ADR-01 to ADR-20 were imported verbatim from GDD §0.4 at v0.0a. ADR-21 and later are written as decisions are made.
+ADR-01 to ADR-20 were imported verbatim from GDD §0.4 at v0.0a. ADR-21 and later are written as decisions are made (ADR-21 to ADR-23 in v0.0a, ADR-24 to ADR-28 in v0.0b).
 To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it below. A gate threshold change needs an ADR (AC-66.4).
 
 | ID | Title | Status |
@@ -28,3 +28,8 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-21](0021-toolchains-and-wasm-threads-build.md) | Toolchains and the WASM threads build | Accepted |
 | [ADR-22](0022-github-pages-staging-with-service-worker-isolation.md) | GitHub Pages staging with Service-Worker-assisted isolation | Accepted |
 | [ADR-23](0023-state-hash-and-golden-policy.md) | State hash algorithm and golden-file policy | Accepted |
+| [ADR-24](0024-thin-custom-renderer.md) | A thin custom renderer over raw WebGPU and WebGL2 | Accepted |
+| [ADR-25](0025-runtime-topology-ipc-and-abi-v2.md) | Runtime topology, IPC formats and ABI v2 | Accepted |
+| [ADR-26](0026-sim-loop-pacing.md) | Simulation loop pacing | Accepted |
+| [ADR-27](0027-seams-policy-and-own-math-types.md) | Seams policy and the project's own vector types | Accepted |
+| [ADR-28](0028-perf-gating-and-reference-machines.md) | Performance gating and the reference-machine waiver | Accepted |
