@@ -79,8 +79,7 @@ export const SNAPSHOT_SAB = {
   H_SLOT_BYTES: 8,
   H_SLOT_COUNT: 12,
   H_PUBLISHED: 16,
-  H_LATEST: 20,
-  H_SLOT_SEQ: 24,
+  H_SLOT_SEQ: 20,
 } as const;
 
 export const INPUT_RING = {

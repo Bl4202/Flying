@@ -7,13 +7,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import {
-  hex64,
-  INPUT_SCRIPTS,
-  instantiateBytes,
-  type InputScript,
-  type Variant,
-} from '@flying/platform-web/wasm-loader';
+import { INPUT_SCRIPT } from '@flying/sim-bridge/layout';
+import { HASH_KIND, hex64, instantiateSim } from '@flying/sim-bridge/sim-handle';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -38,14 +33,16 @@ const manifest = JSON.parse(readFileSync(join(dir, 'wasm-manifest.json'), 'utf8'
   threads_initial_pages: number;
 };
 const bytes = readFileSync(join(dir, `sim.${variant}.wasm`));
-const sim = await instantiateBytes(
-  bytes,
-  variant satisfies Variant,
-  manifest.threads_initial_pages,
-);
+const sim = await instantiateSim(bytes, variant, manifest.threads_initial_pages);
 
 const scriptText = arg('script') ?? 'none';
-if (!(scriptText in INPUT_SCRIPTS)) {
+const script =
+  scriptText === 'none'
+    ? INPUT_SCRIPT.NONE
+    : scriptText === 'erratic'
+      ? INPUT_SCRIPT.ERRATIC
+      : undefined;
+if (script === undefined) {
   console.error('--script none|erratic');
   process.exit(2);
 }
@@ -56,7 +53,7 @@ sim.init(BigInt(`0x${seedText.replace(/^0x/, '')}`));
 if (contentPath !== undefined) {
   sim.loadContent(readFileSync(contentPath));
 }
-if (!sim.setInputScript(scriptText as InputScript) || !sim.start()) {
+if (!sim.setInputScript(script) || !sim.start()) {
   console.error('the core would not start');
   process.exit(1);
 }
@@ -69,13 +66,13 @@ for (const target of ticks) {
   }
   const line = {
     tick: Number(sim.tick()),
-    combined: hex64(sim.hash('combined')),
-    tick_h: hex64(sim.hash('tick')),
-    rng: hex64(sim.hash('rng')),
-    bodies: hex64(sim.hash('bodies')),
-    observer: hex64(sim.hash('observer')),
-    input: hex64(sim.hash('input')),
-    content: hex64(sim.hash('content')),
+    combined: hex64(sim.hash(HASH_KIND.COMBINED)),
+    tick_h: hex64(sim.hash(HASH_KIND.TICK)),
+    rng: hex64(sim.hash(HASH_KIND.RNG)),
+    bodies: hex64(sim.hash(HASH_KIND.BODIES)),
+    observer: hex64(sim.hash(HASH_KIND.OBSERVER)),
+    input: hex64(sim.hash(HASH_KIND.INPUT)),
+    content: hex64(sim.hash(HASH_KIND.CONTENT)),
   };
   console.log(JSON.stringify(line));
 }

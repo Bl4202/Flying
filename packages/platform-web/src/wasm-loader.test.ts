@@ -31,7 +31,7 @@ describe('chooseVariant', () => {
 });
 
 describe('buildImports', () => {
-  it('single provides only the profiler clock', () => {
+  it('single provides only the host clock', () => {
     const env = buildImports('single', 256)['env'] as Record<string, unknown>;
     expect(Object.keys(env)).toEqual(['fg_now']);
     expect(typeof (env['fg_now'] as () => number)()).toBe('number');
@@ -43,6 +43,15 @@ describe('buildImports', () => {
     expect(memory.buffer).toBeInstanceOf(SharedArrayBuffer);
     expect(memory.buffer.byteLength).toBe(256 * 65536);
     expect(MAX_PAGES * 65536).toBe(2 * 1024 * 1024 * 1024);
+  });
+  it('uses the clock it is given', () => {
+    let t = 41;
+    const env = buildImports('single', 256, { now: () => ++t })['env'] as Record<
+      string,
+      () => number
+    >;
+    expect(env['fg_now']?.()).toBe(42);
+    expect(env['fg_now']?.()).toBe(43);
   });
 });
 

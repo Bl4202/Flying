@@ -102,7 +102,10 @@ layouts! {
         SIZE = 10368,
     }
 
-    /// Shared snapshot buffer: three slots under a seqlock.
+    /// Shared snapshot buffer: three slots under a seqlock. `H_PUBLISHED` counts publications
+    /// (0 = none yet); publication `n` lives in slot `(n - 1) % SLOT_COUNT`, so that one word says
+    /// both which slot is newest and how new it is. `H_SLOT_SEQ` holds one sequence counter per
+    /// slot: odd while the writer is inside it, bumped to the next even value when done.
     snapshot_sab {
         MAGIC = 0x4253_4746,
         VERSION = 1,
@@ -115,8 +118,7 @@ layouts! {
         H_SLOT_BYTES = 8,
         H_SLOT_COUNT = 12,
         H_PUBLISHED = 16,
-        H_LATEST = 20,
-        H_SLOT_SEQ = 24,
+        H_SLOT_SEQ = 20,
     }
 
     /// Shared single-producer single-consumer ring of input frames.

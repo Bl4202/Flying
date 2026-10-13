@@ -4,6 +4,7 @@
   "version": "0.0.2",
   "type": "module",
   "dependencies": {
-    "@flying/platform-web": "workspace:*"
+    "@flying/platform-web": "workspace:*",
+    "@flying/sim-bridge": "workspace:*"
   }
 }

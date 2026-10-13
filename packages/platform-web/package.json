@@ -11,6 +11,13 @@
     "./wasm-loader": "./src/wasm-loader.ts",
     "./sw-register": "./src/sw-register.ts",
     "./sw-routing": "./src/sw-routing.ts",
-    "./trusted-types": "./src/trusted-types.ts"
+    "./trusted-types": "./src/trusted-types.ts",
+    "./flags": "./src/flags.ts",
+    "./kv": "./src/kv.ts",
+    "./log": "./src/log.ts",
+    "./metrics": "./src/metrics.ts",
+    "./time": "./src/time.ts",
+    "./ipc/spsc-ring": "./src/ipc/spsc-ring.ts",
+    "./ipc/triple-buffer": "./src/ipc/triple-buffer.ts"
   }
 }
