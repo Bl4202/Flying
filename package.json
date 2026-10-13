@@ -24,8 +24,12 @@
     "preview": "vite preview --config packages/app-shell/vite.config.ts",
     "determinism": "cargo xtask determinism --ticks 1000000",
     "repro": "cargo xtask repro",
-    "e2e": "playwright test",
-    "verify": "pnpm lint && pnpm test && pnpm build && pnpm determinism && pnpm repro && pnpm e2e"
+    "e2e": "playwright test --project=e2e",
+    "verify": "pnpm lint && pnpm test && pnpm build && pnpm determinism && pnpm repro && pnpm e2e && pnpm perf:smoke && pnpm bench",
+    "e2e:browsers": "playwright test --project=firefox --project=webkit",
+    "perf:smoke": "playwright test --project=perf",
+    "bench": "cargo xtask bench",
+    "perf:local": "node packages/tools/src/perf-local.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

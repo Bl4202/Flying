@@ -91,11 +91,91 @@ declare global {
         skyFraction: number;
       }>;
       stats(): {
-        sim: { tick: number; atMs: number; hz: number; observer: { quat: number[] } } | undefined;
-        render: { frames: number; fps: number; backend: string } | undefined;
+        sim:
+          | {
+              tick: number;
+              atMs: number;
+              hz: number;
+              droppedMs: number;
+              droppedEvents: number;
+              stepRun: { count: number; max: number };
+              observer: { quat: number[] };
+            }
+          | undefined;
+        render:
+          | {
+              frames: number;
+              atMs: number;
+              fps: number;
+              backend: string;
+              frameMsRun: { count: number; max: number };
+            }
+          | undefined;
       };
       host(): 'worker' | 'main';
       backend(): string;
     };
   }
+}
+
+/** Both threads' newest reports, with the numbers the independence tests compare. */
+export interface Sample {
+  sim: {
+    tick: number;
+    atMs: number;
+    hz: number;
+    droppedMs: number;
+    droppedEvents: number;
+    stepRunMaxMs: number;
+  };
+  render: { frames: number; atMs: number; fps: number; frameRunMaxMs: number; backend: string };
+}
+
+export function sample(page: Page): Promise<Sample> {
+  return page.evaluate(() => {
+    const s = window.__flying?.stats();
+    if (s?.sim === undefined || s.render === undefined) throw new Error('no reports yet');
+    return {
+      sim: {
+        tick: s.sim.tick,
+        atMs: s.sim.atMs,
+        hz: s.sim.hz,
+        droppedMs: s.sim.droppedMs,
+        droppedEvents: s.sim.droppedEvents,
+        stepRunMaxMs: s.sim.stepRun.max,
+      },
+      render: {
+        frames: s.render.frames,
+        atMs: s.render.atMs,
+        fps: s.render.fps,
+        frameRunMaxMs: s.render.frameMsRun.max,
+        backend: s.render.backend,
+      },
+    };
+  });
+}
+
+/** A sample whose reports were both made at least `ms` after now, on the clock the reports use. */
+export async function sampleAfter(page: Page, ms: number): Promise<Sample> {
+  const target = await page.evaluate(
+    (delay) => performance.timeOrigin + performance.now() + delay,
+    ms,
+  );
+  let latest: Sample | undefined;
+  await expect
+    .poll(
+      async () => {
+        latest = await sample(page);
+        return Math.min(latest.sim.atMs, latest.render.atMs) >= target;
+      },
+      { timeout: ms + 10_000, intervals: [100] },
+    )
+    .toBe(true);
+  if (latest === undefined) throw new Error('no sample');
+  return latest;
+}
+
+/** Ticks per second between two samples, by the reports' own timestamps. */
+export function simRate(a: Sample, b: Sample): number {
+  return (b.sim.tick - a.sim.tick) / ((b.sim.atMs - a.sim.atMs) / 1000);
 }

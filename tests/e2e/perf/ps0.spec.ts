@@ -1,7 +1,12 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { byId, HEADERS_BASE, passCompat, watchErrors } from '../support.ts';
 
 const STRICT = process.env['PERF_STRICT'] === '1';
+/** Length of the measured window; the nightly run and the reference machines ask for 120. */
+const SECONDS = Number(process.env['PERF_SECONDS'] ?? '8');
+/** Where to keep the report, if the caller wants it as a file (the nightly job uploads it). */
+const REPORT_DIR = process.env['PERF_REPORT_DIR'];
 
 interface Report {
   schema: string;
@@ -22,9 +27,9 @@ interface Report {
 }
 
 test('PS-0 produces a valid report, and the sim holds its rate', async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout((SECONDS + 90) * 1000);
   const problems = watchErrors(page);
-  await passCompat(page, `${HEADERS_BASE}?perf=ps0&seconds=8`);
+  await passCompat(page, `${HEADERS_BASE}?perf=ps0&seconds=${String(SECONDS)}`);
 
   const out = byId(page, 'perf-report');
   await expect(byId(page, 'perf-status')).toHaveAttribute('data-state', 'done', {
@@ -34,7 +39,11 @@ test('PS-0 produces a valid report, and the sim holds its rate', async ({ page }
 
   expect(report.schema).toBe('perf_report/1');
   expect(report.scenario).toBe('PS-0');
-  expect(report.seconds).toBe(8);
+  expect(report.seconds).toBe(SECONDS);
+  if (REPORT_DIR !== undefined) {
+    mkdirSync(REPORT_DIR, { recursive: true });
+    writeFileSync(`${REPORT_DIR}/perf-ps0.json`, `${JSON.stringify(report, null, 2)}\n`);
+  }
   expect(report.build.abi).toBe(2);
   expect(report.build.contentHash).toMatch(/^[0-9a-f]{16}$/);
   expect(report.modes.variant).toBe('threads');
@@ -46,8 +55,8 @@ test('PS-0 produces a valid report, and the sim holds its rate', async ({ page }
     'step-avg',
     'render-cpu',
   ]);
-  expect(report.metrics.step.count).toBeGreaterThan(300);
-  expect(report.metrics.renderCpuMs.count).toBeGreaterThan(30);
+  expect(report.metrics.step.count).toBeGreaterThan(SECONDS * 40);
+  expect(report.metrics.renderCpuMs.count).toBeGreaterThan(SECONDS * 4);
 
   if (STRICT) {
     // Reference machines: every gate must hold.
