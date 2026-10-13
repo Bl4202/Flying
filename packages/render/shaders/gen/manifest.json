@@ -1,0 +1,18 @@
+{
+  "terrain_patch": {
+    "vertex": "terrain_patch.vert.glsl",
+    "fragment": "terrain_patch.frag.glsl",
+    "blocks": {
+      "vertex": "Frame_block_0Vertex",
+      "fragment": "Frame_block_0Fragment"
+    }
+  },
+  "marker": {
+    "vertex": "marker.vert.glsl",
+    "fragment": "marker.frag.glsl",
+    "blocks": {
+      "vertex": "Frame_block_0Vertex",
+      "fragment": "Frame_block_0Fragment"
+    }
+  }
+}

@@ -6,5 +6,9 @@
   "dependencies": {
     "@flying/platform-web": "workspace:*",
     "@flying/sim-bridge": "workspace:*"
+  },
+  "exports": {
+    "./vite-plugin-wgsl": "./src/vite-plugin-wgsl.ts",
+    "./wgsl-pp": "./src/wgsl-pp.ts"
   }
 }

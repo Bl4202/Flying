@@ -1,0 +1,16 @@
+{
+  "shaders": [
+    {
+      "name": "terrain_patch",
+      "wgsl": "terrain_patch.wgsl",
+      "vertex": "vs_main",
+      "fragment": "fs_main"
+    },
+    {
+      "name": "marker",
+      "wgsl": "marker.wgsl",
+      "vertex": "vs_main",
+      "fragment": "fs_main"
+    }
+  ]
+}
