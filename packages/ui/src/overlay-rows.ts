@@ -22,6 +22,8 @@ export interface OverlayModel {
   paused: boolean;
   /** Input frames sent to the core and refused by a full queue. */
   input: { sent: number; refused: number } | undefined;
+  /** The stored benchmark result as `profile / preset`, or undefined if none was run. */
+  benchmark: string | undefined;
 }
 
 export interface OverlayRow {
@@ -85,6 +87,7 @@ export function buildOverlayRows(m: OverlayModel): OverlayRow[] {
   add('adapter', 'Adapter', m.adapter === '' ? DASH : m.adapter);
   add('device', 'Device', r === undefined ? DASH : r.description.slice(0, 60));
   add('content', 'Content', m.contentHash);
+  add('bench', 'Benchmark', m.benchmark ?? DASH);
 
   add('tick', 'Tick', s === undefined ? DASH : String(s.tick));
   add('core', 'Core', s === undefined ? DASH : (CORE_STATE[s.coreState] ?? String(s.coreState)));

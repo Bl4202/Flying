@@ -201,6 +201,27 @@ export async function runRendererContract(
       );
     }
 
+    await check('finish resolves, also with nothing drawn yet and after drawing', async () => {
+      await renderer.finish();
+      renderer.setTerrainPatch(patchAt(0));
+      renderer.render(frameFor(0, 'ahead', true));
+      await renderer.finish();
+      return undefined;
+    });
+
+    if (opts.draws) {
+      await check('many patch instances draw without breaking the frame', async () => {
+        renderer.setTerrainPatch(patchAt(0));
+        const frame = frameFor(0, 'ahead', true);
+        frame.patchInstances = 64;
+        renderer.render(frame);
+        await renderer.finish();
+        const px = await renderer.debugReadPixels();
+        const colours = distinctColours(px);
+        return colours >= 8 ? undefined : `only ${String(colours)} colours with 64 instances`;
+      });
+    }
+
     await check('onLost accepts listeners', () => {
       renderer.onLost(() => undefined);
       return undefined;

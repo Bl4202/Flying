@@ -41,6 +41,8 @@ export interface RenderStats {
   fps: number;
   /** Time between frames, and CPU time spent in `render`, for the interval and for the run. */
   frameMs: Quantiles;
+  /** Frame intervals since `reset-run` (the run's low percentiles come from here). */
+  frameMsRun: Quantiles;
   renderCpuMs: Quantiles;
   renderCpuRun: Quantiles;
   /** From the controls being sampled to the frame that shows them being drawn (CPU side). */

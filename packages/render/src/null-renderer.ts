@@ -34,6 +34,10 @@ export class NullRenderer implements Renderer {
     this.lastFrame = frame;
   }
 
+  finish(): Promise<void> {
+    return Promise.resolve();
+  }
+
   debugReadPixels(): Promise<Uint8Array> {
     const out = new Uint8Array(this.width * this.height * 4);
     const [r, g, b] = CLEAR_COLOUR.map((c) => Math.round(c * 255)) as [number, number, number];

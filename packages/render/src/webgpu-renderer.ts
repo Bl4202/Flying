@@ -345,7 +345,7 @@ export class WebGpuRenderer implements Renderer {
       pass.setPipeline(this.#terrainPipeline);
       pass.setVertexBuffer(0, this.#terrainVertices);
       pass.setIndexBuffer(this.#terrainIndices, 'uint16');
-      pass.drawIndexed(this.#terrainIndexCount);
+      pass.drawIndexed(this.#terrainIndexCount, frame.patchInstances);
     }
     if (frame.instanceCount > 0) {
       pass.setPipeline(this.#markerPipeline);
@@ -354,6 +354,10 @@ export class WebGpuRenderer implements Renderer {
       pass.draw(MARKER_VERTEX_COUNT, frame.instanceCount);
     }
     pass.end();
+  }
+
+  async finish(): Promise<void> {
+    if (!this.#disposed) await this.#device.queue.onSubmittedWorkDone();
   }
 
   async debugReadPixels(): Promise<Uint8Array> {

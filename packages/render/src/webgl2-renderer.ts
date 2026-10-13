@@ -113,6 +113,7 @@ export class WebGl2Renderer implements Renderer {
   #width = 1;
   #height = 1;
   #contextLost = false;
+  readonly #syncPixel = new Uint8Array(4);
   #disposed = false;
 
   private constructor(canvas: CanvasLike, gl: WebGL2RenderingContext, shaders: ShaderSources) {
@@ -272,7 +273,13 @@ export class WebGl2Renderer implements Renderer {
     if (this.#terrainIndexCount > 0) {
       gl.useProgram(res.terrainProgram);
       gl.bindVertexArray(res.terrainVao);
-      gl.drawElements(gl.TRIANGLES, this.#terrainIndexCount, gl.UNSIGNED_SHORT, 0);
+      gl.drawElementsInstanced(
+        gl.TRIANGLES,
+        this.#terrainIndexCount,
+        gl.UNSIGNED_SHORT,
+        0,
+        frame.patchInstances,
+      );
     }
     if (frame.instanceCount > 0) {
       gl.bindBuffer(gl.ARRAY_BUFFER, res.instanceVbo);
@@ -288,6 +295,17 @@ export class WebGl2Renderer implements Renderer {
       gl.drawArraysInstanced(gl.TRIANGLES, 0, MARKER_VERTEX_COUNT, frame.instanceCount);
     }
     gl.bindVertexArray(null);
+  }
+
+  finish(): Promise<void> {
+    if (!this.#disposed && !this.#contextLost) {
+      const gl = this.#gl;
+      gl.finish();
+      // `finish` alone does not always wait (it does not in Chrome's GPU process model); reading
+      // one pixel back cannot return before every earlier draw has been executed.
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.#syncPixel);
+    }
+    return Promise.resolve();
   }
 
   debugReadPixels(): Promise<Uint8Array> {

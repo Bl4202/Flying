@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "provisional": true,
+  "basis": "Hand-set from one Mac M4 (WASM kernel about 355 000 ticks per second on one thread; the heavy GPU scene in 0.8 ms) and one software renderer (67 ms). To be tuned against the reference-machine reports (OQ-01, AC-60.6).",
+  "cpu": {
+    "unit": "kernel ticks per second on one thread, higher is better",
+    "minimum": 100000,
+    "recommended": 180000,
+    "high": 260000
+  },
+  "cores": {
+    "unit": "logical processors, higher is better",
+    "minimum": 4,
+    "recommended": 6,
+    "high": 8
+  },
+  "gpuHeavyMs": {
+    "unit": "milliseconds per frame with 64 patches at 1080p, lower is better",
+    "minimum": 16,
+    "recommended": 4,
+    "high": 1.5
+  },
+  "gpuPresetMs": {
+    "unit": "milliseconds per frame with 64 patches at 1080p: the slowest each preset may be",
+    "ultra": 1.5,
+    "high": 4,
+    "medium": 8
+  },
+  "memoryGb": {
+    "unit": "navigator.deviceMemory, which browsers round and cap (8 in the specification; headless Chrome 156 reported 16): memory can fail a machine but cannot rank it above Minimum",
+    "minimum": 8
+  }
+}

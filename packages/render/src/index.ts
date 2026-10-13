@@ -2,6 +2,7 @@
 // pull in the shader sources, which need the bundler's WGSL plugin; import `./shader-sources.ts`
 // (or the worker) for those.
 export * from './camera.ts';
+export * from './gpu-bench.ts';
 export * from './interp.ts';
 export * from './main-thread-host.ts';
 export * from './markers.ts';

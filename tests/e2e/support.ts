@@ -40,6 +40,19 @@ export async function openGame(page: Page, url: string): Promise<void> {
   }
 }
 
+/** Gets past the compat screen if it shows (a first run always does); does not wait for the game. */
+export async function passCompat(page: Page, url: string): Promise<void> {
+  await page.goto(url);
+  const screen = byId(page, 'compat-screen');
+  const anything = byId(page, 'perf-panel')
+    .or(byId(page, 'bench-panel'))
+    .or(byId(page, 'render-canvas'));
+  await expect(screen.or(anything)).toBeVisible({ timeout: 30_000 });
+  if (await screen.isVisible()) {
+    await byId(page, 'compat-continue').click();
+  }
+}
+
 /** Waits until both threads have reported at least once. */
 export async function waitForStats(page: Page): Promise<void> {
   await expect

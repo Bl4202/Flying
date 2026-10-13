@@ -18,6 +18,7 @@ struct VsOut {
 };
 const vec3 SKY = vec3(0.45, 0.62, 0.85);
 const float FOG_PER_METRE = 2.5e-5;
+const uint PATCH_GRID_COLUMNS = 8u;
 
 layout(std140) uniform Frame_block_0Fragment { Frame _group_0_binding_0_fs; };
 

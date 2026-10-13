@@ -37,6 +37,7 @@ export class RenderLoop {
   readonly #buf = new Uint8Array(SNAPSHOT.SIZE);
   // Frame interval and CPU cost: 0.25 ms bins to 100 ms. Latency and age: 0.5 ms bins to 200 ms.
   readonly #interval = new Histogram(100, 400);
+  readonly #intervalRun = new Histogram(100, 400);
   readonly #cpu = new Histogram(100, 400);
   readonly #cpuRun = new Histogram(100, 400);
   readonly #latency = new Histogram(200, 400);
@@ -87,6 +88,7 @@ export class RenderLoop {
   }
 
   resetRun(): void {
+    this.#intervalRun.reset();
     this.#cpuRun.reset();
     this.#latencyRun.reset();
   }
@@ -124,7 +126,10 @@ export class RenderLoop {
     this.#windowFrames += 1;
     this.#cpu.record(spent);
     this.#cpuRun.record(spent);
-    if (!Number.isNaN(this.#lastFrameAt)) this.#interval.record(now - this.#lastFrameAt);
+    if (!Number.isNaN(this.#lastFrameAt)) {
+      this.#interval.record(now - this.#lastFrameAt);
+      this.#intervalRun.record(now - this.#lastFrameAt);
+    }
     this.#lastFrameAt = now;
     this.#age.record(shared - state.publishTimeMs);
     if (state.inputTimeMs > 0) {
@@ -152,6 +157,7 @@ export class RenderLoop {
       height: this.height,
       fps: this.#windowFrames / seconds,
       frameMs: quantiles(this.#interval),
+      frameMsRun: quantiles(this.#intervalRun),
       renderCpuMs: quantiles(this.#cpu),
       renderCpuRun: quantiles(this.#cpuRun),
       inputToDrawMs: quantiles(this.#latency),

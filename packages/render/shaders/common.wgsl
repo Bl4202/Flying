@@ -6,7 +6,7 @@
 struct Frame {
   view_proj    : mat4x4<f32>,
   sun_dir      : vec4<f32>,  // xyz: unit vector towards the sun in render space
-  params       : vec4<f32>,  // x: time in seconds, y: terrain post spacing in metres, zw: reserved
+  params       : vec4<f32>,  // x: time in seconds, y: terrain post spacing in metres, z: patch span in metres, w: reserved
   patch_offset : vec4<f32>,  // xyz: terrain patch origin minus eye, render axes, metres
 };
 
