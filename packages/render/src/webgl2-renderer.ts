@@ -141,14 +141,18 @@ export class WebGl2Renderer implements Renderer {
 
   /** Creates a renderer on `canvas`, or throws `RendererUnavailable`. */
   static create(canvas: CanvasLike, shaders: ShaderSources): WebGl2Renderer {
-    const gl = canvas.getContext('webgl2', {
+    // Typed as `unknown` first: what `getContext` is declared to return differs between the DOM
+    // and worker typings (and between programs that include one or both), so any direct
+    // assertion is "unnecessary" in some of them and necessary in others.
+    const context: unknown = canvas.getContext('webgl2', {
       antialias: false,
       alpha: false,
       depth: true,
       stencil: false,
       powerPreference: 'high-performance',
       preserveDrawingBuffer: false,
-    }) as WebGL2RenderingContext | null;
+    });
+    const gl = context as WebGL2RenderingContext | null;
     if (!gl) {
       throw new RendererUnavailable('SYS-053: the canvas would not give a WebGL2 context', false);
     }

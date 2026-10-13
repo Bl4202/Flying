@@ -138,7 +138,8 @@ export class WebGpuRenderer implements Renderer {
       );
     }
     // Only now does the canvas commit to a WebGPU context.
-    const context = canvas.getContext('webgpu') as GPUCanvasContext | null;
+    const raw: unknown = canvas.getContext('webgpu');
+    const context = raw as GPUCanvasContext | null;
     if (!context) {
       device.destroy();
       throw new RendererUnavailable('SYS-051: the canvas would not give a WebGPU context', false);
