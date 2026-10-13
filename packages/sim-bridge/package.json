@@ -12,7 +12,8 @@
     "./snapshot": "./src/snapshot.ts",
     "./profile": "./src/profile.ts",
     "./layout": "./src/layout.gen.ts",
-    "./frame-math": "./src/frame-math.ts"
+    "./frame-math": "./src/frame-math.ts",
+    "./messages": "./src/messages.ts"
   },
   "dependencies": {
     "@flying/platform-web": "workspace:*"
