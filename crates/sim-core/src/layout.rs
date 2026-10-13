@@ -196,6 +196,21 @@ layouts! {
         RUNNING = 2,
         PAUSED = 3,
         ENDED = 4,
+        // `fg_core_state` before `fg_init`.
+        NONE = 255,
+    }
+
+    /// Return value of `fg_load_content`.
+    content_status {
+        OK = 0,
+        // The core has started; content must be loaded first.
+        NOT_IDLE = 1,
+        // The bytes are not a valid pack (damaged, truncated, wrong version).
+        INVALID = 2,
+        // `fg_init` has not been called.
+        NO_CORE = 3,
+        // `fg_content_reserve` was not called, or the length exceeds what it reserved.
+        NO_BUFFER = 4,
     }
 
     /// `kind` argument of `fg_subsystem_hash_lo/hi`.

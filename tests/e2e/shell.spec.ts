@@ -46,7 +46,7 @@ test('host with headers: isolated on first load, threads build, golden hash', as
   await expect(cell(page, 'sab')).toHaveText('true');
   await expect(cell(page, 'mode')).toHaveText('full');
   await expect(cell(page, 'variant')).toHaveText('threads');
-  await expect(cell(page, 'abi')).toHaveText('1');
+  await expect(cell(page, 'abi')).toHaveText('2');
   await expect(cell(page, 'ticks')).toHaveText('10000');
   await expect(cell(page, 'hash')).toHaveText(GOLDEN_10K ?? 'missing');
   await expect(cell(page, 'build-id')).not.toHaveText('');

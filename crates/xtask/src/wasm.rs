@@ -27,10 +27,28 @@ const MAX_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// Initial shared memory the loader must create: 256 pages = 16 MiB.
 pub const THREADS_INITIAL_PAGES: u64 = 256;
 
+/// Every function the host calls (ABI v2, `crates/sim-wasm/src/abi.rs`).
 const REQUIRED_EXPORTS: &[&str] = &[
     "fg_abi_version",
     "fg_init",
+    "fg_core_state",
+    "fg_content_reserve",
+    "fg_load_content",
+    "fg_start",
+    "fg_pause",
+    "fg_resume",
+    "fg_set_input_script",
+    "fg_input_ptr",
+    "fg_input_capacity",
+    "fg_push_inputs",
+    "fg_set_profiling",
     "fg_step",
+    "fg_snapshot_ptr",
+    "fg_snapshot_len",
+    "fg_profile_ptr",
+    "fg_profile_len",
+    "fg_terrain_ptr",
+    "fg_terrain_fill",
     "fg_tick_lo",
     "fg_tick_hi",
     "fg_state_hash_lo",
@@ -38,6 +56,17 @@ const REQUIRED_EXPORTS: &[&str] = &[
     "fg_subsystem_hash_lo",
     "fg_subsystem_hash_hi",
 ];
+
+/// The imports a module may have, as `module.name`. Anything else means the host would have to
+/// supply something the contract does not mention: `env.fg_now` is the profiler's clock and
+/// `env.memory` the shared memory of the threads build.
+fn allowed_imports(v: Variant) -> BTreeSet<String> {
+    let mut set: BTreeSet<String> = std::iter::once("env.fg_now".to_string()).collect();
+    if v == Variant::Threads {
+        set.insert("env.memory".to_string());
+    }
+    set
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Variant {
@@ -210,6 +239,8 @@ fn brotli_size(bytes: &[u8]) -> usize {
 pub struct Inspect {
     pub features: BTreeSet<String>,
     pub memory_import: Option<wasmparser::MemoryType>,
+    /// Every import as `module.name`.
+    pub imports: BTreeSet<String>,
     pub defines_memory: bool,
     pub exports: BTreeSet<String>,
 }
@@ -223,7 +254,9 @@ pub fn inspect(bytes: &[u8]) -> Result<Inspect, String> {
             }
             Payload::ImportSection(r) => {
                 for imp in r.into_imports() {
-                    if let TypeRef::Memory(m) = imp.map_err(|e| e.to_string())?.ty {
+                    let imp = imp.map_err(|e| e.to_string())?;
+                    info.imports.insert(format!("{}.{}", imp.module, imp.name));
+                    if let TypeRef::Memory(m) = imp.ty {
                         info.memory_import = Some(m);
                     }
                 }
@@ -317,10 +350,22 @@ fn check(v: Variant, info: &Inspect) -> Result<(), String> {
             return Err(format!("{}: missing export {e}", v.name()));
         }
     }
+    let allowed = allowed_imports(v);
+    if info.imports != allowed {
+        let unexpected: Vec<_> = info.imports.difference(&allowed).collect();
+        let missing: Vec<_> = allowed.difference(&info.imports).collect();
+        return Err(format!(
+            "{}: imports must be exactly {allowed:?}; unexpected {unexpected:?}, missing {missing:?}",
+            v.name()
+        ));
+    }
     match v {
         Variant::Single => {
             if info.memory_import.is_some() || !info.defines_memory {
                 return Err("single: must define its own memory and import none".into());
+            }
+            if !info.exports.contains("memory") {
+                return Err("single: must export its memory".into());
             }
             if info.features.contains("atomics") {
                 return Err("single: must not use atomics".into());
@@ -362,6 +407,82 @@ mod tests {
         }
         let got = parse_target_features(&d).unwrap();
         assert_eq!(got.into_iter().collect::<Vec<_>>(), ["atomics", "simd128"]);
+    }
+
+    fn module(v: Variant, imports: &[&str]) -> Inspect {
+        let mut info = Inspect {
+            features: ["simd128", "atomics"]
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
+            imports: imports.iter().map(|s| (*s).to_string()).collect(),
+            exports: REQUIRED_EXPORTS.iter().map(|s| (*s).to_string()).collect(),
+            ..Inspect::default()
+        };
+        match v {
+            Variant::Single => {
+                info.features.remove("atomics");
+                info.defines_memory = true;
+                info.exports.insert("memory".into());
+            }
+            Variant::Threads => {
+                info.memory_import = Some(wasmparser::MemoryType {
+                    initial: THREADS_INITIAL_PAGES,
+                    maximum: Some(32768),
+                    shared: true,
+                    memory64: false,
+                    page_size_log2: None,
+                });
+            }
+        }
+        info
+    }
+
+    #[test]
+    fn imports_must_match_the_allow_list_exactly() {
+        let single = module(Variant::Single, &["env.fg_now"]);
+        assert!(check(Variant::Single, &single).is_ok());
+        let threads = module(Variant::Threads, &["env.fg_now", "env.memory"]);
+        assert!(check(Variant::Threads, &threads).is_ok());
+
+        let extra = module(Variant::Single, &["env.fg_now", "env.abort"]);
+        let err = check(Variant::Single, &extra).unwrap_err();
+        assert!(err.contains("env.abort"), "{err}");
+        let missing = module(Variant::Single, &[]);
+        assert!(
+            check(Variant::Single, &missing)
+                .unwrap_err()
+                .contains("env.fg_now")
+        );
+        let wasi = module(
+            Variant::Threads,
+            &[
+                "env.fg_now",
+                "env.memory",
+                "wasi_snapshot_preview1.fd_write",
+            ],
+        );
+        assert!(
+            check(Variant::Threads, &wasi)
+                .unwrap_err()
+                .contains("wasi_snapshot_preview1")
+        );
+        let no_clock = module(Variant::Threads, &["env.memory"]);
+        assert!(check(Variant::Threads, &no_clock).is_err());
+    }
+
+    #[test]
+    fn every_abi_export_is_required() {
+        let mut m = module(Variant::Single, &["env.fg_now"]);
+        m.exports.remove("fg_load_content");
+        assert!(
+            check(Variant::Single, &m)
+                .unwrap_err()
+                .contains("fg_load_content")
+        );
+        let mut m = module(Variant::Single, &["env.fg_now"]);
+        m.exports.remove("memory");
+        assert!(check(Variant::Single, &m).unwrap_err().contains("memory"));
     }
 
     #[test]

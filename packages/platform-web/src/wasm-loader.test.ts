@@ -31,11 +31,14 @@ describe('chooseVariant', () => {
 });
 
 describe('buildImports', () => {
-  it('single needs no imports', () => {
-    expect(buildImports('single', 256)).toEqual({});
+  it('single provides only the profiler clock', () => {
+    const env = buildImports('single', 256)['env'] as Record<string, unknown>;
+    expect(Object.keys(env)).toEqual(['fg_now']);
+    expect(typeof (env['fg_now'] as () => number)()).toBe('number');
   });
-  it('threads provides a shared memory with the right bounds', () => {
+  it('threads provides the clock and a shared memory with the right bounds', () => {
     const imports = buildImports('threads', 256);
+    expect(Object.keys(imports['env'] ?? {}).sort()).toEqual(['fg_now', 'memory']);
     const memory = (imports['env'] as { memory: WebAssembly.Memory }).memory;
     expect(memory.buffer).toBeInstanceOf(SharedArrayBuffer);
     expect(memory.buffer.byteLength).toBe(256 * 65536);

@@ -6,6 +6,7 @@ import {
   type IsolationOutcome,
   type ServiceWorkerStatus,
 } from '@flying/platform-web';
+import coreContentUrl from '../../../content-out/core.cpack?url';
 import singleUrl from '../../../wasm-out/sim.single.wasm?url';
 import threadsUrl from '../../../wasm-out/sim.threads.wasm?url';
 import type { ProbeRequest, ProbeResult } from './probe.worker.ts';
@@ -92,7 +93,9 @@ async function main(): Promise<void> {
     variant,
     url: variant === 'threads' ? threadsUrl : singleUrl,
     threadsInitialPages: __THREADS_INITIAL_PAGES__,
+    contentUrl: coreContentUrl,
     seed: SEED,
+    script: 'erratic',
     ticks: PROBE_TICKS,
   };
   const worker = new Worker(scriptUrl(probeWorkerUrl), { type: 'module' });
@@ -102,6 +105,7 @@ async function main(): Promise<void> {
       row('abi', 'Sim ABI version', String(r.abi), 'ok');
       row('ticks', 'Ticks run', r.tick);
       row('hash', `State hash @ ${String(PROBE_TICKS)} ticks`, r.hash);
+      row('content-hash', 'Content pack hash', r.content);
       row('status', 'Status', 'done', 'ok');
     } else {
       row('status', 'Status', `error: ${r.error}`, 'warn');
