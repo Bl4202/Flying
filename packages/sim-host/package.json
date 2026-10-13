@@ -4,7 +4,8 @@
   "version": "0.0.2",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./sim.worker": "./src/sim.worker.ts"
   },
   "dependencies": {
     "@flying/platform-web": "workspace:*",
