@@ -3,7 +3,8 @@
  * the scripted pilot and reports the state hash. The same setup as `cargo xtask determinism`, so
  * the result can be compared with the golden. (Replaced by the self-test worker in WP10.)
  */
-import { hex64, loadSim, type InputScript, type Variant } from '@flying/platform-web/wasm-loader';
+import type { Variant } from '@flying/platform-web/wasm-loader';
+import { HASH_KIND, hex64, loadSim } from '@flying/sim-bridge/sim-handle';
 
 export interface ProbeRequest {
   variant: Variant;
@@ -13,7 +14,8 @@ export interface ProbeRequest {
   contentUrl: string;
   /** Hex master seed. */
   seed: string;
-  script: InputScript;
+  /** `INPUT_SCRIPT` value. */
+  script: number;
   ticks: number;
 }
 
@@ -68,8 +70,8 @@ async function run(req: ProbeRequest): Promise<ProbeResult> {
       variant: sim.variant,
       abi: sim.abiVersion(),
       tick: sim.tick().toString(),
-      hash: hex64(sim.hash('combined')),
-      content: hex64(sim.hash('content')),
+      hash: hex64(sim.hash(HASH_KIND.COMBINED)),
+      content: hex64(sim.hash(HASH_KIND.CONTENT)),
       ms,
     };
   } catch (e) {

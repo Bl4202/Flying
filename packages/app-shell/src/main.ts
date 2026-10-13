@@ -6,6 +6,7 @@ import {
   type IsolationOutcome,
   type ServiceWorkerStatus,
 } from '@flying/platform-web';
+import { INPUT_SCRIPT } from '@flying/sim-bridge/layout';
 import coreContentUrl from '../../../content-out/core.cpack?url';
 import singleUrl from '../../../wasm-out/sim.single.wasm?url';
 import threadsUrl from '../../../wasm-out/sim.threads.wasm?url';
@@ -95,7 +96,7 @@ async function main(): Promise<void> {
     threadsInitialPages: __THREADS_INITIAL_PAGES__,
     contentUrl: coreContentUrl,
     seed: SEED,
-    script: 'erratic',
+    script: INPUT_SCRIPT.ERRATIC,
     ticks: PROBE_TICKS,
   };
   const worker = new Worker(scriptUrl(probeWorkerUrl), { type: 'module' });

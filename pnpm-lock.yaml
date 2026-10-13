@@ -291,6 +291,9 @@ importers:
       '@flying/platform-web':
         specifier: workspace:*
         version: link:../platform-web
+      '@flying/sim-bridge':
+        specifier: workspace:*
+        version: link:../sim-bridge
 
   packages/ui:
     dependencies:

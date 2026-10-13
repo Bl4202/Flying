@@ -4,7 +4,15 @@
   "version": "0.0.2",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./sim-handle": "./src/sim-handle.ts",
+    "./snapshot-channel": "./src/snapshot-channel.ts",
+    "./input-channel": "./src/input-channel.ts",
+    "./input-frame": "./src/input-frame.ts",
+    "./snapshot": "./src/snapshot.ts",
+    "./profile": "./src/profile.ts",
+    "./layout": "./src/layout.gen.ts",
+    "./frame-math": "./src/frame-math.ts"
   },
   "dependencies": {
     "@flying/platform-web": "workspace:*"

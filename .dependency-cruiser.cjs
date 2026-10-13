@@ -4,7 +4,8 @@
  *   platform-web < sim-bridge < { sim-host, input, render, audio } < perf < ui < app-shell
  *
  * Packages in the same tier may not import each other. `tools` is build-time only: it may use
- * `platform-web`, and only `app-shell` (the Vite config) may import it.
+ * `platform-web` and `sim-bridge` (to drive the built WASM), and only `app-shell` (the Vite
+ * config) may import it.
  */
 const TIERS = [
   ['platform-web'],
@@ -48,20 +49,11 @@ module.exports = {
     ...upward,
     ...siblings,
     {
-      name: 'tools-only-uses-platform-web',
+      name: 'tools-only-uses-the-bottom-two-layers',
       severity: 'error',
       from: { path: pkg(['tools']) },
       to: {
-        path: pkg([
-          'sim-bridge',
-          'sim-host',
-          'input',
-          'render',
-          'audio',
-          'perf',
-          'ui',
-          'app-shell',
-        ]),
+        path: pkg(['sim-host', 'input', 'render', 'audio', 'perf', 'ui', 'app-shell']),
       },
     },
     {
