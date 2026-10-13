@@ -14,6 +14,7 @@ import {
   type IsolationOutcome,
   type ServiceWorkerStatus,
 } from '@flying/platform-web';
+import { loadBenchmark } from '@flying/perf';
 import {
   evaluateCompat,
   flowReducer,
@@ -28,7 +29,9 @@ import {
   type FlowEvent,
   type FlowState,
 } from '@flying/ui';
+import { runBenchmarkPage } from './benchmark-page.ts';
 import { codeOf, startDemo, type Demo } from './demo.ts';
+import { runPerfPage } from './perf-run.ts';
 import { runSelfTestPage } from './selftest-page.ts';
 
 function element(id: string): HTMLElement {
@@ -116,6 +119,27 @@ async function main(): Promise<void> {
     screenRoot.replaceChildren();
   }
 
+  const backToGame = (): void => {
+    const next = new URL(location.href);
+    next.searchParams.delete('bench');
+    next.searchParams.delete('perf');
+    next.searchParams.delete('seconds');
+    location.assign(next);
+  };
+  if (flags.bench !== false) {
+    // The benchmark has the machine to itself: no game is started behind it.
+    await runBenchmarkPage({
+      root: element('panel-root'),
+      mode: flags.bench,
+      flags,
+      features,
+      kv,
+      onBack: backToGame,
+    });
+    return;
+  }
+  const stored = await loadBenchmark(kv);
+
   let demo: Demo | undefined;
   const fail = (source: FatalSource, code: string, detail: string): void => {
     if (isFatal()) {
@@ -142,6 +166,10 @@ async function main(): Promise<void> {
   try {
     demo = await startDemo({
       flags,
+      perf: flags.perf !== false,
+      benchmarkSummary: stored
+        ? `${stored.classification.profile} / ${stored.classification.preset}`
+        : undefined,
       features,
       report,
       roots: { stage, overlay: element('overlay-root'), toast: element('toast-root') },
@@ -150,6 +178,14 @@ async function main(): Promise<void> {
     });
     if (isFatal()) {
       demo.stop();
+    } else if (flags.perf !== false) {
+      await runPerfPage({
+        root: element('panel-root'),
+        demo,
+        scenarioId: flags.perf,
+        seconds: flags.seconds,
+        onBack: backToGame,
+      });
     }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

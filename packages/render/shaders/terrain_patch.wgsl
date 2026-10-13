@@ -3,6 +3,10 @@
 // Height above MSL at which the lowland colour has fully become the highland colour.
 #define HIGHLAND_M 1200.0
 
+// Extra instances lay further copies of the patch out on a grid, east then south, one patch apart.
+// The first instance is the patch itself; more of them are how the benchmark loads the GPU.
+const PATCH_GRID_COLUMNS : u32 = 8u;
+
 struct VsOut {
   @builtin(position) clip : vec4<f32>,
   @location(0) normal     : vec3<f32>,
@@ -16,9 +20,11 @@ fn vs_main(
   @location(0) pos_local : vec3<f32>,  // patch-local position, render axes, metres
   @location(1) normal    : vec3<f32>,  // unit normal, render axes
   @location(2) height    : f32,        // height above MSL, metres
+  @builtin(instance_index) instance : u32,
 ) -> VsOut {
   // The patch is positioned per draw: its origin relative to the eye was subtracted in f64.
-  let pos_rel = pos_local + frame.patch_offset.xyz;
+  let step = vec3<f32>(f32(instance % PATCH_GRID_COLUMNS), 0.0, f32(instance / PATCH_GRID_COLUMNS));
+  let pos_rel = pos_local + frame.patch_offset.xyz + step * frame.params.z;
   var out : VsOut;
   out.clip = frame.view_proj * vec4<f32>(pos_rel, 1.0);
   out.normal = normal;

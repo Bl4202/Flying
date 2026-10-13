@@ -25,6 +25,8 @@ export interface Renderer {
   setTerrainPatch(mesh: TerrainMesh): void;
   /** Draws a frame. Does not wait for the GPU. */
   render(frame: FrameData): void;
+  /** Resolves once the GPU has finished every frame drawn so far (for timing, never per frame). */
+  finish(): Promise<void>;
   /**
    * Draws the most recent frame again to an off-screen target and returns it as RGBA bytes, top
    * row first, `width * height * 4` long.

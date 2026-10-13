@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { FRAME_UNIFORM_BYTES, FRAME_UNIFORM_FLOATS, SceneBuilder } from './scene.ts';
+import {
+  FRAME_UNIFORM_BYTES,
+  FRAME_UNIFORM_FLOATS,
+  MAX_PATCH_INSTANCES,
+  SceneBuilder,
+} from './scene.ts';
 import { SnapshotInterpolator } from './interp.ts';
 import { MARKER_INSTANCE_FLOATS, MARKER_SIZE_M } from './markers.ts';
 import { makeSnapshot, NORTH } from './snapshot-fixture.ts';
@@ -39,8 +44,29 @@ describe('SceneBuilder', () => {
       spacingM: 250,
     }).uniform;
     expect([u[20], u[21]]).toEqual([12.5, 250]);
+    // The patch span, 128 cells of 250 m: how far apart extra patch instances sit.
+    expect(u[22]).toBe(250 * 128);
     expect(Math.hypot(u[16] ?? 0, u[17] ?? 0, u[18] ?? 0)).toBeCloseTo(1, 6);
     expect(u[17]).toBeGreaterThan(0);
+  });
+
+  it('draws one patch by default, and the requested number up to the cap', () => {
+    const build = (patchInstances?: number) =>
+      new SceneBuilder().build(world({}), {
+        aspect: 1,
+        zRange: '0to1',
+        timeS: 0,
+        patchOriginBf: null,
+        spacingM: 250,
+        ...(patchInstances === undefined ? {} : { patchInstances }),
+      }).patchInstances;
+    expect(build()).toBe(1);
+    expect(build(16)).toBe(16);
+    expect(build(64)).toBe(64);
+    expect(build(1000)).toBe(MAX_PATCH_INSTANCES);
+    expect(build(0)).toBe(1);
+    expect(build(-5)).toBe(1);
+    expect(build(2.7)).toBe(2);
   });
 
   it('gives the terrain patch offset relative to the eye in render axes, subtracted in f64', () => {

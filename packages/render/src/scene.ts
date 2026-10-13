@@ -4,10 +4,10 @@
  * backends only upload and draw.
  *
  * Uniform block, 28 floats = 112 bytes, std140-compatible (it is a mat4 and three vec4s):
- * `view_proj` (16), `sun_dir` (4), `params` = time, post spacing (4), `patch_offset` (4).
+ * `view_proj` (16), `sun_dir` (4), `params` = time, post spacing, patch span (4), `patch_offset` (4).
  */
 import { BF_TO_RENDER, quatMul } from '@flying/sim-bridge/frame-math';
-import { SNAPSHOT } from '@flying/sim-bridge/layout';
+import { SNAPSHOT, TERRAIN } from '@flying/sim-bridge/layout';
 import {
   FOV_Y,
   mul4,
@@ -24,10 +24,15 @@ import type { SceneState } from './interp.ts';
 export const FRAME_UNIFORM_FLOATS = 28;
 export const FRAME_UNIFORM_BYTES = FRAME_UNIFORM_FLOATS * 4;
 
+/** Most copies of the terrain patch one frame may draw (the benchmark's heaviest load level). */
+export const MAX_PATCH_INSTANCES = 64;
+
 export interface FrameData {
   uniform: Float32Array;
   instances: Float32Array;
   instanceCount: number;
+  /** Copies of the terrain patch to draw, laid out on a grid; 1 for normal frames. */
+  patchInstances: number;
 }
 
 export class SceneBuilder {
@@ -35,6 +40,7 @@ export class SceneBuilder {
     uniform: new Float32Array(FRAME_UNIFORM_FLOATS),
     instances: new Float32Array(SNAPSHOT.BODY_CAPACITY * MARKER_INSTANCE_FLOATS),
     instanceCount: 0,
+    patchInstances: 1,
   };
   readonly #proj = new Float64Array(16);
   readonly #view = new Float64Array(16);
@@ -54,6 +60,8 @@ export class SceneBuilder {
       timeS: number;
       patchOriginBf: ArrayLike<number> | null;
       spacingM: number;
+      /** Copies of the terrain patch to draw (default 1). */
+      patchInstances?: number;
     },
   ): FrameData {
     const f = this.#frame;
@@ -74,8 +82,12 @@ export class SceneBuilder {
     u[19] = 0;
     u[20] = opts.timeS;
     u[21] = opts.spacingM;
-    u[22] = 0;
+    u[22] = opts.spacingM * (TERRAIN.POSTS - 1);
     u[23] = 0;
+    f.patchInstances = Math.min(
+      MAX_PATCH_INSTANCES,
+      Math.max(1, Math.floor(opts.patchInstances ?? 1)),
+    );
     if (opts.patchOriginBf) {
       relativeToEye(this.#rel, 0, opts.patchOriginBf, 0, state.observerPosBf);
       u[24] = this.#rel[0] ?? 0;

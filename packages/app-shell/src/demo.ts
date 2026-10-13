@@ -24,6 +24,14 @@ import {
 } from '@flying/sim-bridge';
 import { INPUT_SCRIPT } from '@flying/sim-bridge/layout';
 import { createWakeWord, SimClient } from '@flying/sim-host';
+import {
+  browserMachineEnv,
+  describeMachine,
+  type BuildInfo,
+  type MachineInfo,
+  type PerfTarget,
+  type RunModes,
+} from '@flying/perf';
 import simWorkerUrl from '@flying/sim-host/sim.worker?worker&url';
 import renderWorkerUrl from '@flying/render/render.worker?worker&url';
 import {
@@ -49,6 +57,10 @@ export interface DemoRoots {
 
 export interface DemoContext {
   flags: Flags;
+  /** A performance run: the scripted pilot flies, and the keyboard and gamepad are left alone. */
+  perf: boolean;
+  /** The stored benchmark result as `profile / preset`, for the overlay. */
+  benchmarkSummary: string | undefined;
   features: DeepFeatures;
   report: CompatReport;
   roots: DemoRoots;
@@ -59,6 +71,13 @@ export interface DemoContext {
 
 export interface Demo {
   stop(): void;
+  /** What the performance runner needs to measure this demo. */
+  perf: {
+    target: PerfTarget;
+    build(): BuildInfo;
+    machine(): MachineInfo;
+    modes(): RunModes;
+  };
 }
 
 /** What tests may reach through `window.__flying` (with `?debug=` or `?flags=stall`). */
@@ -128,7 +147,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
         threadsInitialPages: __THREADS_INITIAL_PAGES__,
         contentUrl: coreContentUrl,
         seed: SEED,
-        script: INPUT_SCRIPT.NONE,
+        script: ctx.perf ? INPUT_SCRIPT.ERRATIC : INPUT_SCRIPT.NONE,
         snapshot: snapshots.sink,
         input: inputs.source,
         terrainPort: terrain.port1,
@@ -166,10 +185,10 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     sharedNowMs,
     minIntervalMs: modes.inputChannel === 'shared' ? 8 : 33,
   });
-  const detachInput = attachInput(
-    { window, document },
-    { keyboard, bindings: DEFAULT_BINDINGS.keyboard, pump },
-  );
+  // A performance run flies the scripted pilot; frames from the keyboard would fight it.
+  const detachInput = ctx.perf
+    ? () => undefined
+    : attachInput({ window, document }, { keyboard, bindings: DEFAULT_BINDINGS.keyboard, pump });
 
   // Audio waits for a gesture; the null backend only records that it was asked.
   const audio = new NullAudioBackend();
@@ -212,6 +231,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     render: latestRender,
     paused,
     input: { sent: pump.stats.sent, refused: pump.stats.refused },
+    benchmark: ctx.benchmarkSummary,
   });
 
   const overlay = new DebugOverlay(roots.overlay, {
@@ -220,6 +240,14 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       hash: () => sim.requestHash(),
       selfTest: async () =>
         judgeSelfTest(await runSelfTestWorker(selfTestRequest(variant)), goldenCheckpoint()),
+      benchmark: () => {
+        // Its own page, so nothing else is running while it measures.
+        const next = new URL(location.href);
+        next.searchParams.set('bench', 'full');
+        next.searchParams.delete('perf');
+        location.assign(next);
+        return Promise.resolve('Starting the benchmark…');
+      },
       togglePause: () => {
         pausedByHiding = false;
         setPaused(!paused);
@@ -290,5 +318,33 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     void audio.close();
   };
   window.addEventListener('pagehide', stop, { once: true });
-  return { stop };
+
+  const rendererName = (): string =>
+    latestRender === undefined ? '' : `${latestRender.backend} ${latestRender.description}`;
+  return {
+    stop,
+    perf: {
+      target: {
+        stats: () => ({ sim: latestSim, render: latestRender }),
+        resetRun: () => {
+          sim.resetRun();
+          render.resetRun();
+        },
+      },
+      build: () => ({
+        id: __BUILD_ID__,
+        abi: sim.ready.abi,
+        contentHash: sim.ready.contentHash,
+      }),
+      machine: () => describeMachine(browserMachineEnv(), features.adapterInfo, rendererName()),
+      modes: () => ({
+        variant: sim.variant,
+        snapshotChannel: modes.snapshotChannel,
+        inputChannel: modes.inputChannel,
+        renderHost: render.host,
+        sleeper: sim.ready.sleeper,
+        renderer: latestRender?.backend ?? modes.renderer,
+      }),
+    },
+  };
 }

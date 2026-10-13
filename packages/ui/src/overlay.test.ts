@@ -63,6 +63,7 @@ function render(): RenderStats {
     height: 720,
     fps: 59.9,
     frameMs: Q,
+    frameMsRun: Q,
     renderCpuMs: Q,
     renderCpuRun: Q,
     inputToDrawMs: Q,
@@ -91,6 +92,7 @@ function model(over: Partial<OverlayModel> = {}): OverlayModel {
     render: render(),
     paused: false,
     input: { sent: 100, refused: 0 },
+    benchmark: undefined,
     ...over,
   };
 }
@@ -150,6 +152,12 @@ describe('buildOverlayRows', () => {
     const m = model({ render: { ...render(), description: 'x'.repeat(200) } });
     const device = buildOverlayRows(m).find((r) => r.id === 'device')?.value;
     expect(device).toHaveLength(60);
+  });
+
+  it('shows the stored benchmark result, or a dash', () => {
+    const get = (m: OverlayModel) => buildOverlayRows(m).find((r) => r.id === 'bench')?.value;
+    expect(get(model())).toBe('–');
+    expect(get(model({ benchmark: 'high / ultra' }))).toBe('high / ultra');
   });
 
   it('has unique ids', () => {

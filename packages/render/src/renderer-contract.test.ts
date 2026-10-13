@@ -19,6 +19,7 @@ describe('the renderer contract', () => {
     expect(checks.map((c) => c.name)).toEqual([
       'reads back width x height x 4 bytes',
       'resize changes the size of the readback',
+      'finish resolves, also with nothing drawn yet and after drawing',
       'onLost accepts listeners',
       'dispose is idempotent and drawing afterwards does nothing',
     ]);
@@ -43,6 +44,7 @@ describe('the renderer contract', () => {
     const names = checks.map((c) => c.name);
     expect(names).toContain('the same scene moved 400 km draws the same picture (relative-to-eye)');
     expect(names).toContain('looking at the sky shows only the sky colour');
+    expect(names).toContain('many patch instances draw without breaking the frame');
     // The null renderer cannot draw, so it must fail the pictures it is asked about.
     expect(checks.find((c) => c.name.startsWith('looking at the world'))?.ok).toBe(false);
   });

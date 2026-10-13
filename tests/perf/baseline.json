@@ -1,0 +1,9 @@
+{
+  "commit": "aab4cc8",
+  "machine": "macos-aarch64",
+  "note": "Median ns per tick of `fg bench` (erratic pilot, core pack), on the machine class below. Compared by `cargo xtask bench`; informational unless --strict. Re-record with --update after an intended change, and say why in the commit.",
+  "ns_per_tick_median": 2009.5,
+  "schema": "fg-bench-baseline/1",
+  "script": "erratic",
+  "tolerance_pct": 5.0
+}

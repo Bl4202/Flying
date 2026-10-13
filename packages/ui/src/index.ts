@@ -1,3 +1,4 @@
+export * from './benchmark-panel.ts';
 export * from './compat-screen.ts';
 export * from './compat.ts';
 export * from './debug-overlay.ts';
@@ -5,5 +6,7 @@ export * from './dom.ts';
 export * from './fatal-screen.ts';
 export * from './gameflow.ts';
 export * from './overlay-rows.ts';
+export * from './perf-panel.ts';
+export * from './report-io.ts';
 export * from './strings.ts';
 export * from './toast.ts';

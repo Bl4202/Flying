@@ -115,8 +115,10 @@ describe('RenderLoop', () => {
     // The next report covers only what came after.
     expect(t.loop.report().renderCpuMs.count).toBe(0);
     expect(t.loop.report().renderCpuRun.count).toBe(120);
+    expect(t.loop.report().frameMsRun.count).toBe(119); // the first frame has no interval
     t.loop.resetRun();
     expect(t.loop.report().renderCpuRun.count).toBe(0);
+    expect(t.loop.report().frameMsRun.count).toBe(0);
   });
 
   it('counts frames drawn from a stale or gapped world', () => {

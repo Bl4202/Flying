@@ -24,6 +24,21 @@ pub fn run(cmd: &mut Command) -> Result<(), String> {
     }
 }
 
+/// Runs `cmd` and returns what it printed on stdout; a non-zero exit is an error carrying stderr.
+pub fn run_capture(cmd: &mut Command) -> Result<String, String> {
+    let out = cmd
+        .output()
+        .map_err(|e| format!("cannot run {cmd:?}: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "{cmd:?} failed with {}\n{}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    String::from_utf8(out.stdout).map_err(|e| format!("{cmd:?} printed non-UTF-8: {e}"))
+}
+
 /// Lower-case hex of `bytes`.
 pub fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
