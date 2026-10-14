@@ -39,6 +39,12 @@ cross, length, normalise, quaternion product, rotate, body-rate integration) and
 (ADR-10), so no transcendental function can come from a different place than the rest of the
 core. `glam` is deferred.
 
+*Amended at v0.1a (ADR-29):* `math` and `dmath` moved unchanged into the crate `simmath`, which
+depends only on `libm`, so the flight model in its own crate can share them. `sim-core` re-exports
+both (`sim_core::math`, `sim_core::dmath`), so no caller changed. `simmath::math` gained `DMat3`
+(inertia tensors and their inverse) and the quaternion helpers RK4 needs. The move was proven
+behaviour-neutral: native, WASM single and WASM threads still equal the v0.0b golden.
+
 ## Alternatives considered
 
 - *Seams only when a milestone needs them:* cheaper now, but "replace the stub, change no

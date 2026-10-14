@@ -4,7 +4,8 @@ Rust workspace (GDD §61.2–§61.3).
 
 | Crate | What |
 |---|---|
-| `sim-core` | the deterministic core: tick schedule, observer, input, snapshot, hashes, the 13 seams. Depends only on `libm` and `content` |
+| `simmath` | deterministic `f64` maths: `DVec3`, `DQuat`, `DMat3` and the software-`libm` wrappers in `dmath`. Depends only on `libm` |
+| `sim-core` | the deterministic core: tick schedule, observer, input, snapshot, hashes, the 13 seams. Depends only on `content` and `simmath` (it re-exports `math` and `dmath`) |
 | `sim-wasm` | the hand-written C ABI (v2) the core is built into for the browser; the only crate with `unsafe` (see `UNSAFE.md`) |
 | `content` | the dependency-free `.cpack` reader and writer and the registry |
 | `protocol` | wire types and the `Transport` seam with a loopback implementation |

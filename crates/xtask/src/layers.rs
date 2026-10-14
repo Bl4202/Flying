@@ -10,7 +10,8 @@ use serde_json::Value;
 
 /// `(crate, allowed dependencies)`. `xtask` is tooling and is not constrained.
 const RULES: &[(&str, &[&str])] = &[
-    ("sim-core", &["libm", "content"]),
+    ("simmath", &["libm"]),
+    ("sim-core", &["content", "simmath"]),
     ("protocol", &[]),
     ("content", &[]),
     (
@@ -119,7 +120,8 @@ mod tests {
 
     fn good() -> BTreeMap<String, Vec<String>> {
         map(&[
-            ("sim-core", &["libm", "content"]),
+            ("simmath", &["libm"]),
+            ("sim-core", &["content", "simmath"]),
             ("protocol", &[]),
             ("content", &[]),
             ("content-bake", &["content", "serde_json", "sha2"]),

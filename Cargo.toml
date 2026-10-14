@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/simmath",
     "crates/sim-core",
     "crates/sim-wasm",
     "crates/protocol",
@@ -11,6 +12,7 @@ members = [
     "tools/content-bake",
 ]
 default-members = [
+    "crates/simmath",
     "crates/sim-core",
     "crates/protocol",
     "crates/content",
@@ -32,6 +34,7 @@ repository = "https://github.com/Bl4202/Flying"
 # Default features off: the `arch` feature would let libm use target intrinsics,
 # which would break cross-architecture bit-exactness (ADR-10).
 libm = { version = "=0.2.16", default-features = false }
+simmath = { path = "crates/simmath" }
 sim-core = { path = "crates/sim-core" }
 protocol = { path = "crates/protocol" }
 content = { path = "crates/content" }
