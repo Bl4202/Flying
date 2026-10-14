@@ -8,12 +8,10 @@
 //! * no hash-ordered collections and no fast-math.
 #![deny(missing_docs)]
 
-pub mod dmath;
 pub mod frame_math;
 pub mod hash;
 pub mod input;
 pub mod layout;
-pub mod math;
 pub mod observer;
 pub mod probe;
 pub mod profile;
@@ -27,6 +25,11 @@ mod systems;
 pub mod terrain;
 pub mod time;
 pub mod world;
+
+/// Deterministic transcendental functions, re-exported from [`simmath`] (ADR-29).
+pub use simmath::dmath;
+/// Vector, quaternion and matrix types, re-exported from [`simmath`] (ADR-29).
+pub use simmath::math;
 
 /// Default master seed for tools and tests.
 pub const DEFAULT_SEED: u64 = 0x1F1E_5EED_0000_0001;

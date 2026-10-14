@@ -353,7 +353,7 @@ name = "sim-core"
 version = "0.0.2"
 dependencies = [
  "content",
- "libm",
+ "simmath",
 ]
 
 [[package]]
@@ -361,6 +361,13 @@ name = "sim-wasm"
 version = "0.0.2"
 dependencies = [
  "sim-core",
+]
+
+[[package]]
+name = "simmath"
+version = "0.0.2"
+dependencies = [
+ "libm",
 ]
 
 [[package]]

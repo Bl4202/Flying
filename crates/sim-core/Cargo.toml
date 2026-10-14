@@ -13,4 +13,4 @@ workspace = true
 
 [dependencies]
 content.workspace = true
-libm.workspace = true
+simmath.workspace = true

@@ -126,7 +126,7 @@ impl Observer {
 
         let forward = self.q_body_to_bf.rotate(DVec3::X);
         self.vel_bf = forward * self.speed_mps + weather.wind_bf(self.pos_bf, t_s);
-        self.pos_bf = self.pos_bf + self.vel_bf * dt;
+        self.pos_bf += self.vel_bf * dt;
     }
 
     /// Stage 8 (collision): keep the body inside the playable square and above the ground, and

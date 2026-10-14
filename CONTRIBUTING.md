@@ -2,8 +2,8 @@
 
 ## Layering (GDD §61.7)
 
-Lower layers never import higher ones. `sim-core` depends on nothing but `libm` and `content`;
-`protocol` and `content` depend on no other crate. `cargo xtask check-layers` enforces an explicit
+Lower layers never import higher ones. `simmath` depends on nothing but `libm`; `sim-core`
+depends on nothing but `content` and `simmath`; `protocol` and `content` depend on no other crate. `cargo xtask check-layers` enforces an explicit
 allow-list per crate (the table is in `crates/xtask/src/layers.rs`).
 
 In TypeScript the tiers, low to high, are:
@@ -74,7 +74,8 @@ and `Page Down` also move the throttle and have no such side effects. The debug 
 
 ## Determinism (ADR-10)
 
-- No transcendental maths outside `sim_core::dmath` (clippy `disallowed-methods` enforces this).
+- No transcendental maths outside `simmath::dmath`, also reachable as `sim_core::dmath` (clippy
+  `disallowed-methods` enforces this).
 - No `HashMap`/`HashSet` in sim crates; iterate in sorted, stable-id order.
 - No fast-math flags, no `relaxed-simd`.
 - Integer RNG only (`sim_core::rng`).
