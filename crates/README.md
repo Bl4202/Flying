@@ -5,6 +5,7 @@ Rust workspace (GDD §61.2–§61.3).
 | Crate | What |
 |---|---|
 | `simmath` | deterministic `f64` maths: `DVec3`, `DQuat`, `DMat3` and the software-`libm` wrappers in `dmath`. Depends only on `libm` |
+| `flight` | the flight model (GDD 11): ISA atmosphere, air data, tables, and (from v0.1a) aero, propulsion, mass, rigid body, trim. Depends only on `simmath` and `content`; knows nothing of the tick or the browser |
 | `sim-core` | the deterministic core: tick schedule, observer, input, snapshot, hashes, the 13 seams. Depends only on `content` and `simmath` (it re-exports `math` and `dmath`) |
 | `sim-wasm` | the hand-written C ABI (v2) the core is built into for the browser; the only crate with `unsafe` (see `UNSAFE.md`) |
 | `content` | the dependency-free `.cpack` reader and writer and the registry |
@@ -15,6 +16,6 @@ Rust workspace (GDD §61.2–§61.3).
 
 The offline content pipeline is `tools/content-bake`.
 
-Reserved names (not created yet): `geo`, `world`, `flight`, `fcs`, `damage`, `weapons`, `sensors`,
+Reserved names (not created yet): `geo`, `world`, `fcs`, `damage`, `weapons`, `sensors`,
 `ew`, `ai-pilot`, `ai-squadron`, `ai-mission`, `ai-strategic`, `mission-core`, `mission-gen`,
 `director`, `campaign`, `net-proto`, `net-sim`, `savegame`, `replay`.
