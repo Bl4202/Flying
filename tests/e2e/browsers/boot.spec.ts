@@ -23,6 +23,8 @@ test('the compat screen renders every row with a verdict', async ({ page }) => {
 });
 
 test('where the engine can run the game, the game starts', async ({ page }) => {
+  // Best-effort engines on a shared runner can be slow to compile WebAssembly and start workers.
+  test.setTimeout(120_000);
   const problems = watchErrors(page);
   await page.goto(`${HEADERS_BASE}?debug=1`);
   const screen = byId(page, 'compat-screen');
