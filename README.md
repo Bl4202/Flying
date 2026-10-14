@@ -7,6 +7,8 @@ and [docs/roadmap.md](docs/roadmap.md) (v0.0 → v1.0).
 **Current milestone:** v0.0b, the empty loop: a sim at 60 Hz in one worker, a renderer in another,
 keyboard and gamepad input, a compat check and a debug overlay. Exit checklist:
 [docs/exit/v0.0b.md](docs/exit/v0.0b.md) (v0.0a: [docs/exit/v0.0a.md](docs/exit/v0.0a.md)).
+Status: the code is merged and green; the exit waits on two reference runs on the project owner's
+laptop (runs C and D), after which `v0.0b` is tagged.
 How it is put together: [docs/architecture/runtime.md](docs/architecture/runtime.md).
 
 Staging: https://bl4202.github.io/Flying/ (add `?debug=1` for the overlay; keys are listed in the

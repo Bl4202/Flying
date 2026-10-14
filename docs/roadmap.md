@@ -53,6 +53,8 @@ Total to the Campaign Build is about 33 months (M0–M6), plus about 6 months fo
 
 **Exit:** sim runs stably at 60 Hz in a worker while the render runs independently; runs on the three reference machines (Minimum / Recommended / High).
 
+**Status (2026-10-14):** all work packages are merged to `main` and green in CI, and the scripted reference runs on the Mac (A: WebGPU, B: forced WebGL2) pass. The exit is **open on two reference runs on the project owner's laptop**: C (RTX 5060, WebGPU, High) and D (Chrome forced onto the integrated GPU, Minimum-class GPU). The owner will send those reports later; the `v0.0b` tag waits for them. Steps and pass criteria: [docs/runbooks/reference-machines.md](runbooks/reference-machines.md). Evidence so far: [docs/exit/v0.0b.md](exit/v0.0b.md).
+
 ---
 
 ## v0.1: Flight Prototype (M1, about 4 months)
