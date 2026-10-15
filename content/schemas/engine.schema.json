@@ -39,7 +39,7 @@
       "description": "Spool and afterburner dynamics.",
       "properties": {
         "ab_cutoff_s": {
-          "description": "Afterburner cut-off time.",
+          "description": "Time constant of the afterburner level falling when it is throttled back or cut.",
           "format": "double",
           "maximum": 10.0,
           "minimum": 0.0,
@@ -48,6 +48,14 @@
         },
         "ab_lightoff_s": {
           "description": "Afterburner light-off delay.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "ab_stage_s": {
+          "description": "Time constant of the afterburner level rising once lit.",
           "format": "double",
           "maximum": 10.0,
           "minimum": 0.0,
@@ -82,6 +90,7 @@
         "spool_up_s",
         "spool_down_s",
         "ab_lightoff_s",
+        "ab_stage_s",
         "ab_cutoff_s",
         "ab_stages"
       ],

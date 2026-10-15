@@ -12,4 +12,9 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+content.workspace = true
 simmath.workspace = true
+
+[dev-dependencies]
+# Unit tests fly the real Kestrel, baked from content/core.
+content-bake = { path = "../../tools/content-bake" }

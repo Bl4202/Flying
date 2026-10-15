@@ -122,7 +122,7 @@ mod tests {
     fn good() -> BTreeMap<String, Vec<String>> {
         map(&[
             ("simmath", &["libm"]),
-            ("flight", &["simmath"]),
+            ("flight", &["content", "simmath"]),
             ("sim-core", &["content", "simmath"]),
             ("protocol", &[]),
             ("content", &[]),

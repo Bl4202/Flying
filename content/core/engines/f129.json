@@ -19,6 +19,7 @@
     "spool_up_s": 1.8,
     "spool_down_s": 1.2,
     "ab_lightoff_s": 0.6,
+    "ab_stage_s": 0.5,
     "ab_cutoff_s": 0.8,
     "ab_stages": 4
   },
