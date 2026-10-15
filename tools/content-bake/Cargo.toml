@@ -18,3 +18,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.152"
 serde_path_to_error = "0.1.20"
 sha2 = "0.11.0"
+
+[dev-dependencies]
+# The Kestrel aero-table generator (content/core/aero/kestrel_gen.rs) uses the deterministic maths.
+simmath.workspace = true

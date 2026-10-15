@@ -33,7 +33,8 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-26](0026-sim-loop-pacing.md) | Simulation loop pacing | Accepted |
 | [ADR-27](0027-seams-policy-and-own-math-types.md) | Seams policy and the project's own vector types | Accepted |
 | [ADR-28](0028-perf-gating-and-reference-machines.md) | Performance gating and the reference-machine waiver | Accepted |
+| [ADR-30](0030-aircraft-data-format-and-cpack-v2.md) | Aircraft data format, cpack v2 and the post-stall blend | Accepted |
 | [ADR-31](0031-performance-conformance-test-method.md) | Performance Conformance Test method and gates | Accepted |
 
-ADR-29 (flight crates and integration) and ADR-30 (aircraft data format and cpack v2) are reserved
-for v0.1a; ADR-31 was written first because its gates must exist before any tuning (AC-66.4).
+ADR-29 (flight crates and integration) is reserved for v0.1a; ADR-31 was written first because its
+gates must exist before any tuning (AC-66.4).

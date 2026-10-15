@@ -1,7 +1,9 @@
 //! The registry: baked content behind `u32` handles.
 
+use crate::aero::AeroDef;
 use crate::aircraft::AircraftDef;
-use crate::cpack::{self, CpackError};
+use crate::cpack::{self, CpackError, Entry};
+use crate::engine::EngineDef;
 
 /// Handle of a baked content entry: its index in the pack's table of contents, which is sorted
 /// by id. Handles are stable for a given pack and meaningless across packs.
@@ -12,7 +14,7 @@ pub struct ContentId(pub u32);
 #[derive(Clone, Debug)]
 pub struct Registry {
     ids: Vec<String>,
-    aircraft: Vec<AircraftDef>,
+    entries: Vec<Entry>,
     content_hash: [u8; 32],
 }
 
@@ -28,12 +30,12 @@ impl Registry {
     pub fn empty() -> Self {
         Self {
             ids: Vec::new(),
-            aircraft: Vec::new(),
+            entries: Vec::new(),
             content_hash: [0; 32],
         }
     }
 
-    /// Reads a `.cpack`, checking its checksum and its structure.
+    /// Reads a `.cpack`, checking its checksum, its structure and its references.
     ///
     /// # Errors
     /// Any [`CpackError`] other than the writer-only ones.
@@ -41,7 +43,7 @@ impl Registry {
         let p = cpack::parse(bytes)?;
         Ok(Self {
             ids: p.ids,
-            aircraft: p.aircraft,
+            entries: p.entries,
             content_hash: p.content_hash,
         })
     }
@@ -58,10 +60,37 @@ impl Registry {
         self.ids.is_empty()
     }
 
-    /// The aircraft behind a handle.
+    /// The entry behind a handle.
+    #[must_use]
+    pub fn entry(&self, handle: ContentId) -> Option<&Entry> {
+        self.entries.get(handle.0 as usize)
+    }
+
+    /// The aircraft behind a handle, if it is one.
     #[must_use]
     pub fn aircraft(&self, handle: ContentId) -> Option<&AircraftDef> {
-        self.aircraft.get(handle.0 as usize)
+        match self.entry(handle)? {
+            Entry::Aircraft(d) => Some(d),
+            _ => None,
+        }
+    }
+
+    /// The engine behind a handle, if it is one.
+    #[must_use]
+    pub fn engine(&self, handle: ContentId) -> Option<&EngineDef> {
+        match self.entry(handle)? {
+            Entry::Engine(d) => Some(d),
+            _ => None,
+        }
+    }
+
+    /// The aero set behind a handle, if it is one.
+    #[must_use]
+    pub fn aero(&self, handle: ContentId) -> Option<&AeroDef> {
+        match self.entry(handle)? {
+            Entry::Aero(d) => Some(d),
+            _ => None,
+        }
     }
 
     /// The id behind a handle.
@@ -78,12 +107,31 @@ impl Registry {
     }
 
     /// Entries in handle (sorted id) order.
-    pub fn iter(&self) -> impl Iterator<Item = (ContentId, &str, &AircraftDef)> {
+    pub fn iter(&self) -> impl Iterator<Item = (ContentId, &str, &Entry)> {
         self.ids
             .iter()
-            .zip(&self.aircraft)
+            .zip(&self.entries)
             .enumerate()
-            .map(|(i, (id, def))| (ContentId(i as u32), id.as_str(), def))
+            .map(|(i, (id, e))| (ContentId(i as u32), id.as_str(), e))
+    }
+
+    /// Handles of the aircraft, in handle order.
+    pub fn aircraft_handles(&self) -> impl Iterator<Item = ContentId> + '_ {
+        self.iter()
+            .filter(|(_, _, e)| matches!(e, Entry::Aircraft(_)))
+            .map(|(h, _, _)| h)
+    }
+
+    /// Number of entries of each kind: (aircraft, engines, aero sets).
+    #[must_use]
+    pub fn counts(&self) -> (usize, usize, usize) {
+        self.entries
+            .iter()
+            .fold((0, 0, 0), |(a, e, r), entry| match entry {
+                Entry::Aircraft(_) => (a + 1, e, r),
+                Entry::Engine(_) => (a, e + 1, r),
+                Entry::Aero(_) => (a, e, r + 1),
+            })
     }
 
     /// The pack's identity: SHA-256 of everything after its header. All zeros when empty.
@@ -101,18 +149,44 @@ mod tests {
     #[test]
     fn handles_are_indices_in_sorted_id_order() {
         let r = Registry::from_cpack(&pack()).unwrap();
-        assert_eq!(r.len(), 3);
-        for (i, id) in ["core:ac/alpha", "core:ac/mike", "core:ac/zulu"]
-            .iter()
-            .enumerate()
+        assert_eq!(r.len(), 4);
+        for (i, id) in [
+            "core:ac/alpha",
+            "core:ac/zulu",
+            "core:aero/one",
+            "core:eng/one",
+        ]
+        .iter()
+        .enumerate()
         {
             let h = r.find(id).unwrap();
             assert_eq!(h, ContentId(i as u32));
             assert_eq!(r.id(h), Some(*id));
-            assert!(r.aircraft(h).is_some());
         }
         let ids: Vec<_> = r.iter().map(|(_, id, _)| id).collect();
-        assert_eq!(ids, ["core:ac/alpha", "core:ac/mike", "core:ac/zulu"]);
+        assert_eq!(
+            ids,
+            [
+                "core:ac/alpha",
+                "core:ac/zulu",
+                "core:aero/one",
+                "core:eng/one"
+            ]
+        );
+        assert_eq!(r.counts(), (2, 1, 1));
+    }
+
+    #[test]
+    fn typed_lookups_follow_the_kind() {
+        let r = Registry::from_cpack(&pack()).unwrap();
+        let ac: Vec<_> = r.aircraft_handles().collect();
+        assert_eq!(ac, [ContentId(0), ContentId(1)]);
+        let a = r.aircraft(ac[0]).unwrap();
+        assert!(r.engine(a.engines[0].engine).is_some());
+        assert!(r.aero(a.aero.tables).is_some());
+        assert!(r.aircraft(ContentId(2)).is_none());
+        assert!(r.engine(ContentId(0)).is_none());
+        assert!(r.aero(ContentId(3)).is_none());
     }
 
     #[test]
@@ -120,7 +194,7 @@ mod tests {
         let r = Registry::from_cpack(&pack()).unwrap();
         assert_eq!(r.find("core:ac/nope"), None);
         assert_eq!(r.find(""), None);
-        assert!(r.aircraft(ContentId(3)).is_none());
+        assert!(r.entry(ContentId(4)).is_none());
         assert!(r.id(ContentId(u32::MAX)).is_none());
     }
 
@@ -129,7 +203,7 @@ mod tests {
         let r = Registry::empty();
         assert!(r.is_empty());
         assert_eq!(r.content_hash(), &[0; 32]);
-        assert_eq!(r.find("core:ac/kestrel"), None);
+        assert_eq!(r.aircraft_handles().count(), 0);
     }
 
     #[test]
