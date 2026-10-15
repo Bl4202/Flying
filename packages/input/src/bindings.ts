@@ -2,9 +2,10 @@
  * What the player's controls are bound to (GDD 58.5). Data, not code: the binding editor of a
  * later version edits this, and the pump only reads it.
  *
- * Conventions follow the stick of a real aircraft, which is also what the observer expects:
- * pitch +1 is nose up (stick back), roll +1 is right wing down (stick right), yaw +1 is nose right.
- * So `W` (push forward) is nose down and `S` is nose up.
+ * Conventions follow the stick of a real aircraft: pitch +1 is nose up (stick back), roll +1 is
+ * right wing down (stick right), yaw +1 is nose right. So `W` (push forward) is nose down and `S`
+ * is nose up. Pitch trim runs while held: `]` nose up, `[` nose down; on a pad the d-pad follows
+ * the stick (down is nose up).
  *
  * A note on Ctrl. The GDD's default for "throttle down" is Ctrl. In browsers on Windows and Linux,
  * Ctrl+W closes the tab, Ctrl+R reloads and Ctrl+S saves, and pages cannot stop that; holding Ctrl
@@ -30,6 +31,9 @@ export interface KeyboardBindings {
   throttleUp: readonly string[];
   throttleDown: readonly string[];
   reset: readonly string[];
+  /** Held: pitch trim moves at 2 degrees of elevator per second (GDD 11.11). */
+  trimNoseUp: readonly string[];
+  trimNoseDown: readonly string[];
 }
 
 export interface PadAxisBinding {
@@ -46,6 +50,8 @@ export interface GamepadBindings {
   /** The throttle lever moves while the stick is held off centre. */
   throttle: { axis: number; invert: boolean; ratePerSecond: number; shape: AxisShape };
   reset: { button: number };
+  trimNoseUp: { button: number };
+  trimNoseDown: { button: number };
 }
 
 export interface Bindings {
@@ -64,6 +70,8 @@ export const DEFAULT_BINDINGS: Bindings = {
     throttleUp: ['ShiftLeft', 'ShiftRight', 'PageUp'],
     throttleDown: ['ControlLeft', 'ControlRight', 'PageDown'],
     reset: ['KeyR'],
+    trimNoseUp: ['BracketRight'],
+    trimNoseDown: ['BracketLeft'],
   },
   gamepad: {
     roll: { axis: PAD_AXIS.RIGHT_X, shape: STICK_SHAPE },
@@ -75,6 +83,8 @@ export const DEFAULT_BINDINGS: Bindings = {
     },
     throttle: { axis: PAD_AXIS.LEFT_Y, invert: true, ratePerSecond: 1, shape: LINEAR_SHAPE },
     reset: { button: PAD_BUTTON.BACK },
+    trimNoseUp: { button: PAD_BUTTON.DPAD_DOWN },
+    trimNoseDown: { button: PAD_BUTTON.DPAD_UP },
   },
   keyboardAxis: DEFAULT_EMULATION,
   throttleKeyRatePerSecond: 0.5,
@@ -92,6 +102,8 @@ export function boundKeyCodes(b: KeyboardBindings): Set<string> {
     ...b.throttleUp,
     ...b.throttleDown,
     ...b.reset,
+    ...b.trimNoseUp,
+    ...b.trimNoseDown,
   ]);
 }
 
@@ -110,5 +122,7 @@ export function keyConflicts(b: KeyboardBindings): Map<string, string[]> {
   add('throttle+', b.throttleUp);
   add('throttle-', b.throttleDown);
   add('reset', b.reset);
+  add('trim+', b.trimNoseUp);
+  add('trim-', b.trimNoseDown);
   return new Map([...uses].filter(([, actions]) => actions.length > 1));
 }
