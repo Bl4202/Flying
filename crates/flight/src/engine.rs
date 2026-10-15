@@ -250,6 +250,12 @@ impl Turbofan {
         self.ab_stages
     }
 
+    /// Idle thrust as a fraction of military.
+    #[must_use]
+    pub fn idle_fraction(&self) -> f64 {
+        self.idle_fraction
+    }
+
     /// Inlet efficiency at an angle of attack: `1 - 0.5 s^2`, `s = clamp((|alpha| - start) / span)`.
     #[must_use]
     pub fn inlet_efficiency(&self, alpha_rad: f64) -> f64 {

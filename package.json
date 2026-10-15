@@ -1,7 +1,7 @@
 {
   "name": "flying",
   "private": true,
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "Real-world sandbox combat flight simulator (browser-native)",
   "type": "module",
   "engines": {

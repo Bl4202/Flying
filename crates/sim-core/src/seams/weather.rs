@@ -1,12 +1,19 @@
 //! `WeatherProvider`: atmosphere the aircraft fly in (GDD 61.5). First implementation: still air
 //! or one uniform wind (M1); dynamic fronts and turbulence replace it in M4.
 
+use flight::atmosphere::NonStandardDay;
+
 use crate::math::DVec3;
 
-/// Wind and (later) atmosphere queries.
+/// Wind and atmosphere queries.
 pub trait WeatherProvider: Send {
     /// Wind velocity at a BF position and simulation time, metres per second, in BF axes.
     fn wind_bf(&self, pos_bf: DVec3, t_s: f64) -> DVec3;
+
+    /// The day's temperature offset and sea-level pressure (GDD 11.3). Standard by default.
+    fn day(&self) -> NonStandardDay {
+        NonStandardDay::ISA
+    }
 }
 
 /// No wind anywhere.
@@ -54,6 +61,17 @@ pub fn contract(w: &dyn WeatherProvider) {
             "wind is below any plausible jet-stream speed: {a:?}"
         );
     }
+    let day = w.day();
+    assert!(
+        (-40.0..=40.0).contains(&day.delta_t_k),
+        "temperature offset within +-40 K (GDD 11.3): {}",
+        day.delta_t_k
+    );
+    assert!(
+        (95_000.0..=105_000.0).contains(&day.p0_pa),
+        "sea-level pressure within 95 to 105 kPa (GDD 11.3): {}",
+        day.p0_pa
+    );
 }
 
 #[cfg(test)]

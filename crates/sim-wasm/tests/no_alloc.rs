@@ -3,7 +3,8 @@
 //! A counting global allocator tallies allocations made by the test thread. After a warm-up that
 //! lets every lazily grown buffer reach its working size, 1 000 ticks with a fresh input frame
 //! pushed every tick must allocate zero times, with profiling off and on, and while the host reads
-//! the snapshot and profile pointers the way the Sim Worker does.
+//! the snapshot and profile pointers the way the Sim Worker does. Then the same with the core
+//! pack's aircraft flying: manoeuvres, a reset (a trim solve), a crash and the respawn.
 //!
 //! One test only: the ABI shares a process-wide global.
 #![allow(unsafe_code)]
@@ -13,10 +14,11 @@ use std::cell::Cell;
 
 use sim_core::InputFrame;
 use sim_core::dmath;
-use sim_core::layout::{axis, input_frame, input_script};
+use sim_core::layout::{axis, button, content_status, counter, input_frame, input_script};
 use sim_wasm::abi::{
-    fg_init, fg_profile_ptr, fg_push_inputs, fg_set_input_script, fg_set_profiling,
-    fg_snapshot_ptr, fg_start, fg_state_hash_lo, fg_step, with_input_buffer,
+    fg_content_reserve, fg_init, fg_load_content, fg_profile_ptr, fg_push_inputs,
+    fg_set_input_script, fg_set_profiling, fg_snapshot_ptr, fg_start, fg_state_hash_lo, fg_step,
+    with_content_buffer, with_input_buffer, with_profile,
 };
 
 thread_local! {
@@ -122,4 +124,61 @@ fn the_tick_path_allocates_nothing_after_warm_up() {
         assert_eq!(fg_step(1), 1);
     }
     assert_eq!(allocations() - before, 0, "scripted pilot allocated");
+
+    // The aircraft. Loading content and starting allocate (the model, the slot); flying does not.
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content/core");
+    let pack = content_bake::bake::bake_dir(&dir)
+        .expect("the core pack bakes")
+        .cpack;
+    assert_eq!(fg_init(0x1F1E_5EED, 0), 0);
+    let len = u32::try_from(pack.len()).unwrap();
+    assert_ne!(fg_content_reserve(len), 0);
+    with_content_buffer(|b| b.copy_from_slice(&pack));
+    assert_eq!(fg_load_content(len), content_status::OK as u32);
+    assert_eq!(fg_set_input_script(input_script::NONE as u32), 1);
+    assert_eq!(fg_start(), 1);
+    measure(1, 300);
+    let flying = measure(301, 1_000);
+    assert_eq!(flying, 0, "{flying} allocations in 1 000 ticks of flight");
+
+    // A reset (the respawn trims inside the tick), then a dive into the ground, the crash and the
+    // respawn two seconds later.
+    let before = allocations();
+    push_frame_with(1_301, |f| f.buttons = 1 << button::RESET);
+    assert_eq!(fg_step(1), 1);
+    for seq in 1_302..4_302 {
+        push_frame_with(seq, |f| {
+            f.axes[axis::PITCH] = -1.0;
+            f.axes[axis::THROTTLE] = 1.0;
+        });
+        assert_eq!(fg_step(1), 1);
+    }
+    assert_eq!(
+        allocations() - before,
+        0,
+        "reset, crash or respawn allocated"
+    );
+    let read = |i: usize| {
+        with_profile(|b| {
+            let at = sim_core::layout::profile::COUNTERS + 4 * i;
+            u32::from_le_bytes(b[at..at + 4].try_into().unwrap())
+        })
+        .unwrap()
+    };
+    assert!(read(counter::CRASHES) >= 1, "the dive reached the ground");
+    assert!(
+        read(counter::RESPAWNS) >= 2,
+        "the reset and the post-crash respawn"
+    );
+    assert_eq!(read(counter::FDM_FAULTS), 0);
+}
+
+/// Stages one frame built by `f` from neutral (throttle 0.5) and pushes it.
+fn push_frame_with(seq: u32, f: impl FnOnce(&mut InputFrame)) {
+    let mut fr = InputFrame::neutral(seq);
+    fr.axes[axis::THROTTLE] = 0.5;
+    fr.t_ms = f64::from(seq) * (1000.0 / 60.0);
+    f(&mut fr);
+    with_input_buffer(|b| fr.encode((&mut b[..input_frame::SIZE]).try_into().unwrap()));
+    assert_eq!(fg_push_inputs(1), 1);
 }

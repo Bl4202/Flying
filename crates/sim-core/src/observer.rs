@@ -366,8 +366,8 @@ mod tests {
         let geo = ProceduralGeo::default_frame();
         let mut o = Observer::spawn(&geo);
         let mut input = InputState::new();
-        input.set_script(Some(crate::input::ErraticPilot::new(
-            crate::rng::RngStreams::new(3).stream("input/erratic"),
+        input.set_script(Some(crate::input::Script::Erratic(
+            crate::input::ErraticPilot::new(crate::rng::RngStreams::new(3).stream("input/erratic")),
         )));
         let mut c = Counters::default();
         for tick in 0..20_000_u64 {
