@@ -9,7 +9,7 @@
   },
   "scripts": {
     "typecheck": "pnpm -r exec tsc -p . && tsc -p .",
-    "lint:rust": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo deny check && cargo xtask check-layers && cargo xtask gen-abi --check && cargo xtask content --check",
+    "lint:rust": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo deny check && cargo xtask check-layers && cargo xtask check-content-ids && cargo xtask gen-abi --check && cargo xtask content --check",
     "lint:ts": "eslint . && prettier --check .",
     "depcruise": "depcruise packages --config .dependency-cruiser.cjs",
     "wgsl:check": "node packages/tools/src/wgsl-check.ts && node packages/tools/src/wgsl-gen.ts --check",
