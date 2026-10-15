@@ -233,7 +233,7 @@ describe('SimLoop', () => {
     expect([s.inputsDropped, s.snapshotsDropped]).toEqual([4, 9]);
   });
 
-  it('reports the observer from the newest snapshot', () => {
+  it('reports the ownship from the newest snapshot', () => {
     const r = rig();
     const dv = new DataView(r.snapshotBytes.buffer);
     dv.setFloat64(SNAPSHOT.O_POS_BF, 100.5, true);
@@ -241,13 +241,20 @@ describe('SimLoop', () => {
     dv.setFloat64(SNAPSHOT.O_POS_BF + 16, 1500, true);
     dv.setFloat32(SNAPSHOT.O_QUAT, 0.5, true);
     dv.setFloat32(SNAPSHOT.O_QUAT + 12, -0.5, true);
-    dv.setFloat32(SNAPSHOT.O_SPEED, 180, true);
+    dv.setFloat32(SNAPSHOT.O_TAS, 180, true);
+    dv.setFloat32(SNAPSHOT.O_MACH, 0.5, true);
     dv.setFloat32(SNAPSHOT.O_THROTTLE, 0.5, true);
+    dv.setFloat32(SNAPSHOT.O_THRUST, 40_000, true);
+    dv.setFloat32(SNAPSHOT.O_SURFACES + 4, 0.25, true);
+    dv.setUint8(SNAPSHOT.O_AB_STAGE, 2);
+    dv.setUint8(SNAPSHOT.O_FLAGS, 8);
     dv.setUint32(SNAPSHOT.H_LAST_INPUT_SEQ, 77, true);
-    const o = r.loop.report().observer;
+    const o = r.loop.report().aircraft;
     expect(o.pos).toEqual([100.5, -6000, 1500]);
     expect(o.quat).toEqual([0.5, 0, 0, -0.5]);
-    expect([o.speed, o.throttle, o.inputSeq]).toEqual([180, 0.5, 77]);
+    expect([o.tas, o.mach, o.throttle, o.thrust, o.inputSeq]).toEqual([180, 0.5, 0.5, 40_000, 77]);
+    expect(o.surfaces).toEqual([0, 0.25, 0]);
+    expect([o.abStage, o.flags]).toEqual([2, 8]);
   });
 
   it('includes the core profile only while profiling', () => {

@@ -75,7 +75,13 @@ function rig(opts: FakeOptions) {
   return { log, workers, spawn };
 }
 
-const base = { variant: 'single', wasmUrl: 'x.wasm', threadsInitialPages: 0, ms: 1000 } as const;
+const base = {
+  variant: 'single',
+  wasmUrl: 'x.wasm',
+  threadsInitialPages: 0,
+  contentUrl: 'x.cpack',
+  ms: 1000,
+} as const;
 
 describe('runKernel', () => {
   it('adds up the rates of the workers', async () => {

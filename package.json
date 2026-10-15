@@ -1,7 +1,7 @@
 {
   "name": "flying",
   "private": true,
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "Real-world sandbox combat flight simulator (browser-native)",
   "type": "module",
   "engines": {
@@ -9,7 +9,7 @@
   },
   "scripts": {
     "typecheck": "pnpm -r exec tsc -p . && tsc -p .",
-    "lint:rust": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo deny check && cargo xtask check-layers && cargo xtask gen-abi --check && cargo xtask content --check",
+    "lint:rust": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo deny check && cargo xtask check-layers && cargo xtask check-content-ids && cargo xtask gen-abi --check && cargo xtask content --check",
     "lint:ts": "eslint . && prettier --check .",
     "depcruise": "depcruise packages --config .dependency-cruiser.cjs",
     "wgsl:check": "node packages/tools/src/wgsl-check.ts && node packages/tools/src/wgsl-gen.ts --check",
@@ -23,9 +23,10 @@
     "dev": "vite --config packages/app-shell/vite.config.ts",
     "preview": "vite preview --config packages/app-shell/vite.config.ts",
     "determinism": "cargo xtask determinism --ticks 1000000",
+    "conformance": "cargo xtask conformance",
     "repro": "cargo xtask repro",
     "e2e": "playwright test --project=e2e",
-    "verify": "pnpm lint && pnpm test && pnpm build && pnpm determinism && pnpm repro && pnpm e2e && pnpm perf:smoke && pnpm bench",
+    "verify": "pnpm lint && pnpm test && pnpm build && pnpm determinism && pnpm conformance && pnpm repro && pnpm e2e && pnpm perf:smoke && pnpm bench",
     "e2e:browsers": "playwright test --project=firefox --project=webkit",
     "perf:smoke": "playwright test --project=perf",
     "bench": "cargo xtask bench",

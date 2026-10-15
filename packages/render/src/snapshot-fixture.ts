@@ -13,11 +13,11 @@ export interface FixtureSnapshot {
   inputMs?: number;
   lastInputSeq?: number;
   coreState?: number;
-  observer?: FixtureBody & { speed?: number; throttle?: number };
+  ownship?: FixtureBody & { speed?: number; throttle?: number; flags?: number };
   bodies?: FixtureBody[];
 }
 
-/** Heading north, wings level: the attitude the observer spawns with. */
+/** Heading north, wings level: the attitude the ownship spawns with. */
 export const NORTH: [number, number, number, number] = [0, Math.SQRT1_2, Math.SQRT1_2, 0];
 
 /**
@@ -36,15 +36,16 @@ export function makeSnapshot(s: FixtureSnapshot = {}): Uint8Array {
   dv.setUint32(SNAPSHOT.H_LAST_INPUT_SEQ, s.lastInputSeq ?? 0, true);
   dv.setUint32(SNAPSHOT.H_CORE_STATE, s.coreState ?? 2, true);
   dv.setFloat64(SNAPSHOT.H_INPUT_T_MS, s.inputMs ?? 0, true);
-  const o = s.observer ?? { pos: [0, -6000, 1000] };
+  const o = s.ownship ?? { pos: [0, -6000, 1000] };
   o.pos.forEach((v, k) => {
     dv.setFloat64(SNAPSHOT.O_POS_BF + 8 * k, v, true);
   });
   (o.quat ?? NORTH).forEach((v, k) => {
     dv.setFloat32(SNAPSHOT.O_QUAT + 4 * k, v, true);
   });
-  dv.setFloat32(SNAPSHOT.O_SPEED, o.speed ?? 180, true);
+  dv.setFloat32(SNAPSHOT.O_TAS, o.speed ?? 180, true);
   dv.setFloat32(SNAPSHOT.O_THROTTLE, o.throttle ?? 0.5, true);
+  dv.setUint8(SNAPSHOT.O_FLAGS, o.flags ?? 0);
   const bodies = s.bodies ?? [];
   dv.setUint32(SNAPSHOT.H_BODY_COUNT, bodies.length, true);
   bodies.forEach((b, i) => {

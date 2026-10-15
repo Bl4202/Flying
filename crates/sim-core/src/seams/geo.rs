@@ -155,6 +155,27 @@ pub trait GeoService: Send {
     /// uses (an extension of GDD 7.7 that saves every caller from doing the same two steps).
     fn ground_z_bf(&self, x: f64, y: f64) -> f64;
 
+    /// Geometric height above MSL of a BF position, metres. The default goes through
+    /// [`GeoService::bf_to_geo`]; implementations override it with something cheaper, because the
+    /// flight model asks in every integration stage.
+    fn height_msl_m(&self, p: DVec3) -> f64 {
+        self.bf_to_geo(p).h_m
+    }
+
+    /// Gravitational acceleration in BF at a position, m/s^2: `g0 (R / (R + h))^2` along local
+    /// down (GDD 7.4.3).
+    fn gravity_bf(&self, p: DVec3) -> DVec3 {
+        let r = self.frame().radius_m;
+        let ratio = r / (r + self.height_msl_m(p));
+        self.up_bf(p) * (-flight::physical::G0 * ratio * ratio)
+    }
+
+    /// Terrain height above MSL under a BF position, metres.
+    fn ground_height_msl_m(&self, p: DVec3) -> f64 {
+        let g = self.bf_to_geo(p);
+        f64::from(self.terrain_height(g.lat_rad, g.lon_rad).h)
+    }
+
     /// Batch variant of [`GeoService::terrain_height`] for AI and sensors (GDD 7.7 rule 3).
     /// `out` must be at least as long as `pts`; extra entries are left alone.
     fn terrain_height_batch(&self, pts: &[LatLon], out: &mut [HeightSample]) {
@@ -449,6 +470,16 @@ impl GeoService for ProceduralGeo {
         let g = self.bf_to_geo(DVec3::new(x, y, zs));
         zs + self.height_m(g.lat_rad, g.lon_rad)
     }
+
+    fn height_msl_m(&self, p: DVec3) -> f64 {
+        // The same radius minus R as bf_to_geo, without its asin and atan2.
+        self.bf_to_ecef(p).length() - self.frame.radius_m
+    }
+
+    fn ground_height_msl_m(&self, p: DVec3) -> f64 {
+        let g = self.bf_to_geo(p);
+        self.height_m(g.lat_rad, g.lon_rad)
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -576,6 +607,27 @@ fn contract_frames(g: &dyn GeoService) {
             "up_bf is a unit vector at {p:?}"
         );
         assert!(up.z > 0.5, "up has a positive vertical component at {p:?}");
+        let geo = g.bf_to_geo(p);
+        assert!(
+            (g.height_msl_m(p) - geo.h_m).abs() < 1.0e-6,
+            "height_msl_m agrees with bf_to_geo at {p:?}"
+        );
+        let r = frame.radius_m;
+        let expected = flight::physical::G0 * (r / (r + geo.h_m)) * (r / (r + geo.h_m));
+        let grav = g.gravity_bf(p);
+        assert!(
+            (grav.length() - expected).abs() < 1.0e-9,
+            "gravity falls off with height at {p:?}"
+        );
+        assert!(
+            (grav.normalized_or(DVec3::Z) + up).length() < 1.0e-9,
+            "gravity points down at {p:?}"
+        );
+        let ground = g.terrain_height(geo.lat_rad, geo.lon_rad);
+        assert!(
+            (g.ground_height_msl_m(p) - f64::from(ground.h)).abs() < 1.0e-3,
+            "ground_height_msl_m is the terrain height at {p:?}"
+        );
     }
     let geo = Geodetic {
         lat_rad: frame.anchor_lat_rad + 0.01,

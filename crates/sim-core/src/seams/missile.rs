@@ -207,8 +207,8 @@ mod tests {
             let a = m.guide(&mis, &tgt);
             let v = mis.vel + a * DT;
             mis.vel = v * (speed / v.length());
-            mis.pos = mis.pos + mis.vel * DT;
-            tgt.pos = tgt.pos + tgt.vel * DT;
+            mis.pos += mis.vel * DT;
+            tgt.pos += tgt.vel * DT;
             t += DT;
         }
         None

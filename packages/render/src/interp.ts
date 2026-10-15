@@ -10,7 +10,7 @@
  *
  * Positions blend in f64, orientations by normalised linear interpolation along the short arc.
  * It copes with having none, one, a stale newest, a gap of several ticks, and a body or the
- * observer teleporting between snapshots (it snaps instead of sweeping across the map).
+ * ownship teleporting between snapshots (it snaps instead of sweeping across the map).
  */
 import { SNAPSHOT } from '@flying/sim-bridge/layout';
 import { SnapshotReader } from '@flying/sim-bridge/snapshot';
@@ -22,11 +22,12 @@ export interface SceneState {
   /** When the newest snapshot was published (shared clock) and when its input was sampled. */
   publishTimeMs: number;
   inputTimeMs: number;
-  observerPosBf: Float64Array;
+  ownshipPosBf: Float64Array;
   /** Orientation `[w, x, y, z]`. */
-  observerQuat: Float32Array;
-  observerSpeed: number;
-  observerThrottle: number;
+  ownshipQuat: Float32Array;
+  /** True airspeed, m/s. */
+  ownshipSpeed: number;
+  ownshipThrottle: number;
   bodyCount: number;
   bodyPosBf: Float64Array;
   bodyQuat: Float32Array;
@@ -64,10 +65,10 @@ export class SnapshotInterpolator {
     coreState: 0,
     publishTimeMs: 0,
     inputTimeMs: 0,
-    observerPosBf: new Float64Array(3),
-    observerQuat: new Float32Array([1, 0, 0, 0]),
-    observerSpeed: 0,
-    observerThrottle: 0,
+    ownshipPosBf: new Float64Array(3),
+    ownshipQuat: new Float32Array([1, 0, 0, 0]),
+    ownshipSpeed: 0,
+    ownshipThrottle: 0,
     bodyCount: 0,
     bodyPosBf: new Float64Array(MAX_BODIES * 3),
     bodyQuat: new Float32Array(MAX_BODIES * 4),
@@ -160,27 +161,27 @@ export class SnapshotInterpolator {
     s.coreState = cur.coreState();
     s.publishTimeMs = cur.publishTimeMs();
     s.inputTimeMs = cur.inputTimeMs();
-    s.observerSpeed = cur.observerSpeed();
-    s.observerThrottle = cur.observerThrottle();
+    s.ownshipSpeed = cur.ownshipTas();
+    s.ownshipThrottle = cur.ownshipThrottle();
     s.bodyCount = Math.min(cur.bodyCount(), MAX_BODIES);
 
-    // The observer.
-    cur.observerPos(this.#b3);
-    cur.observerQuat(this.#b4);
+    // The ownship.
+    cur.ownshipPos(this.#b3);
+    cur.ownshipQuat(this.#b4);
     if (alpha < 1) {
-      prev.observerPos(this.#a3);
-      prev.observerQuat(this.#a4);
+      prev.ownshipPos(this.#a3);
+      prev.ownshipQuat(this.#a4);
       if (distance(this.#a3, this.#b3) > this.teleportM) {
         st.snapped = true;
-        s.observerPosBf.set(this.#b3);
-        s.observerQuat.set(this.#b4);
+        s.ownshipPosBf.set(this.#b3);
+        s.ownshipQuat.set(this.#b4);
       } else {
-        lerp3(s.observerPosBf, 0, this.#a3, 0, this.#b3, 0, alpha);
-        nlerp(s.observerQuat, 0, this.#a4, 0, this.#b4, 0, alpha);
+        lerp3(s.ownshipPosBf, 0, this.#a3, 0, this.#b3, 0, alpha);
+        nlerp(s.ownshipQuat, 0, this.#a4, 0, this.#b4, 0, alpha);
       }
     } else {
-      s.observerPosBf.set(this.#b3);
-      s.observerQuat.set(this.#b4);
+      s.ownshipPosBf.set(this.#b3);
+      s.ownshipQuat.set(this.#b4);
     }
 
     // The bodies.

@@ -1,19 +1,25 @@
-//! The `.cpack` v1 container (GDD 62.2).
+//! The `.cpack` v2 container (GDD 62.2, ADR-30).
 //!
 //! ```text
-//! 0    80 B   header   magic "FGCP", version, flags, entry count, section offsets, total length,
+//! 0    80 B   header   magic "FGCP", version 2, flags, entry count, section offsets, total length,
 //!                      checksum (FNV-1a 64 of the whole file with the checksum field zeroed),
 //!                      content hash (SHA-256 of every byte after the header)
-//! 80   16 B   x n      table of contents, sorted by id; the index is the handle
-//!                      u32 id_off, u32 id_len (into the strings), u32 kind, u32 record_off
-//! ...         strings  UTF-8, ids and locale keys, no separators
+//! 80   24 B   x n      table of contents, sorted by id; the index is the handle
+//!                      u32 id_off, u32 id_len (into the strings), u32 kind,
+//!                      u32 record_off (into the records), u32 record_len, u32 reserved (0)
+//! ...         strings  UTF-8, ids and other strings, no separators
 //! ...         padding  zeros up to a multiple of 8
-//! ...  144 B  x n      aircraft records, in table order
+//! ...         records  one per entry, in table order, each zero-padded to a multiple of 8
 //! ```
 //!
+//! Records are variable-length and their layout depends on the kind (aircraft 1, engine 2,
+//! aero 3); tables are stored inline with their sizes. References between entries are handles,
+//! and the reader checks that each points at an entry of the right kind.
+//!
 //! The encoding is canonical: one set of entries has exactly one byte string, and the reader
-//! refuses anything else (offsets that do not follow from the counts, non-zero padding or
-//! reserved bytes, unsorted ids). That is what lets the pack's hash stand for its meaning.
+//! refuses anything else (offsets that do not follow from the lengths, non-zero padding or
+//! reserved bytes, unsorted ids, unused record bytes). That is what lets the pack's hash stand
+//! for its meaning.
 //!
 //! The checksum catches damage; the content hash is the pack's identity (it goes into the state
 //! hash and the multiplayer handshake). This crate has no hash library, so the writer takes the
@@ -22,18 +28,26 @@
 
 use core::fmt;
 
-use crate::aircraft::{AircraftDef, RECORD_BYTES};
+use crate::aero::AeroDef;
+use crate::aircraft::AircraftDef;
+use crate::codec::{Reader, Strings, Writer};
+use crate::engine::EngineDef;
+use crate::registry::ContentId;
 
 /// File magic.
 pub const MAGIC: [u8; 4] = *b"FGCP";
 /// The format version this crate reads and writes.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 /// Header size, bytes.
 pub const HEADER_BYTES: usize = 80;
 /// Table-of-contents entry size, bytes.
-pub const TOC_ENTRY_BYTES: usize = 16;
+pub const TOC_ENTRY_BYTES: usize = 24;
 /// `kind` of an aircraft entry.
 pub const KIND_AIRCRAFT: u32 = 1;
+/// `kind` of an engine entry.
+pub const KIND_ENGINE: u32 = 2;
+/// `kind` of an aero entry.
+pub const KIND_AERO: u32 = 3;
 
 /// Header field offsets.
 pub mod header {
@@ -41,7 +55,7 @@ pub mod header {
     pub const MAGIC: usize = 0;
     /// `u32` format version.
     pub const VERSION: usize = 4;
-    /// `u32` flags, zero in version 1.
+    /// `u32` flags, zero in version 2.
     pub const FLAGS: usize = 8;
     /// `u32` number of entries.
     pub const ENTRY_COUNT: usize = 12;
@@ -92,6 +106,8 @@ pub enum CpackError {
     UnknownKind(u32),
     /// A record's content is invalid.
     Record(&'static str),
+    /// A reference points at no entry, or at an entry of the wrong kind.
+    Reference(&'static str),
     /// Two entries share an id (writer).
     DuplicateId(String),
     /// A section does not fit in 32 bits (writer).
@@ -103,12 +119,11 @@ impl fmt::Display for CpackError {
         match self {
             Self::Truncated => write!(f, "the pack is truncated"),
             Self::BadMagic => write!(f, "not a content pack (bad magic)"),
-            Self::UnsupportedVersion(v) => {
-                write!(
-                    f,
-                    "pack format version {v} is not supported (expected {VERSION})"
-                )
-            }
+            Self::UnsupportedVersion(v) => write!(
+                f,
+                "pack format version {v} is not supported (expected {VERSION}); rebuild the pack \
+                 with `cargo xtask content`"
+            ),
             Self::Checksum { stored, computed } => write!(
                 f,
                 "pack checksum mismatch (stored {stored:016x}, computed {computed:016x}); the file is damaged"
@@ -118,6 +133,7 @@ impl fmt::Display for CpackError {
             Self::UnsortedToc => write!(f, "pack entries are not sorted by id"),
             Self::UnknownKind(k) => write!(f, "unknown entry kind {k}"),
             Self::Record(what) => write!(f, "invalid record: {what}"),
+            Self::Reference(what) => write!(f, "invalid reference: {what}"),
             Self::DuplicateId(id) => write!(f, "duplicate id `{id}`"),
             Self::TooLarge => write!(f, "the pack is too large for the format"),
         }
@@ -126,11 +142,80 @@ impl fmt::Display for CpackError {
 
 impl std::error::Error for CpackError {}
 
+/// One entry of a pack.
+#[derive(Clone, Debug, PartialEq)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "entries are built once at load and read in place; boxing buys nothing"
+)]
+pub enum Entry {
+    /// An aircraft type.
+    Aircraft(AircraftDef),
+    /// An engine type.
+    Engine(EngineDef),
+    /// An airframe's aerodynamic tables.
+    Aero(AeroDef),
+}
+
+impl Entry {
+    /// The table-of-contents kind.
+    #[must_use]
+    pub const fn kind(&self) -> u32 {
+        match self {
+            Self::Aircraft(_) => KIND_AIRCRAFT,
+            Self::Engine(_) => KIND_ENGINE,
+            Self::Aero(_) => KIND_AERO,
+        }
+    }
+
+    fn encode(&self, w: &mut Writer<'_>) -> Result<(), CpackError> {
+        match self {
+            Self::Aircraft(d) => d.encode(w),
+            Self::Engine(d) => d.encode(w),
+            Self::Aero(d) => d.encode(w),
+        }
+    }
+
+    fn decode(kind: u32, r: &mut Reader<'_>) -> Result<Self, CpackError> {
+        match kind {
+            KIND_AIRCRAFT => Ok(Self::Aircraft(AircraftDef::decode(r)?)),
+            KIND_ENGINE => Ok(Self::Engine(EngineDef::decode(r)?)),
+            KIND_AERO => Ok(Self::Aero(AeroDef::decode(r)?)),
+            other => Err(CpackError::UnknownKind(other)),
+        }
+    }
+}
+
+/// Checks that every reference in `entries` points at an entry of the kind it needs.
+fn check_references(entries: &[Entry]) -> Result<(), CpackError> {
+    let kind_of = |h: ContentId| entries.get(h.0 as usize).map(Entry::kind);
+    for e in entries {
+        if let Entry::Aircraft(a) = e {
+            if a.engines.is_empty() {
+                return Err(CpackError::Reference("an aircraft has no engines"));
+            }
+            for install in &a.engines {
+                if kind_of(install.engine) != Some(KIND_ENGINE) {
+                    return Err(CpackError::Reference(
+                        "an aircraft's engine is not an engine entry",
+                    ));
+                }
+            }
+            if kind_of(a.aero.tables) != Some(KIND_AERO) {
+                return Err(CpackError::Reference(
+                    "an aircraft's aero tables are not an aero entry",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// What a pack holds, in handle order.
 #[derive(Debug)]
 pub(crate) struct Parsed {
     pub ids: Vec<String>,
-    pub aircraft: Vec<AircraftDef>,
+    pub entries: Vec<Entry>,
     pub content_hash: [u8; 32],
 }
 
@@ -168,6 +253,7 @@ struct Sections {
     strings_off: usize,
     strings_len: usize,
     records_off: usize,
+    records_len: usize,
 }
 
 /// Checks the header against the file: magic, version, length, checksum, and that the section
@@ -217,11 +303,6 @@ fn read_sections(data: &[u8]) -> Result<Sections, CpackError> {
             "the records are not at the aligned end of the strings",
         ));
     }
-    if records_len != n * RECORD_BYTES as u64 {
-        return Err(CpackError::Layout(
-            "the record section does not hold one record per entry",
-        ));
-    }
     if records_off + records_len != data.len() as u64 {
         return Err(CpackError::Layout(
             "sections do not add up to the file length",
@@ -234,6 +315,7 @@ fn read_sections(data: &[u8]) -> Result<Sections, CpackError> {
         strings_off: strings_off as usize,
         strings_len: strings_len as usize,
         records_off: records_off as usize,
+        records_len: records_len as usize,
     })
 }
 
@@ -245,6 +327,7 @@ pub(crate) fn parse(data: &[u8]) -> Result<Parsed, CpackError> {
         strings_off,
         strings_len,
         records_off,
+        records_len,
     } = read_sections(data)?;
 
     if data[strings_off + strings_len..records_off]
@@ -255,20 +338,35 @@ pub(crate) fn parse(data: &[u8]) -> Result<Parsed, CpackError> {
     }
     let strings = core::str::from_utf8(&data[strings_off..strings_off + strings_len])
         .map_err(|_| CpackError::Utf8)?;
+    let records = &data[records_off..];
 
     let mut ids: Vec<String> = Vec::with_capacity(n);
-    let mut aircraft = Vec::with_capacity(n);
+    let mut entries = Vec::with_capacity(n);
+    let mut next_record = 0_usize;
     for i in 0..n {
         let e = toc_off + i * TOC_ENTRY_BYTES;
         let (id_off, id_len) = (u32_at(data, e) as usize, u32_at(data, e + 4) as usize);
         let kind = u32_at(data, e + 8);
         let record_off = u32_at(data, e + 12) as usize;
-        if kind != KIND_AIRCRAFT {
+        let record_len = u32_at(data, e + 16) as usize;
+        if u32_at(data, e + 20) != 0 {
+            return Err(CpackError::Layout(
+                "a reserved table-of-contents field is not zero",
+            ));
+        }
+        if !matches!(kind, KIND_AIRCRAFT | KIND_ENGINE | KIND_AERO) {
             return Err(CpackError::UnknownKind(kind));
         }
-        if record_off != i * RECORD_BYTES {
-            return Err(CpackError::Layout("records are not in table order"));
+        if record_off != next_record || !record_len.is_multiple_of(8) || record_len == 0 {
+            return Err(CpackError::Layout(
+                "records are not contiguous in table order",
+            ));
         }
+        let record_end = record_off
+            .checked_add(record_len)
+            .filter(|&end| end <= records_len)
+            .ok_or(CpackError::Layout("a record runs past the record section"))?;
+        next_record = record_end;
         let id = id_off
             .checked_add(id_len)
             .and_then(|end| strings.get(id_off..end))
@@ -279,92 +377,89 @@ pub(crate) fn parse(data: &[u8]) -> Result<Parsed, CpackError> {
         if ids.last().is_some_and(|prev| prev.as_str() >= id) {
             return Err(CpackError::UnsortedToc);
         }
-        let rec = &data[records_off + record_off..records_off + record_off + RECORD_BYTES];
-        aircraft.push(AircraftDef::decode(rec, strings)?);
+        let mut r = Reader::new(&records[record_off..record_end], strings);
+        entries.push(Entry::decode(kind, &mut r)?);
+        r.finish()?;
         ids.push(id.to_owned());
     }
+    if next_record != records_len {
+        return Err(CpackError::Layout(
+            "the record section holds bytes no entry uses",
+        ));
+    }
+    check_references(&entries)?;
 
     let mut content_hash = [0_u8; 32];
     content_hash.copy_from_slice(&data[header::CONTENT_HASH..header::CONTENT_HASH + 32]);
     Ok(Parsed {
         ids,
-        aircraft,
+        entries,
         content_hash,
     })
 }
 
-/// Interns strings, sharing identical ones.
-#[derive(Default)]
-struct Strings {
-    bytes: Vec<u8>,
-    seen: std::collections::BTreeMap<String, (u32, u32)>,
-}
-
-impl Strings {
-    fn intern(&mut self, s: &str) -> Result<(u32, u32), CpackError> {
-        if let Some(&at) = self.seen.get(s) {
-            return Ok(at);
-        }
-        let at = (
-            u32::try_from(self.bytes.len()).map_err(|_| CpackError::TooLarge)?,
-            u32::try_from(s.len()).map_err(|_| CpackError::TooLarge)?,
-        );
-        self.bytes.extend_from_slice(s.as_bytes());
-        self.seen.insert(s.to_owned(), at);
-        Ok(at)
-    }
-}
-
-/// Packs `entries` (in any order) into a `.cpack`. `sha256` hashes the bytes after the header;
-/// its result is stored as the pack's content hash.
+/// Packs `entries` into a `.cpack`. Entries must be given **in id order**, because references
+/// between them are handles, which are positions in that order. `sha256` hashes the bytes after
+/// the header; its result is stored as the pack's content hash.
 ///
 /// # Errors
-/// [`CpackError::DuplicateId`] for repeated ids, [`CpackError::Record`] for an empty id, and
+/// [`CpackError::UnsortedToc`] if the ids are not strictly ascending,
+/// [`CpackError::DuplicateId`] for a repeated id, [`CpackError::Record`] for an empty id or an
+/// invalid table, [`CpackError::Reference`] for a reference to a missing or wrong-kind entry, and
 /// [`CpackError::TooLarge`] if a section would not fit in 32 bits.
 pub fn write(
-    entries: &[(String, AircraftDef)],
+    entries: &[(String, Entry)],
     sha256: impl FnOnce(&[u8]) -> [u8; 32],
 ) -> Result<Vec<u8>, CpackError> {
-    let mut order: Vec<&(String, AircraftDef)> = entries.iter().collect();
-    order.sort_by(|a, b| a.0.cmp(&b.0));
-    if let Some(w) = order.windows(2).find(|w| w[0].0 == w[1].0) {
-        return Err(CpackError::DuplicateId(w[0].0.clone()));
+    if let Some(w) = entries.windows(2).find(|w| w[0].0 >= w[1].0) {
+        return Err(if w[0].0 == w[1].0 {
+            CpackError::DuplicateId(w[0].0.clone())
+        } else {
+            CpackError::UnsortedToc
+        });
     }
-    if order.iter().any(|e| e.0.is_empty()) {
+    if entries.iter().any(|e| e.0.is_empty()) {
         return Err(CpackError::Record("an id is empty"));
     }
+    let defs: Vec<Entry> = entries.iter().map(|e| e.1.clone()).collect();
+    check_references(&defs)?;
 
     let mut strings = Strings::default();
-    let mut toc = Vec::with_capacity(order.len() * TOC_ENTRY_BYTES);
-    let mut records = Vec::with_capacity(order.len() * RECORD_BYTES);
-    // Ids first (they come out sorted), then the locale keys.
-    let id_at = order
+    // Ids first (they come out sorted), then the strings inside the records.
+    let id_at = entries
         .iter()
         .map(|(id, _)| strings.intern(id))
         .collect::<Result<Vec<_>, _>>()?;
-    for (i, (_, def)) in order.iter().enumerate() {
-        let name_key = strings.intern(&def.name_key)?;
-        let mut rec = [0_u8; RECORD_BYTES];
-        def.encode(name_key, &mut rec);
-        records.extend_from_slice(&rec);
-
-        let record_off = u32::try_from(i * RECORD_BYTES).map_err(|_| CpackError::TooLarge)?;
-        for v in [id_at[i].0, id_at[i].1, KIND_AIRCRAFT, record_off] {
+    let mut toc = Vec::with_capacity(entries.len() * TOC_ENTRY_BYTES);
+    let mut records = Vec::new();
+    let to_u32 = |n: usize| u32::try_from(n).map_err(|_| CpackError::TooLarge);
+    for (i, (_, entry)) in entries.iter().enumerate() {
+        let mut w = Writer::new(&mut strings);
+        entry.encode(&mut w)?;
+        let rec = w.finish();
+        for v in [
+            id_at[i].0,
+            id_at[i].1,
+            entry.kind(),
+            to_u32(records.len())?,
+            to_u32(rec.len())?,
+            0,
+        ] {
             toc.extend_from_slice(&v.to_le_bytes());
         }
+        records.extend_from_slice(&rec);
     }
 
     let strings_off = HEADER_BYTES + toc.len();
     let records_off = align8((strings_off + strings.bytes.len()) as u64) as usize;
     let total = records_off + records.len();
-    let to_u32 = |n: usize| u32::try_from(n).map_err(|_| CpackError::TooLarge);
 
     let mut out = vec![0_u8; HEADER_BYTES];
     out[header::MAGIC..header::MAGIC + 4].copy_from_slice(&MAGIC);
     for (at, v) in [
         (header::VERSION, VERSION),
         (header::FLAGS, 0),
-        (header::ENTRY_COUNT, to_u32(order.len())?),
+        (header::ENTRY_COUNT, to_u32(entries.len())?),
         (header::TOC_OFF, to_u32(HEADER_BYTES)?),
         (header::STRINGS_OFF, to_u32(strings_off)?),
         (header::STRINGS_LEN, to_u32(strings.bytes.len())?),
@@ -389,8 +484,6 @@ pub fn write(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::aircraft::tests::sample;
-    use crate::aircraft::{Category, Era};
 
     /// A stand-in for SHA-256 with the same shape: deterministic and sensitive to every byte.
     pub(crate) fn fake_sha(bytes: &[u8]) -> [u8; 32] {
@@ -406,16 +499,27 @@ pub(crate) mod tests {
         out
     }
 
-    pub(crate) fn entries() -> Vec<(String, AircraftDef)> {
-        let mut second = sample();
+    /// Two aircraft sharing one engine and one aero set, in id order:
+    /// 0 `core:ac/alpha`, 1 `core:ac/zulu`, 2 `core:aero/one`, 3 `core:eng/one`.
+    pub(crate) fn entries() -> Vec<(String, Entry)> {
+        let (engine, aero) = (ContentId(3), ContentId(2));
+        let mut second = crate::aircraft::tests::sample(engine, aero);
         second.name_key = "ac.sparrow.name".into();
-        second.category = Category::Uav;
-        second.era = Era::G5;
-        // Deliberately out of order, with a shared locale key.
+        second.category = crate::Category::Uav;
         vec![
-            ("core:ac/zulu".into(), sample()),
-            ("core:ac/alpha".into(), second),
-            ("core:ac/mike".into(), sample()),
+            ("core:ac/alpha".into(), Entry::Aircraft(second)),
+            (
+                "core:ac/zulu".into(),
+                Entry::Aircraft(crate::aircraft::tests::sample(engine, aero)),
+            ),
+            (
+                "core:aero/one".into(),
+                Entry::Aero(crate::aero::tests::sample()),
+            ),
+            (
+                "core:eng/one".into(),
+                Entry::Engine(crate::engine::tests::sample()),
+            ),
         ]
     }
 
@@ -434,49 +538,109 @@ pub(crate) mod tests {
     #[test]
     fn a_pack_round_trips_in_id_order() {
         let p = parse(&pack()).unwrap();
-        assert_eq!(p.ids, ["core:ac/alpha", "core:ac/mike", "core:ac/zulu"]);
-        assert_eq!(p.aircraft[0].name_key, "ac.sparrow.name");
-        assert_eq!(p.aircraft[0].category, Category::Uav);
-        assert_eq!(p.aircraft[1], sample());
-        assert_eq!(p.aircraft[2], sample());
+        assert_eq!(
+            p.ids,
+            [
+                "core:ac/alpha",
+                "core:ac/zulu",
+                "core:aero/one",
+                "core:eng/one"
+            ]
+        );
+        let originals: Vec<Entry> = entries().into_iter().map(|e| e.1).collect();
+        assert_eq!(p.entries, originals);
         assert_eq!(p.content_hash, fake_sha(&pack()[HEADER_BYTES..]));
     }
 
     #[test]
-    fn the_output_is_byte_stable_and_independent_of_input_order() {
+    fn the_output_is_byte_stable() {
+        assert_eq!(pack(), pack());
+    }
+
+    #[test]
+    fn the_writer_refuses_unsorted_duplicate_and_empty_ids() {
         let mut reversed = entries();
         reversed.reverse();
-        assert_eq!(pack(), write(&reversed, fake_sha).unwrap());
-        assert_eq!(pack(), pack());
+        assert_eq!(
+            write(&reversed, fake_sha).unwrap_err(),
+            CpackError::UnsortedToc
+        );
+        let mut dup = entries();
+        let copy = dup[1].clone();
+        dup.insert(1, copy);
+        assert_eq!(
+            write(&dup, fake_sha).unwrap_err(),
+            CpackError::DuplicateId("core:ac/zulu".into())
+        );
+        let empty = vec![(String::new(), Entry::Aero(crate::aero::tests::sample()))];
+        assert!(write(&empty, fake_sha).is_err());
+    }
+
+    #[test]
+    fn references_must_point_at_the_right_kind() {
+        let mut bad = entries();
+        if let Entry::Aircraft(a) = &mut bad[0].1 {
+            a.engines[0].engine = ContentId(2); // the aero entry
+        }
+        assert!(matches!(
+            write(&bad, fake_sha),
+            Err(CpackError::Reference(_))
+        ));
+        let mut bad = entries();
+        if let Entry::Aircraft(a) = &mut bad[1].1 {
+            a.aero.tables = ContentId(99);
+        }
+        assert!(matches!(
+            write(&bad, fake_sha),
+            Err(CpackError::Reference(_))
+        ));
+        let mut bad = entries();
+        if let Entry::Aircraft(a) = &mut bad[1].1 {
+            a.engines.clear();
+        }
+        assert!(matches!(
+            write(&bad, fake_sha),
+            Err(CpackError::Reference(_))
+        ));
     }
 
     #[test]
     fn identical_strings_are_stored_once() {
         let b = pack();
         let strings_len = u32_at(&b, header::STRINGS_LEN) as usize;
-        let ids = "core:ac/alphacore:ac/mikecore:ac/zulu".len();
-        let keys = "ac.sparrow.name".len() + "ac.kestrel.name".len();
-        assert_eq!(strings_len, ids + keys);
+        let ids = "core:ac/alphacore:ac/zulucore:aero/onecore:eng/one".len();
+        let keys = "ac.sparrow.name".len() + "ac.kestrel.name".len() + "eng.f129.name".len();
+        let tanks = "fwd".len() + "wing_l".len();
+        let points = "vmax_sl".len() + "to_roll".len();
+        assert_eq!(strings_len, ids + keys + tanks + points);
     }
 
     #[test]
     fn the_layout_is_what_the_comment_says() {
         let b = pack();
         assert_eq!(&b[..4], b"FGCP");
-        assert_eq!(u32_at(&b, header::VERSION), 1);
-        assert_eq!(u32_at(&b, header::ENTRY_COUNT), 3);
+        assert_eq!(u32_at(&b, header::VERSION), 2);
+        assert_eq!(u32_at(&b, header::ENTRY_COUNT), 4);
         assert_eq!(u32_at(&b, header::TOC_OFF), 80);
-        assert_eq!(u32_at(&b, header::STRINGS_OFF), 80 + 3 * 16);
+        assert_eq!(u32_at(&b, header::STRINGS_OFF), 80 + 4 * 24);
         assert_eq!(u32_at(&b, header::RECORDS_OFF) % 8, 0);
-        assert_eq!(u32_at(&b, header::RECORDS_LEN), 3 * 144);
         assert_eq!(u32_at(&b, header::TOTAL_LEN) as usize, b.len());
+        // Record lengths are multiples of 8 and tile the record section.
+        let mut next = 0;
+        for i in 0..4 {
+            let e = HEADER_BYTES + i * TOC_ENTRY_BYTES;
+            assert_eq!(u32_at(&b, e + 12), next);
+            assert_eq!(u32_at(&b, e + 16) % 8, 0);
+            next += u32_at(&b, e + 16);
+        }
+        assert_eq!(next, u32_at(&b, header::RECORDS_LEN));
     }
 
     #[test]
     fn an_empty_pack_is_valid() {
         let b = write(&[], fake_sha).unwrap();
         let p = parse(&b).unwrap();
-        assert!(p.ids.is_empty() && p.aircraft.is_empty());
+        assert!(p.ids.is_empty() && p.entries.is_empty());
         assert_eq!(b.len(), HEADER_BYTES);
     }
 
@@ -511,9 +675,14 @@ pub(crate) mod tests {
         b[0] = b'X';
         assert_eq!(parse(&b).unwrap_err(), CpackError::BadMagic);
         let mut b = good.clone();
-        b[header::VERSION] = 2;
-        assert_eq!(parse(&b).unwrap_err(), CpackError::UnsupportedVersion(2));
-        let mut b = good.clone();
+        b[header::VERSION] = 1;
+        assert_eq!(parse(&b).unwrap_err(), CpackError::UnsupportedVersion(1));
+        assert!(
+            CpackError::UnsupportedVersion(1)
+                .to_string()
+                .contains("rebuild")
+        );
+        let mut b = good;
         b[header::CONTENT_HASH] ^= 1;
         assert!(matches!(parse(&b), Err(CpackError::Checksum { .. })));
     }
@@ -546,11 +715,24 @@ pub(crate) mod tests {
         let wrong_kind = edit(&|b| set32(b, toc + 8, 7));
         assert_eq!(parse(&wrong_kind).unwrap_err(), CpackError::UnknownKind(7));
 
+        // An aircraft record read as an engine record does not decode.
+        let swapped_kind = edit(&|b| set32(b, toc + 8, KIND_ENGINE));
+        assert!(parse(&swapped_kind).is_err());
+
         let flags = edit(&|b| set32(b, header::FLAGS, 1));
         assert!(matches!(parse(&flags), Err(CpackError::Layout(_))));
 
-        let shifted_record = edit(&|b| set32(b, toc + 12, 144 * 2));
+        let reserved = edit(&|b| set32(b, toc + 20, 1));
+        assert!(matches!(parse(&reserved), Err(CpackError::Layout(_))));
+
+        let shifted_record = edit(&|b| set32(b, toc + 12, 8));
         assert!(matches!(parse(&shifted_record), Err(CpackError::Layout(_))));
+
+        let odd_length = edit(&|b| {
+            let len = u32_at(b, toc + 16);
+            set32(b, toc + 16, len + 4);
+        });
+        assert!(matches!(parse(&odd_length), Err(CpackError::Layout(_))));
 
         let id_out_of_range = edit(&|b| set32(b, toc + 4, 10_000));
         assert!(matches!(
@@ -564,12 +746,8 @@ pub(crate) mod tests {
         let bad_utf8 = edit(&|b| b[strings_off + 3] = 0xFF);
         assert_eq!(parse(&bad_utf8).unwrap_err(), CpackError::Utf8);
 
-        let bad_pad = edit(&|b| {
-            if records_off > strings_off + strings_len {
-                b[strings_off + strings_len] = 1;
-            }
-        });
         if records_off > strings_off + strings_len {
+            let bad_pad = edit(&|b| b[strings_off + strings_len] = 1);
             assert!(matches!(parse(&bad_pad), Err(CpackError::Layout(_))));
         }
 
@@ -579,19 +757,8 @@ pub(crate) mod tests {
             Err(CpackError::Layout(_))
         ));
 
-        let bad_record = edit(&|b| b[records_off + crate::aircraft::field::CATEGORY] = 0);
+        // Byte 8 of the first record is its aircraft category code.
+        let bad_record = edit(&|b| b[records_off + 8] = 0);
         assert!(matches!(parse(&bad_record), Err(CpackError::Record(_))));
-    }
-
-    #[test]
-    fn the_writer_refuses_duplicates_and_empty_ids() {
-        let mut dup = entries();
-        dup.push(("core:ac/mike".into(), sample()));
-        assert_eq!(
-            write(&dup, fake_sha).unwrap_err(),
-            CpackError::DuplicateId("core:ac/mike".into())
-        );
-        let empty = vec![(String::new(), sample())];
-        assert!(write(&empty, fake_sha).is_err());
     }
 }

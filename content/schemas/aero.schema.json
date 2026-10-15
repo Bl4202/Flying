@@ -1,0 +1,463 @@
+{
+  "$defs": {
+    "AxisName": {
+      "enum": [
+        "mach",
+        "alpha_deg",
+        "deflection_deg"
+      ],
+      "type": "string"
+    },
+    "ConfigFile": {
+      "additionalProperties": false,
+      "description": "Configuration increments (GDD C.4).",
+      "properties": {
+        "brake_cd0": {
+          "description": "Drag of the fully open airbrake.",
+          "format": "double",
+          "maximum": 0.5,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "flap_ld_cd0": {
+          "description": "Drag of landing flaps.",
+          "format": "double",
+          "maximum": 0.5,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "flap_ld_cl": {
+          "description": "Lift of landing flaps.",
+          "format": "double",
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "flap_to_cd0": {
+          "description": "Drag of take-off flaps.",
+          "format": "double",
+          "maximum": 0.5,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "flap_to_cl": {
+          "description": "Lift of take-off flaps.",
+          "format": "double",
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "gear_cd0": {
+          "description": "Drag of the extended gear.",
+          "format": "double",
+          "maximum": 0.5,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "gear_cd0",
+        "flap_to_cd0",
+        "flap_ld_cd0",
+        "brake_cd0",
+        "flap_to_cl",
+        "flap_ld_cl"
+      ],
+      "type": "object"
+    },
+    "CurveFile": {
+      "additionalProperties": false,
+      "description": "`y(x)` as `(x, y)` pairs with a strictly increasing `x` (Appendix A `Table1D`).",
+      "properties": {
+        "axis": {
+          "description": "Name and unit of `x`.",
+          "enum": [
+            "mach",
+            "alpha_deg",
+            "deflection_deg"
+          ],
+          "type": "string"
+        },
+        "points": {
+          "description": "`(x, y)` pairs.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "axis",
+        "points"
+      ],
+      "type": "object"
+    },
+    "DragFile": {
+      "additionalProperties": false,
+      "description": "Drag.",
+      "properties": {
+        "cd0": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Zero-lift drag against Mach."
+        },
+        "cd_wave": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Wave-drag rise against Mach."
+        },
+        "k_induced": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Induced-drag factor against Mach."
+        }
+      },
+      "required": [
+        "cd0",
+        "cd_wave",
+        "k_induced"
+      ],
+      "type": "object"
+    },
+    "GridFile": {
+      "additionalProperties": false,
+      "description": "`z(x, y)` stored row by row, `z[y][x]` (Appendix A `Table2D`).",
+      "properties": {
+        "axes": {
+          "description": "Names and units of `x` and `y`.",
+          "items": {
+            "$ref": "#/$defs/AxisName"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "x": {
+          "description": "X grid, strictly increasing.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "y": {
+          "description": "Y grid, strictly increasing.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "z": {
+          "description": "One row of `x.len()` values per `y`.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "axes",
+        "x",
+        "y",
+        "z"
+      ],
+      "type": "object"
+    },
+    "LateralFile": {
+      "additionalProperties": false,
+      "description": "Lateral and directional derivatives (GDD C.5).",
+      "properties": {
+        "cl_beta_per_rad": {
+          "description": "Rolling moment from sideslip.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "type": "number"
+        },
+        "cl_da_per_rad": {
+          "description": "Rolling moment per radian of aileron.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "type": "number"
+        },
+        "cl_dr_per_rad": {
+          "description": "Rolling moment per radian of rudder.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "type": "number"
+        },
+        "cl_p_per_rad": {
+          "description": "Roll damping.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -10.0,
+          "type": "number"
+        },
+        "cl_r_per_rad": {
+          "description": "Rolling moment from yaw rate.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "type": "number"
+        },
+        "cn_beta_per_rad": {
+          "description": "Yawing moment from sideslip.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "type": "number"
+        },
+        "cn_da_per_rad": {
+          "description": "Yawing moment per radian of aileron.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "type": "number"
+        },
+        "cn_dr_per_rad": {
+          "description": "Yawing moment per radian of rudder.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "type": "number"
+        },
+        "cn_p_per_rad": {
+          "description": "Yawing moment from roll rate.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "type": "number"
+        },
+        "cn_r_per_rad": {
+          "description": "Yaw damping.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -10.0,
+          "type": "number"
+        },
+        "cy_beta_per_rad": {
+          "description": "Side force from sideslip.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "type": "number"
+        },
+        "cy_dr_per_rad": {
+          "description": "Side force per radian of rudder.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "cy_beta_per_rad",
+        "cl_beta_per_rad",
+        "cn_beta_per_rad",
+        "cl_p_per_rad",
+        "cl_r_per_rad",
+        "cn_p_per_rad",
+        "cn_r_per_rad",
+        "cl_da_per_rad",
+        "cn_da_per_rad",
+        "cl_dr_per_rad",
+        "cn_dr_per_rad",
+        "cy_dr_per_rad"
+      ],
+      "type": "object"
+    },
+    "LiftFile": {
+      "additionalProperties": false,
+      "description": "Lift.",
+      "properties": {
+        "cl0": {
+          "description": "`C_L0` of the induced-drag term.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": -1.0,
+          "type": "number"
+        },
+        "cl_alpha_per_rad": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Lift-curve slope against Mach."
+        },
+        "cl_base": {
+          "$ref": "#/$defs/GridFile",
+          "description": "`C_L,base(alpha_deg, mach)`, clean, through the stall and beyond."
+        },
+        "cl_de_per_rad": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Lift per radian of elevator against Mach."
+        },
+        "cl_max": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Trimmed whole-aircraft maximum lift coefficient against Mach."
+        }
+      },
+      "required": [
+        "cl_base",
+        "cl_max",
+        "cl_alpha_per_rad",
+        "cl0",
+        "cl_de_per_rad"
+      ],
+      "type": "object"
+    },
+    "PitchFile": {
+      "additionalProperties": false,
+      "description": "Pitching moment about the reference point.",
+      "properties": {
+        "cm_0": {
+          "$ref": "#/$defs/GridFile",
+          "description": "`C_m0(alpha_deg, mach)`, elevator neutral."
+        },
+        "cm_alpha_dot_per_rad": {
+          "description": "Lag-of-downwash damping.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -100.0,
+          "type": "number"
+        },
+        "cm_de_per_rad": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Moment per radian of elevator against Mach."
+        },
+        "cm_q_per_rad": {
+          "description": "Pitch damping.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -100.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "cm_0",
+        "cm_de_per_rad",
+        "cm_q_per_rad",
+        "cm_alpha_dot_per_rad"
+      ],
+      "type": "object"
+    },
+    "PostStallFile": {
+      "additionalProperties": false,
+      "description": "The flat-plate blend beyond the tables.",
+      "properties": {
+        "blend_end_deg": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Angle of attack where the blend is complete, against Mach."
+        },
+        "blend_start_deg": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Angle of attack where the blend starts, against Mach."
+        },
+        "cd90": {
+          "description": "Flat-plate normal-force coefficient at 90 degrees.",
+          "format": "double",
+          "maximum": 3.0,
+          "minimum": 0.1,
+          "type": "number"
+        },
+        "x_ac_post_mac": {
+          "description": "Flat-plate aerodynamic centre, fraction of MAC from its leading edge.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "fraction of MAC"
+        }
+      },
+      "required": [
+        "blend_start_deg",
+        "blend_end_deg",
+        "cd90",
+        "x_ac_post_mac"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One airframe's aerodynamic tables (GDD 11.6, C.4, C.5).",
+  "properties": {
+    "config": {
+      "$ref": "#/$defs/ConfigFile",
+      "description": "Configuration increments."
+    },
+    "control_effectiveness": {
+      "$ref": "#/$defs/CurveFile",
+      "description": "Control power against deflection, `eta(deflection_deg)`."
+    },
+    "drag": {
+      "$ref": "#/$defs/DragFile",
+      "description": "Drag."
+    },
+    "ground_effect_k": {
+      "description": "Ground-effect lift factor `k_g`.",
+      "format": "double",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "id": {
+      "description": "`namespace:aero/name`.",
+      "type": "string"
+    },
+    "lateral": {
+      "$ref": "#/$defs/LateralFile",
+      "description": "Lateral and directional derivatives."
+    },
+    "lift": {
+      "$ref": "#/$defs/LiftFile",
+      "description": "Lift."
+    },
+    "pitch": {
+      "$ref": "#/$defs/PitchFile",
+      "description": "Pitching moment."
+    },
+    "post_stall": {
+      "$ref": "#/$defs/PostStallFile",
+      "description": "Blend to a flat plate beyond the tables (GDD 11.6.3, ADR-30)."
+    },
+    "schema": {
+      "const": "aero/1",
+      "description": "Format tag, always `aero/1`.",
+      "type": "string"
+    },
+    "x_ref_mac": {
+      "description": "Moment reference point, fraction of MAC from its leading edge.",
+      "format": "double",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number",
+      "x-unit": "fraction of MAC"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "lift",
+    "drag",
+    "pitch",
+    "lateral",
+    "post_stall",
+    "control_effectiveness",
+    "config",
+    "x_ref_mac",
+    "ground_effect_k"
+  ],
+  "title": "AeroFile",
+  "type": "object"
+}

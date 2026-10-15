@@ -19,6 +19,17 @@ export function watchErrors(page: Page): string[] {
 
 export const byId = (page: Page, id: string) => page.locator(`[data-testid="${id}"]`);
 
+/** The number at the start of an overlay row's value (`NaN` for a dash). */
+export const overlayNumber = async (page: Page, id: string): Promise<number> =>
+  Number.parseFloat((await byId(page, id).getAttribute('data-value')) ?? 'NaN');
+
+/** Elevator, aileron and rudder in degrees, from the overlay's `Surfaces` row. */
+export async function overlaySurfaces(page: Page): Promise<[number, number, number]> {
+  const text = (await byId(page, 'ov-surfaces').getAttribute('data-value')) ?? '';
+  const m = /^e (\S+) a (\S+) r (\S+)°$/.exec(text);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [Number.NaN, Number.NaN, Number.NaN];
+}
+
 /**
  * Opens the game and gets past the compat screen if it shows (a first run always shows it, and in
  * CI so does every run, because there is no WebGPU adapter), leaving the loop running.
@@ -37,6 +48,12 @@ export async function openGame(page: Page, url: string): Promise<void> {
   // The test hooks exist only with ?debug= or ?flags=stall.
   if (await page.evaluate(() => window.__flying !== undefined)) {
     await waitForStats(page);
+  }
+  // With the debug overlay open, wait for its first refresh (it shows dashes until then).
+  if ((await byId(page, 'ov-tas').count()) > 0) {
+    await expect
+      .poll(async () => Number.isFinite(await overlayNumber(page, 'ov-tas')), { timeout: 10_000 })
+      .toBe(true);
   }
 }
 
@@ -99,7 +116,7 @@ declare global {
               droppedMs: number;
               droppedEvents: number;
               stepRun: { count: number; max: number };
-              observer: { quat: number[] };
+              aircraft: { quat: number[]; tas: number; abStage: number; flags: number };
             }
           | undefined;
         render:

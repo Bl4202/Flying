@@ -1,11 +1,18 @@
-//! Cross-build determinism check (ADR-10, ADR-23, `AC-11.7` precursor).
+//! Cross-build determinism check (ADR-10, ADR-23, `AC-11.7`).
 //!
-//! Steps the same seeded simulation in the native `fg` binary and in both WebAssembly builds (run
-//! under Node), and requires bit-identical per-subsystem state hashes at every checkpoint. The run
-//! has the baked core content pack loaded and the scripted erratic pilot feeding the observer, so
-//! the content, input and observer subsystems are exercised too. The native hashes must also equal
-//! `tests/golden/determinism.json`, which catches accidental behaviour changes rather than just
-//! cross-build drift.
+//! Steps the same seeded simulation in the native `fg` binary (release and debug) and in both
+//! WebAssembly builds (run under Node), and requires bit-identical per-subsystem state hashes at
+//! every checkpoint. Two suites run, both with the baked core pack loaded, so the player's aircraft
+//! flies the 6-DOF model:
+//!
+//! - `erratic`: the seeded random-walk pilot for `--ticks` (10^6 by default) with crashes, resets
+//!   and respawns; golden `tests/golden/determinism.json`.
+//! - `flight60`: the 60 s scripted flight of `AC-11.7`, every second; golden
+//!   `tests/golden/flight60.json`.
+//!
+//! The native hashes must also equal the goldens, which catches accidental behaviour changes
+//! rather than just cross-build drift. `--compare-only` skips the goldens (native against WASM
+//! only), for work in progress that is known to change behaviour.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -18,17 +25,20 @@ use crate::util::{run, workspace_root};
 /// Same value as `sim_core::DEFAULT_SEED`, as hex.
 const SEED_HEX: &str = "1f1e5eed00000001";
 const FIELDS: [&str; 7] = [
-    "combined", "tick_h", "rng", "bodies", "observer", "input", "content",
+    "combined", "tick_h", "rng", "bodies", "ownship", "input", "content",
 ];
-/// The scripted pilot every run uses.
-const SCRIPT: &str = "erratic";
 /// The baked pack every run loads, relative to the repository root.
 const CONTENT: &str = "content-out/core.cpack";
+/// Length of the flight60 script, ticks.
+const FLIGHT60_TICKS: u64 = 3_600;
+/// Its checkpoint spacing: every second.
+const FLIGHT60_EVERY: u64 = 60;
 
 struct Options {
     ticks: u64,
     bless: bool,
     skip_wasm: bool,
+    compare_only: bool,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -36,6 +46,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         ticks: 1_000_000,
         bless: false,
         skip_wasm: false,
+        compare_only: false,
     };
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -46,13 +57,29 @@ fn parse(args: &[String]) -> Result<Options, String> {
             }
             "--bless" => o.bless = true,
             "--skip-wasm" => o.skip_wasm = true,
+            "--compare-only" => o.compare_only = true,
             other => return Err(format!("unknown flag {other}")),
         }
     }
     if o.ticks == 0 {
         return Err("--ticks must be positive".into());
     }
+    if o.bless && o.compare_only {
+        return Err("--bless and --compare-only do not go together".into());
+    }
     Ok(o)
+}
+
+/// One scripted run and its golden.
+struct Suite {
+    /// The `--script` name.
+    script: &'static str,
+    /// Checkpoint ticks, increasing.
+    at: Vec<u64>,
+    /// Golden file, relative to the repository root.
+    golden: &'static str,
+    /// The debug build is compared at this tick (debug is slow).
+    debug_probe: u64,
 }
 
 /// Powers of ten, every 100 000, and the final tick.
@@ -70,6 +97,11 @@ pub fn schedule(n: u64) -> Vec<u64> {
     }
     set.insert(n);
     set.into_iter().collect()
+}
+
+/// `0, k, 2k, ..., n`.
+fn every(n: u64, k: u64) -> Vec<u64> {
+    (0..=n / k).map(|i| i * k).collect()
 }
 
 fn list(ticks: &[u64]) -> String {
@@ -133,39 +165,80 @@ fn capture(cmd: &mut Command) -> Result<Vec<u8>, String> {
 pub fn run_command(args: &[String]) -> Result<(), String> {
     let opts = parse(args)?;
     let root = workspace_root();
-    let at = list(&schedule(opts.ticks));
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
 
     println!("== bake content");
     super::content::run_command(&[])?;
     let content = root.join(CONTENT);
     let content = content.to_str().ok_or("non-UTF-8 repository path")?;
-    let setup = ["--seed", SEED_HEX, "--script", SCRIPT, "--content", content];
-
-    println!(
-        "== native release, {} ticks, {} checkpoints",
-        opts.ticks,
-        at.split(',').count()
-    );
     run(Command::new(&cargo)
         .current_dir(&root)
         .args(["build", "-q", "-p", "cli", "--release"]))?;
-    let fg = root.join("target/release/fg");
+    run(Command::new(&cargo)
+        .current_dir(&root)
+        .args(["build", "-q", "-p", "cli"]))?;
+    if !opts.skip_wasm && !root.join("wasm-out/wasm-manifest.json").exists() {
+        return Err("wasm-out is missing: run `cargo xtask wasm` first".into());
+    }
+
+    let suites = [
+        Suite {
+            script: "erratic",
+            at: schedule(opts.ticks),
+            golden: "tests/golden/determinism.json",
+            debug_probe: 10_000.min(opts.ticks),
+        },
+        Suite {
+            script: "flight60",
+            at: every(FLIGHT60_TICKS, FLIGHT60_EVERY),
+            golden: "tests/golden/flight60.json",
+            debug_probe: FLIGHT60_TICKS,
+        },
+    ];
+    for suite in &suites {
+        run_suite(&root, suite, content, &opts)?;
+    }
+    if opts.compare_only {
+        println!("OK: native and WASM agree (goldens not checked: --compare-only)");
+    } else {
+        println!("OK: determinism holds");
+    }
+    Ok(())
+}
+
+fn run_suite(
+    root: &std::path::Path,
+    suite: &Suite,
+    content: &str,
+    opts: &Options,
+) -> Result<(), String> {
+    let setup = [
+        "--seed",
+        SEED_HEX,
+        "--script",
+        suite.script,
+        "--content",
+        content,
+    ];
+    let at = list(&suite.at);
+    let last = *suite.at.last().expect("a suite has checkpoints");
+    println!(
+        "== {}: native release, {last} ticks, {} checkpoints",
+        suite.script,
+        suite.at.len()
+    );
     let native = parse_lines(
         "native",
         &capture(
-            Command::new(&fg)
+            Command::new(root.join("target/release/fg"))
                 .arg("hash")
                 .args(setup)
                 .args(["--at", &at]),
         )?,
     )?;
 
-    // Release must equal debug (overflow checks, opt level) at a cheap tick count.
-    let probe = 10_000.min(opts.ticks);
-    run(Command::new(&cargo)
-        .current_dir(&root)
-        .args(["build", "-q", "-p", "cli"]))?;
+    // Release must equal debug (overflow checks, opt level).
+    let probe = suite.debug_probe;
     let debug = parse_lines(
         "native-debug",
         &capture(
@@ -181,45 +254,51 @@ pub fn run_command(args: &[String]) -> Result<(), String> {
         .cloned()
         .collect();
     if let Some(d) = first_difference("release", &release_at_probe, "debug", &debug) {
-        return Err(format!("native release vs debug: {d}"));
+        return Err(format!("{}: native release vs debug: {d}", suite.script));
     }
     println!("   release == debug at tick {probe}");
 
     if !opts.skip_wasm {
-        if !root.join("wasm-out/wasm-manifest.json").exists() {
-            return Err("wasm-out is missing: run `cargo xtask wasm` first".into());
-        }
         for variant in ["single", "threads"] {
-            println!("== wasm {variant} under node");
+            println!("== {}: wasm {variant} under node", suite.script);
             let wasm = parse_lines(
                 variant,
                 &capture(
                     Command::new("node")
-                        .current_dir(&root)
+                        .current_dir(root)
                         .args(["packages/tools/src/wasm-hash.ts", "--variant", variant])
                         .args(setup)
                         .args(["--at", &at]),
                 )?,
             )?;
             if let Some(d) = first_difference("native", &native, variant, &wasm) {
-                return Err(format!("native vs wasm {variant}: {d}"));
+                return Err(format!("{}: native vs wasm {variant}: {d}", suite.script));
             }
             println!("   identical at all {} checkpoints", native.len());
         }
     }
 
-    check_golden(&root, &native, &opts)
+    if opts.compare_only {
+        return Ok(());
+    }
+    check_golden(root, suite, &native, last, opts.bless)
 }
 
-fn check_golden(root: &std::path::Path, native: &[Value], opts: &Options) -> Result<(), String> {
-    let path = root.join("tests/golden/determinism.json");
+fn check_golden(
+    root: &std::path::Path,
+    suite: &Suite,
+    native: &[Value],
+    ticks: u64,
+    bless: bool,
+) -> Result<(), String> {
+    let path = root.join(suite.golden);
     let current = json!({
         "seed": SEED_HEX,
-        "script": SCRIPT,
-        "ticks": opts.ticks,
+        "script": suite.script,
+        "ticks": ticks,
         "checkpoints": native,
     });
-    if opts.bless {
+    if bless {
         fs::create_dir_all(path.parent().expect("has parent")).map_err(|e| e.to_string())?;
         let text = serde_json::to_string_pretty(&current).map_err(|e| e.to_string())?;
         fs::write(&path, format!("{text}\n")).map_err(|e| e.to_string())?;
@@ -235,7 +314,8 @@ fn check_golden(root: &std::path::Path, native: &[Value], opts: &Options) -> Res
         .any(|k| stored[*k] != current[*k])
     {
         return Err(format!(
-            "golden was recorded for seed {} / script {} / {} ticks, this run is seed {} / script {} / {} ticks",
+            "{} was recorded for seed {} / script {} / {} ticks, this run is seed {} / script {} / {} ticks",
+            suite.golden,
             stored["seed"],
             stored["script"],
             stored["ticks"],
@@ -250,13 +330,17 @@ fn check_golden(root: &std::path::Path, native: &[Value], opts: &Options) -> Res
         .unwrap_or_default();
     if let Some(d) = first_difference("golden", &stored_cp, "native", native) {
         return Err(format!(
-            "native differs from tests/golden/determinism.json: {d}\n\
+            "native differs from {}: {d}\n\
              If this change to simulation behaviour is intended, re-bless with \
-             `cargo xtask determinism --bless` and explain why in the PR."
+             `cargo xtask determinism --bless` and explain why in the PR.",
+            suite.golden
         ));
     }
-    println!("== golden: matches ({} checkpoints)", native.len());
-    println!("OK: determinism holds for {} ticks", opts.ticks);
+    println!(
+        "== {}: golden matches ({} checkpoints)",
+        suite.script,
+        native.len()
+    );
     Ok(())
 }
 
@@ -267,7 +351,7 @@ mod tests {
     fn cp(tick: u64, combined: &str) -> Value {
         json!({
             "tick": tick, "combined": combined, "tick_h": "t", "rng": "r", "bodies": "b",
-            "observer": "o", "input": "i", "content": "c",
+            "ownship": "o", "input": "i", "content": "c",
         })
     }
 
@@ -280,6 +364,20 @@ mod tests {
         assert_eq!(s.last(), Some(&1_000_000));
         assert!(s.contains(&100_000) && s.contains(&500_000) && s.contains(&1_000));
         assert!(s.windows(2).all(|w| w[0] < w[1]));
+    }
+
+    #[test]
+    fn flight60_checkpoints_every_second() {
+        let at = every(FLIGHT60_TICKS, FLIGHT60_EVERY);
+        assert_eq!(at.len(), 61);
+        assert_eq!((at[0], at[60]), (0, 3_600));
+    }
+
+    #[test]
+    fn bless_and_compare_only_exclude_each_other() {
+        let args = |l: &[&str]| l.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
+        assert!(parse(&args(&["--bless", "--compare-only"])).is_err());
+        assert!(parse(&args(&["--compare-only"])).unwrap().compare_only);
     }
 
     #[test]

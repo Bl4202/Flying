@@ -2,14 +2,22 @@
 //!
 //! ```text
 //! fg version
-//! fg hash  [--seed HEX] [--script none|erratic] [--content PATH] (--ticks N | --at T1,T2,...)
-//! fg bench [--seed HEX] [--script none|erratic] [--content PATH] [--ticks N] [--json]
+//! fg hash  [--seed HEX] [--script none|erratic|flight60] [--content PATH]
+//!          (--ticks N | --at T1,T2,... | --every N --ticks N)
+//! fg bench [--seed HEX] [--script none|erratic|flight60] [--content PATH] [--ticks N] [--json]
+//! fg bench --aircraft N --content PATH [--ticks N] [--json]
+//! fg conformance --content PATH [--aircraft-index N] [--json PATH] [--traces DIR]
+//!                [--only ID,...] [--expect-deferred ID,...]
 //! ```
 //!
 //! `fg hash` prints one JSON object per requested tick with the combined and per-subsystem state
 //! hashes as 16-digit hex strings. The determinism check compares this output to the WebAssembly
 //! builds (ADR-10). `fg bench` times the tick; its wall-clock numbers are observations about the
-//! machine and never feed state.
+//! machine and never feed state; with `--aircraft N` it times N copies of the spawned aircraft
+//! through the flight model alone, the T0 cost per aircraft-tick (GDD 60.2, PS-9). `fg conformance` runs the Performance Conformance Test
+//! (ADR-31) and exits 1 when its gate fails.
+
+mod conformance;
 
 use std::io::Write;
 use std::process::ExitCode;
@@ -20,8 +28,12 @@ use sim_core::{DEFAULT_SEED, SimCore};
 
 const USAGE: &str = "usage:
   fg version
-  fg hash  [--seed HEX] [--script none|erratic] [--content PATH] (--ticks N | --at T1,T2,...)
-  fg bench [--seed HEX] [--script none|erratic] [--content PATH] [--ticks N] [--json]";
+  fg hash  [--seed HEX] [--script none|erratic|flight60] [--content PATH]
+           (--ticks N | --at T1,T2,... | --every N --ticks N)
+  fg bench [--seed HEX] [--script none|erratic|flight60] [--content PATH] [--ticks N] [--json]
+  fg bench --aircraft N --content PATH [--ticks N] [--json]
+  fg conformance --content PATH [--aircraft-index N] [--json PATH] [--traces DIR]
+                 [--only ID,...] [--expect-deferred ID,...]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -36,6 +48,18 @@ fn main() -> ExitCode {
         }
         Some("hash") => run_hash(&args[1..]),
         Some("bench") => run_bench(&args[1..]),
+        Some("conformance") => {
+            let build = format!(
+                "fg {} {}",
+                env!("CARGO_PKG_VERSION"),
+                option_env!("GIT_SHA").unwrap_or("unknown")
+            );
+            match conformance::run(&args[1..], &build) {
+                Ok(true) => Ok(()),
+                Ok(false) => return ExitCode::from(1),
+                Err(e) => Err(e),
+            }
+        }
         _ => Err(String::new()),
     };
     match result {
@@ -108,7 +132,12 @@ fn parse(args: &[String], switches: &[&str]) -> Result<Parsed, String> {
                 setup.script = match value.as_str() {
                     "none" => input_script::NONE as u32,
                     "erratic" => input_script::ERRATIC as u32,
-                    other => return Err(format!("unknown --script {other:?} (none or erratic)")),
+                    "flight60" => input_script::FLIGHT60 as u32,
+                    other => {
+                        return Err(format!(
+                            "unknown --script {other:?} (none, erratic or flight60)"
+                        ));
+                    }
                 };
             }
             "--content" => {
@@ -126,17 +155,24 @@ fn parse(args: &[String], switches: &[&str]) -> Result<Parsed, String> {
 fn run_hash(args: &[String]) -> Result<(), String> {
     let Parsed { setup, rest, .. } = parse(args, &[])?;
     let mut at: Option<Vec<u64>> = None;
+    let mut last: Option<u64> = None;
+    let mut every: Option<u64> = None;
     for (flag, value) in &rest {
         match flag.as_str() {
-            "--ticks" => {
-                let n: u64 = value.parse().map_err(|e| format!("bad --ticks: {e}"))?;
-                at = Some(vec![n]);
+            "--ticks" => last = Some(value.parse().map_err(|e| format!("bad --ticks: {e}"))?),
+            "--every" => {
+                every = Some(value.parse().map_err(|e| format!("bad --every: {e}"))?);
             }
             "--at" => at = Some(parse_ticks(value)?),
             other => return Err(format!("unknown flag {other}")),
         }
     }
-    let ticks = at.ok_or("one of --ticks or --at is required")?;
+    let ticks = match (at, last, every) {
+        (Some(at), None, None) => at,
+        (None, Some(n), None) => vec![n],
+        (None, Some(n), Some(k)) if k > 0 => every_ticks(n, k),
+        _ => return Err("use --ticks N, --at T1,T2,... or --every K --ticks N".into()),
+    };
     if ticks.windows(2).any(|w| w[0] >= w[1]) {
         return Err("--at ticks must be strictly increasing".into());
     }
@@ -149,13 +185,13 @@ fn run_hash(args: &[String]) -> Result<(), String> {
         let h = core.subsystem_hashes();
         writeln!(
             out,
-            "{{\"tick\":{},\"combined\":\"{:016x}\",\"tick_h\":\"{:016x}\",\"rng\":\"{:016x}\",\"bodies\":\"{:016x}\",\"observer\":\"{:016x}\",\"input\":\"{:016x}\",\"content\":\"{:016x}\"}}",
+            "{{\"tick\":{},\"combined\":\"{:016x}\",\"tick_h\":\"{:016x}\",\"rng\":\"{:016x}\",\"bodies\":\"{:016x}\",\"ownship\":\"{:016x}\",\"input\":\"{:016x}\",\"content\":\"{:016x}\"}}",
             core.tick(),
             h.combined,
             h.tick,
             h.rng,
             h.bodies,
-            h.observer,
+            h.ownship,
             h.input,
             h.content
         )
@@ -178,13 +214,22 @@ const BENCH_CHUNKS: u64 = 11;
 
 fn run_bench(args: &[String]) -> Result<(), String> {
     let Parsed { setup, rest, on } = parse(args, &["--json"])?;
-    let mut ticks = 220_000_u64;
+    let mut ticks = None;
+    let mut aircraft = None;
     for (flag, value) in &rest {
         match flag.as_str() {
-            "--ticks" => ticks = value.parse().map_err(|e| format!("bad --ticks: {e}"))?,
+            "--ticks" => ticks = Some(value.parse().map_err(|e| format!("bad --ticks: {e}"))?),
+            "--aircraft" => {
+                aircraft = Some(value.parse().map_err(|e| format!("bad --aircraft: {e}"))?);
+            }
             other => return Err(format!("unknown flag {other}")),
         }
     }
+    let json = on.iter().any(|f| f == "--json");
+    if let Some(n) = aircraft {
+        return bench_aircraft(&setup, n, ticks, json);
+    }
+    let ticks = ticks.unwrap_or(220_000_u64);
     let per_chunk = ticks / BENCH_CHUNKS;
     if per_chunk == 0 {
         return Err(format!("--ticks must be at least {BENCH_CHUNKS}"));
@@ -206,12 +251,12 @@ fn run_bench(args: &[String]) -> Result<(), String> {
         ns_per_tick[ns_per_tick.len() / 2],
         ns_per_tick[ns_per_tick.len() - 1],
     );
-    let script = if setup.script == input_script::NONE as u32 {
-        "none"
-    } else {
-        "erratic"
+    let script = match setup.script as usize {
+        input_script::NONE => "none",
+        input_script::ERRATIC => "erratic",
+        _ => "flight60",
     };
-    if on.iter().any(|f| f == "--json") {
+    if json {
         println!(
             "{{\"schema\":\"fg-bench/1\",\"ticks\":{},\"script\":\"{script}\",\"content\":{},\"ns_per_tick_min\":{min:.1},\"ns_per_tick_median\":{median:.1},\"ns_per_tick_max\":{max:.1}}}",
             per_chunk * BENCH_CHUNKS,
@@ -224,6 +269,106 @@ fn run_bench(args: &[String]) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+/// Ticks an aircraft flies before the microbench puts it back at the spawn (20 s). Measured on the
+/// Kestrel with the inputs below: height within 100 m, `n_z` 0.4 to 1.5, bank within 35 degrees.
+const SEGMENT_TICKS: u64 = 1_200;
+
+/// The PS-9 microbench: `n` copies of the spawned aircraft stepped through the flight model in the
+/// live world (procedural geo, still air), with no other system running. Every `SEGMENT_TICKS`
+/// they restart from the trimmed spawn (a copy, negligible next to the ticks). By default each
+/// timed chunk is at least 64 segments of aircraft-ticks (76 800), so even one aircraft is timed
+/// over a long enough stretch. Reports ns per aircraft-tick.
+fn bench_aircraft(setup: &Setup, n: usize, ticks: Option<u64>, json: bool) -> Result<(), String> {
+    if setup.content.is_none() {
+        return Err("--aircraft needs --content (the aircraft comes from the pack)".into());
+    }
+    if n == 0 {
+        return Err("--aircraft must be at least 1".into());
+    }
+    let segments = 64_u64.div_ceil(n as u64);
+    let per_chunk = ticks.unwrap_or(BENCH_CHUNKS * SEGMENT_TICKS * segments) / BENCH_CHUNKS;
+    if per_chunk == 0 {
+        return Err(format!("--ticks must be at least {BENCH_CHUNKS}"));
+    }
+    let core = setup.core()?;
+    let svc = core.services();
+    let model = svc.aircraft.as_ref().ok_or("the pack has no aircraft")?;
+    let spawned = *core
+        .ownship()
+        .aircraft()
+        .ok_or("the core did not spawn an aircraft")?;
+    let env = svc.flight_env();
+    let mut fleet = vec![spawned; n];
+    // Gentle inputs on every axis, so the controls, actuators and the whole aero build-up are
+    // exercised. Each is +, -, -, + over four periods: the stick commands rates, so this brings the
+    // attitude back to the spawn's instead of letting it drift. The throttle stays where the
+    // spawn's trim put it (in steady state the core spool is the dry fraction of the lever).
+    let trimmed_lever = spawned.state.engines[0].core * f64::from(flight::engine::DETENT);
+    let controls = |tick: u64| {
+        let wave = |period: u64| match (tick / period) % 4 {
+            0 | 3 => 1.0,
+            _ => -1.0,
+        };
+        flight::controls::PilotControls {
+            pitch: 0.03 * wave(45),
+            roll: 0.1 * wave(60),
+            yaw: 0.05 * wave(75),
+            throttle: trimmed_lever,
+            ..flight::controls::PilotControls::default()
+        }
+    };
+    let run = |fleet: &mut [sim_core::ownship::AircraftSlot], ticks: u64| {
+        for tick in 0..ticks {
+            let tick = tick % SEGMENT_TICKS;
+            if tick == 0 {
+                fleet.fill(spawned);
+            }
+            let c = controls(tick);
+            let t_s = tick as f64 * sim_core::time::SIM_DT;
+            for slot in fleet.iter_mut() {
+                let cmd = model.manual_commands(&mut slot.state, &c);
+                model.step_tick(&mut slot.state, &cmd, &env, t_s);
+            }
+        }
+    };
+    run(&mut fleet, 600); // warm-up
+    let mut ns = Vec::new();
+    for _ in 0..BENCH_CHUNKS {
+        let t0 = Instant::now();
+        run(&mut fleet, per_chunk);
+        ns.push(t0.elapsed().as_nanos() as f64 / (per_chunk as f64 * n as f64));
+    }
+    if fleet
+        .iter()
+        .any(|s| s.state.numerical_fault || !s.state.body.pos_bf.x.is_finite())
+    {
+        return Err("an aircraft faulted during the benchmark".into());
+    }
+    ns.sort_by(f64::total_cmp);
+    let (min, median, max) = (ns[0], ns[ns.len() / 2], ns[ns.len() - 1]);
+    if json {
+        println!(
+            "{{\"schema\":\"fg-bench-aircraft/1\",\"aircraft\":{n},\"ticks\":{},\"ns_per_aircraft_tick_min\":{min:.1},\"ns_per_aircraft_tick_median\":{median:.1},\"ns_per_aircraft_tick_max\":{max:.1}}}",
+            per_chunk * BENCH_CHUNKS
+        );
+    } else {
+        println!(
+            "{n} aircraft, {} ticks each: median {median:.0} ns per aircraft-tick (min {min:.0}, max {max:.0})",
+            per_chunk * BENCH_CHUNKS
+        );
+    }
+    Ok(())
+}
+
+/// `0, k, 2k, ..., n` (and `n` itself if it is not a multiple of `k`).
+fn every_ticks(n: u64, k: u64) -> Vec<u64> {
+    let mut v: Vec<u64> = (0..=n / k).map(|i| i * k).collect();
+    if !n.is_multiple_of(k) {
+        v.push(n);
+    }
+    v
 }
 
 fn parse_ticks(list: &str) -> Result<Vec<u64>, String> {
@@ -268,6 +413,13 @@ mod tests {
     }
 
     #[test]
+    fn every_lists_the_checkpoints() {
+        assert_eq!(every_ticks(180, 60), [0, 60, 120, 180]);
+        assert_eq!(every_ticks(130, 60), [0, 60, 120, 130]);
+        assert_eq!(every_ticks(3_600, 60).len(), 61);
+    }
+
+    #[test]
     fn the_script_changes_the_input_hash_and_the_observer() {
         let run = |script| {
             let mut setup = parse(&[], &[]).unwrap().setup;
@@ -279,7 +431,7 @@ mod tests {
         let quiet = run(input_script::NONE as u32);
         let busy = run(input_script::ERRATIC as u32);
         assert_ne!(quiet.input, busy.input);
-        assert_ne!(quiet.observer, busy.observer);
+        assert_ne!(quiet.ownship, busy.ownship);
         // The probe world does not depend on input.
         assert_eq!((quiet.rng, quiet.bodies), (busy.rng, busy.bodies));
     }

@@ -1,0 +1,294 @@
+{
+  "$defs": {
+    "CurveFile": {
+      "additionalProperties": false,
+      "description": "`y(x)` as `(x, y)` pairs with a strictly increasing `x` (Appendix A `Table1D`).",
+      "properties": {
+        "axis": {
+          "description": "Name and unit of `x`.",
+          "enum": [
+            "mach",
+            "alpha_deg",
+            "deflection_deg"
+          ],
+          "type": "string"
+        },
+        "points": {
+          "description": "`(x, y)` pairs.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "axis",
+        "points"
+      ],
+      "type": "object"
+    },
+    "DynamicsFile": {
+      "additionalProperties": false,
+      "description": "Spool and afterburner dynamics.",
+      "properties": {
+        "ab_cutoff_s": {
+          "description": "Time constant of the afterburner level falling when it is throttled back or cut.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "ab_lightoff_s": {
+          "description": "Afterburner light-off delay.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "ab_stage_s": {
+          "description": "Time constant of the afterburner level rising once lit.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "ab_stages": {
+          "description": "Afterburner stages (0 for none).",
+          "format": "uint8",
+          "maximum": 8,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "spool_down_s": {
+          "description": "Spool-down time constant.",
+          "format": "double",
+          "maximum": 30.0,
+          "minimum": 0.05,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "spool_up_s": {
+          "description": "Spool-up time constant.",
+          "format": "double",
+          "maximum": 30.0,
+          "minimum": 0.05,
+          "type": "number",
+          "x-unit": "s"
+        }
+      },
+      "required": [
+        "spool_up_s",
+        "spool_down_s",
+        "ab_lightoff_s",
+        "ab_stage_s",
+        "ab_cutoff_s",
+        "ab_stages"
+      ],
+      "type": "object"
+    },
+    "EngineLimitsFile": {
+      "additionalProperties": false,
+      "description": "Engine operating limits.",
+      "properties": {
+        "compressor_stall_alpha_deg": {
+          "description": "Angle of attack above which the compressor stalls at low speed.",
+          "format": "double",
+          "maximum": 90.0,
+          "minimum": 10.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "windmill_relight_mps": {
+          "description": "Lowest airspeed for a windmill relight.",
+          "format": "double",
+          "maximum": 1000.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m/s"
+        }
+      },
+      "required": [
+        "compressor_stall_alpha_deg",
+        "windmill_relight_mps"
+      ],
+      "type": "object"
+    },
+    "InletFile": {
+      "additionalProperties": false,
+      "description": "Inlet distortion: thrust is scaled by `1 - 0.5 s^2`, `s = clamp((|alpha| - start) / span)`.",
+      "properties": {
+        "alpha_span_deg": {
+          "description": "Span over which the loss reaches its maximum.",
+          "format": "double",
+          "maximum": 90.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "alpha_start_deg": {
+          "description": "Angle of attack where the loss begins.",
+          "format": "double",
+          "maximum": 90.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "deg"
+        }
+      },
+      "required": [
+        "alpha_start_deg",
+        "alpha_span_deg"
+      ],
+      "type": "object"
+    },
+    "ThrustFile": {
+      "additionalProperties": false,
+      "description": "Thrust deck: `F = F_SL (rho / rho0)^n f(M)`.",
+      "properties": {
+        "density_exp": {
+          "description": "Exponent of the density lapse.",
+          "format": "double",
+          "maximum": 2.0,
+          "minimum": 0.1,
+          "type": "number"
+        },
+        "idle_fraction": {
+          "description": "Idle thrust as a fraction of military thrust.",
+          "format": "double",
+          "maximum": 0.5,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "mach_factor_ab": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Afterburner thrust factor against Mach."
+        },
+        "mach_factor_dry": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Dry thrust factor against Mach."
+        },
+        "sl_ab_n": {
+          "description": "Sea-level static thrust in full afterburner (equal to dry if there is none).",
+          "format": "double",
+          "maximum": 1000000.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "N"
+        },
+        "sl_dry_n": {
+          "description": "Sea-level static thrust at military (dry) power.",
+          "format": "double",
+          "maximum": 1000000.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "N"
+        }
+      },
+      "required": [
+        "sl_dry_n",
+        "sl_ab_n",
+        "density_exp",
+        "mach_factor_dry",
+        "mach_factor_ab",
+        "idle_fraction"
+      ],
+      "type": "object"
+    },
+    "TsfcFile": {
+      "additionalProperties": false,
+      "description": "Thrust-specific fuel consumption at sea-level static conditions.",
+      "properties": {
+        "ab_kg_per_ns": {
+          "description": "Full afterburner.",
+          "format": "double",
+          "maximum": 0.001,
+          "minimum": 1e-6,
+          "type": "number",
+          "x-unit": "kg/(N s)"
+        },
+        "dry_kg_per_ns": {
+          "description": "Dry.",
+          "format": "double",
+          "maximum": 0.001,
+          "minimum": 1e-6,
+          "type": "number",
+          "x-unit": "kg/(N s)"
+        }
+      },
+      "required": [
+        "dry_kg_per_ns",
+        "ab_kg_per_ns"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One engine type (GDD 11.8, A.3, C.3). Thrust and fuel flow are per engine.",
+  "properties": {
+    "dynamics": {
+      "$ref": "#/$defs/DynamicsFile",
+      "description": "Spool and afterburner dynamics."
+    },
+    "id": {
+      "description": "`namespace:eng/name`.",
+      "type": "string"
+    },
+    "inlet": {
+      "$ref": "#/$defs/InletFile",
+      "description": "Inlet distortion at high angle of attack."
+    },
+    "kind": {
+      "description": "Engine type.",
+      "enum": [
+        "turbofan",
+        "turbojet",
+        "turboprop"
+      ],
+      "type": "string"
+    },
+    "limits": {
+      "$ref": "#/$defs/EngineLimitsFile",
+      "description": "Operating limits."
+    },
+    "name_key": {
+      "description": "Key of the display name in the locale table.",
+      "type": "string"
+    },
+    "schema": {
+      "const": "engine/1",
+      "description": "Format tag, always `engine/1`.",
+      "type": "string"
+    },
+    "thrust": {
+      "$ref": "#/$defs/ThrustFile",
+      "description": "Thrust deck."
+    },
+    "tsfc": {
+      "$ref": "#/$defs/TsfcFile",
+      "description": "Fuel consumption."
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "name_key",
+    "kind",
+    "thrust",
+    "tsfc",
+    "dynamics",
+    "inlet",
+    "limits"
+  ],
+  "title": "EngineFile",
+  "type": "object"
+}

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
-import { PROFILE, STAGE, type SimStats } from '@flying/sim-bridge';
+import { OWNSHIP_FLAG, PROFILE, STAGE, type SimStats } from '@flying/sim-bridge';
 import type { RenderStats } from '@flying/render/messages';
 import {
   DebugOverlay,
@@ -14,6 +14,7 @@ import { countNodes } from './dom.ts';
 import {
   attitudeDegrees,
   buildOverlayRows,
+  flagsText,
   formatHashReport,
   STAGE_NAMES,
   type OverlayModel,
@@ -36,11 +37,23 @@ function sim(over: Partial<SimStats> = {}): SimStats {
     snapshotsDropped: 0,
     coreState: 2,
     sleeper: 'atomics',
-    observer: {
+    aircraft: {
       pos: [10, -6000, 1500],
       quat: [Math.SQRT1_2, 0, 0, Math.SQRT1_2],
-      speed: 180,
-      throttle: 0.5,
+      tas: 180,
+      cas: 154.3,
+      mach: 0.55,
+      alpha: 0.05,
+      beta: -0.002,
+      nz: 1.02,
+      throttle: 0.9,
+      thrust: 101_500,
+      fuel: 1860,
+      mass: 10_260,
+      surfaces: [-0.05, 0.01, 0],
+      altitude: 2934,
+      abStage: 2,
+      flags: 0,
       inputSeq: 9,
     },
     profile: {
@@ -131,8 +144,35 @@ describe('buildOverlayRows', () => {
     expect(get('mode')).toBe('threads · shared · atomics');
     expect(get('renderer')).toBe('webgl2 on worker');
     expect(get('content')).toBe('0123456789abcdef');
-    expect(get('speed')).toBe('180.0 m/s');
-    expect(get('pos')).toBe('10 -6000 1500');
+    expect(get('alt')).toBe('2934 m at E 10 N -6000');
+    expect(get('pitch')).toBe('0.0° / 0.0°');
+    expect(get('tas')).toBe('180.0 m/s / 300 kn');
+    expect(get('mach')).toBe('0.550');
+    expect(get('alpha')).toBe('2.9° / -0.1°');
+    expect(get('nz')).toBe('1.02 g');
+    expect(get('throttle')).toBe('0.90 AB 2');
+    expect(get('thrust')).toBe('101.5 kN');
+    expect(get('fuel')).toBe('1860 kg / 10260 kg');
+    expect(get('surfaces')).toBe('e -2.9 a 0.6 r 0.0°');
+    expect(get('status')).toBe('ok');
+    expect(get('input')).toBe('100 (0 refused), core at 9');
+  });
+
+  it('leads every shared row with the number its id names (the e2e specs parse that one)', () => {
+    const rows = buildOverlayRows(model());
+    const lead = (id: string) => Number.parseFloat(rows.find((r) => r.id === id)?.value ?? '');
+    expect([lead('alt'), lead('tas'), lead('alpha'), lead('fuel')]).toEqual([2934, 180, 2.9, 1860]);
+  });
+
+  it('stays within its share of the DOM budget (AC-53.4: two nodes a row)', () => {
+    expect(buildOverlayRows(model()).length).toBeLessThanOrEqual(44);
+  });
+
+  it('says what is wrong with the ownship', () => {
+    expect(flagsText(0)).toBe('ok');
+    expect(flagsText(OWNSHIP_FLAG.SPECTATOR)).toBe('spectator');
+    expect(flagsText(OWNSHIP_FLAG.CRASHED | OWNSHIP_FLAG.STALL_WARN)).toBe('crashed, stall');
+    expect(flagsText(OWNSHIP_FLAG.FLAMEOUT)).toBe('flameout');
   });
 
   it('never shows a heading of 360', () => {
@@ -143,7 +183,7 @@ describe('buildOverlayRows', () => {
     const c = Math.cos(eps / 2);
     const s = Math.sin(eps / 2);
     const quat: [number, number, number, number] = [0, h * (c - s), h * (c + s), 0];
-    const m = model({ sim: sim({ observer: { ...sim().observer, quat } }) });
+    const m = model({ sim: sim({ aircraft: { ...sim().aircraft, quat } }) });
     const heading = buildOverlayRows(m).find((r) => r.id === 'heading')?.value;
     expect(heading).toBe('0.0°');
   });

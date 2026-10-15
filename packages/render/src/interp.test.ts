@@ -5,7 +5,7 @@ import { makeSnapshot, NORTH } from './snapshot-fixture.ts';
 
 const DT = 1000 / 60;
 const at = (tick: number, x: number, extra: Parameters<typeof makeSnapshot>[0] = {}): Uint8Array =>
-  makeSnapshot({ tick, publishMs: 1000 + tick * DT, observer: { pos: [x, 0, 100] }, ...extra });
+  makeSnapshot({ tick, publishMs: 1000 + tick * DT, ownship: { pos: [x, 0, 100] }, ...extra });
 
 describe('SnapshotInterpolator', () => {
   it('has nothing to draw before the first snapshot', () => {
@@ -18,7 +18,7 @@ describe('SnapshotInterpolator', () => {
     const i = new SnapshotInterpolator();
     expect(i.push(at(1, 10))).toBe(true);
     const s = i.sample(1000 + DT);
-    expect(s?.observerPosBf[0]).toBe(10);
+    expect(s?.ownshipPosBf[0]).toBe(10);
     expect(i.status.alpha).toBe(1);
     expect(i.held).toBe(1);
   });
@@ -29,12 +29,12 @@ describe('SnapshotInterpolator', () => {
     i.push(at(2, 60));
     const t2 = 1000 + 2 * DT;
     // Drawing one interval behind "now": at now = publish(2) the picture is exactly tick 1.
-    expect(i.sample(t2)?.observerPosBf[0]).toBeCloseTo(0, 9);
-    expect(i.sample(t2 + DT / 2)?.observerPosBf[0]).toBeCloseTo(30, 9);
-    expect(i.sample(t2 + DT)?.observerPosBf[0]).toBeCloseTo(60, 9);
+    expect(i.sample(t2)?.ownshipPosBf[0]).toBeCloseTo(0, 9);
+    expect(i.sample(t2 + DT / 2)?.ownshipPosBf[0]).toBeCloseTo(30, 9);
+    expect(i.sample(t2 + DT)?.ownshipPosBf[0]).toBeCloseTo(60, 9);
     // Never extrapolates past the newest, never before the older one.
-    expect(i.sample(t2 + 10 * DT)?.observerPosBf[0]).toBe(60);
-    expect(i.sample(t2 - 10 * DT)?.observerPosBf[0]).toBe(0);
+    expect(i.sample(t2 + 10 * DT)?.ownshipPosBf[0]).toBe(60);
+    expect(i.sample(t2 - 10 * DT)?.ownshipPosBf[0]).toBe(0);
     expect(i.status.alpha).toBe(0);
   });
 
@@ -44,7 +44,7 @@ describe('SnapshotInterpolator', () => {
     i.push(at(2, 3));
     let last = -1;
     for (let k = 0; k <= 20; k++) {
-      const x = i.sample(1000 + 2 * DT + (k / 20) * DT)?.observerPosBf[0] ?? NaN;
+      const x = i.sample(1000 + 2 * DT + (k / 20) * DT)?.ownshipPosBf[0] ?? NaN;
       expect(x).toBeGreaterThanOrEqual(last);
       last = x;
     }
@@ -56,7 +56,7 @@ describe('SnapshotInterpolator', () => {
     for (let t = 1; t <= 5; t++) i.push(at(t, t * 10));
     expect(i.held).toBe(2);
     // Between ticks 4 and 5.
-    expect(i.sample(1000 + 5 * DT + DT / 2)?.observerPosBf[0]).toBeCloseTo(45, 9);
+    expect(i.sample(1000 + 5 * DT + DT / 2)?.ownshipPosBf[0]).toBeCloseTo(45, 9);
   });
 
   it('ignores duplicates, invalid bytes and short buffers, and counts them', () => {
@@ -66,7 +66,7 @@ describe('SnapshotInterpolator', () => {
     expect(i.push(new Uint8Array(SNAPSHOT.SIZE))).toBe(false); // no magic
     expect(i.push(new Uint8Array(10))).toBe(false);
     expect([i.accepted, i.ignored]).toEqual([1, 3]);
-    expect(i.sample(2000)?.observerPosBf[0]).toBe(0);
+    expect(i.sample(2000)?.ownshipPosBf[0]).toBe(0);
   });
 
   it('starts over when the sim restarts (an older tick arrives)', () => {
@@ -75,7 +75,7 @@ describe('SnapshotInterpolator', () => {
     i.push(at(501, 5));
     expect(i.push(at(3, 77, { publishMs: 9000 }))).toBe(true);
     expect(i.held).toBe(1);
-    expect(i.sample(9000)?.observerPosBf[0]).toBe(77);
+    expect(i.sample(9000)?.ownshipPosBf[0]).toBe(77);
   });
 
   it('reports a stale newest snapshot, and a gap of several ticks', () => {
@@ -88,12 +88,12 @@ describe('SnapshotInterpolator', () => {
     expect(i.status.stale).toBe(true);
   });
 
-  it('does not sweep across the map when the observer teleports', () => {
+  it('does not sweep across the map when the ownship teleports (a respawn)', () => {
     const i = new SnapshotInterpolator();
     i.push(at(1, 0));
     i.push(at(2, 6000)); // the reset button
     const s = i.sample(1000 + 2 * DT + DT / 2);
-    expect(s?.observerPosBf[0]).toBe(6000);
+    expect(s?.ownshipPosBf[0]).toBe(6000);
     expect(i.status.snapped).toBe(true);
   });
 
@@ -126,9 +126,9 @@ describe('SnapshotInterpolator', () => {
     const half = Math.SQRT1_2;
     const i = new SnapshotInterpolator();
     // Identity, then a quarter turn about +x (w = x = sqrt(1/2)): halfway is an eighth turn.
-    i.push(at(1, 0, { observer: { pos: [0, 0, 0], quat: [1, 0, 0, 0] } }));
-    i.push(at(2, 0, { observer: { pos: [0, 0, 0], quat: [half, half, 0, 0] } }));
-    const q = i.sample(1000 + 2 * DT + DT / 2)?.observerQuat;
+    i.push(at(1, 0, { ownship: { pos: [0, 0, 0], quat: [1, 0, 0, 0] } }));
+    i.push(at(2, 0, { ownship: { pos: [0, 0, 0], quat: [half, half, 0, 0] } }));
+    const q = i.sample(1000 + 2 * DT + DT / 2)?.ownshipQuat;
     const [w, x] = [q?.[0] ?? 0, q?.[1] ?? 0];
     expect(Math.hypot(w, x, q?.[2] ?? 0, q?.[3] ?? 0)).toBeCloseTo(1, 6);
     expect(Math.atan2(x, w) * 2).toBeCloseTo(Math.PI / 4, 3);
@@ -137,9 +137,9 @@ describe('SnapshotInterpolator', () => {
   it('takes the short way round when the two quaternions are on opposite hemispheres', () => {
     const i = new SnapshotInterpolator();
     const [w, x, y, z] = NORTH;
-    i.push(at(1, 0, { observer: { pos: [0, 0, 0], quat: [w, x, y, z] } }));
-    i.push(at(2, 0, { observer: { pos: [0, 0, 0], quat: [-w, -x, -y, -z] } })); // same rotation
-    const q = i.sample(1000 + 2 * DT + DT / 2)?.observerQuat;
+    i.push(at(1, 0, { ownship: { pos: [0, 0, 0], quat: [w, x, y, z] } }));
+    i.push(at(2, 0, { ownship: { pos: [0, 0, 0], quat: [-w, -x, -y, -z] } })); // same rotation
+    const q = i.sample(1000 + 2 * DT + DT / 2)?.ownshipQuat;
     // Same rotation, so halfway is that rotation again (up to sign), not a collapse to zero.
     expect(Math.abs(Math.hypot(...(q ?? [0]))) - 1).toBeCloseTo(0, 6);
     expect(Math.abs(q?.[1] ?? 0)).toBeCloseTo(Math.SQRT1_2, 5);
@@ -151,19 +151,19 @@ describe('SnapshotInterpolator', () => {
       at(7, 0, {
         inputMs: 1234.5,
         coreState: 3,
-        observer: { pos: [0, 0, 0], speed: 222, throttle: 0.9 },
+        ownship: { pos: [0, 0, 0], speed: 222, throttle: 0.9 },
       }),
     );
     const s = i.sample(2000);
     expect([s?.tick, s?.inputTimeMs, s?.coreState]).toEqual([7, 1234.5, 3]);
     expect(s?.publishTimeMs).toBeCloseTo(1000 + 7 * DT, 9);
-    expect([s?.observerSpeed, s?.observerThrottle]).toEqual([222, Math.fround(0.9)]);
+    expect([s?.ownshipSpeed, s?.ownshipThrottle]).toEqual([222, Math.fround(0.9)]);
   });
 
   it('treats equal publish stamps (an unstamped snapshot) as no interpolation', () => {
     const i = new SnapshotInterpolator();
-    i.push(makeSnapshot({ tick: 1, publishMs: 0, observer: { pos: [0, 0, 0] } }));
-    i.push(makeSnapshot({ tick: 2, publishMs: 0, observer: { pos: [5, 0, 0] } }));
-    expect(i.sample(100)?.observerPosBf[0]).toBe(5);
+    i.push(makeSnapshot({ tick: 1, publishMs: 0, ownship: { pos: [0, 0, 0] } }));
+    i.push(makeSnapshot({ tick: 2, publishMs: 0, ownship: { pos: [5, 0, 0] } }));
+    expect(i.sample(100)?.ownshipPosBf[0]).toBe(5);
   });
 });

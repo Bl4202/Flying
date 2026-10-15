@@ -68,13 +68,17 @@ Total to the Campaign Build is about 33 months (M0–M6), plus about 6 months fo
 
 **Exit:** the point-performance targets pass within ±3 % / ±5 % (`AC-3.2`); WASM vs native hashes equal for a 60 s scripted flight (`AC-11.7`).
 
+**Note (2026-10-14):** the conformance method is fixed in [ADR-31](adr/0031-performance-conformance-test-method.md). The two ground-roll points of the envelope need the gear model, so at v0.1a they are reported as deferred and `AC-3.2` passes on the ten airborne points; it closes fully at v0.1b. Work is on branch `v0.1a` and merges to `main` only after `v0.0b` is tagged.
+
+**Status (2026-10-15):** both exit criteria pass on branch `v0.1a` (draft PR #5). In the conformance run, the ten airborne points use at most 35 % of their tolerance, and flight60 hashes equal across native, debug, WASM single and WASM threads at all 61 checkpoints. The real Kestrel replaces the observer as the player's aircraft, flown with direct surface control until v0.1b. Still open: the merge (waiting for the `v0.0b` tag), the performance re-baseline with runs A and B against the new staging, and the exit checklist ([docs/exit/v0.1a.md](exit/v0.1a.md)).
+
 ### v0.1b: Control and ground (about 4 weeks)
 - Flight control system: Full / Standard / Reduced / Manual assist (§11.11); limiters (α, g, overspeed).
 - Ground handling: gear model, friction, take-off and landing, crash criteria (§11.13).
 - G-physiology and stall/departure behaviour (§11.14, §11.15).
 - Keyboard, mouse (mouse-aim), gamepad and HOTAS input with binding editor v1 (§58).
 
-**Exit:** a tester can take off, fly a pattern and land under every assist level; input-to-control latency ≤ 25 ms p95.
+**Exit:** a tester can take off, fly a pattern and land under every assist level; input-to-control latency ≤ 25 ms p95; the take-off and landing ground-roll conformance points deferred from v0.1a pass (`AC-3.2` complete).
 
 ### v0.1c: Presentation (about 4 weeks)
 - Cockpit and chase cameras (§54.11); core HUD symbology and collimation (§54.2, §54.3).

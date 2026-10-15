@@ -1,9 +1,11 @@
 /**
- * Snapshot v1: what the sim publishes each tick and the renderer draws from. Layout in
+ * Snapshot v2: what the sim publishes each tick and the renderer draws from. Layout in
  * `layout.gen.ts` (from Rust); this file reads and stamps it.
  *
  * Positions are battlefield-frame `f64`, orientations `f32` quaternions `[w, x, y, z]`, bodies
- * are structure-of-arrays so a whole axis is contiguous.
+ * are structure-of-arrays so a whole axis is contiguous. The ownship block is the player's
+ * aircraft (its reference point, attitude, air data, engine and fuel) or, with no aircraft
+ * content, the spectator (`OWNSHIP_FLAG.SPECTATOR`; air data zero). Angles are radians.
  */
 import { SNAPSHOT } from './layout.gen.ts';
 
@@ -62,33 +64,103 @@ export class SnapshotReader {
     return this.#dv.getFloat64(SNAPSHOT.H_INPUT_T_MS, true);
   }
 
-  /** Observer position, BF metres. */
-  observerPos(out: Float64Array, at = 0): void {
+  /** Ownship position (the aircraft's reference point), BF metres. */
+  ownshipPos(out: Float64Array, at = 0): void {
     for (let i = 0; i < 3; i++) {
       out[at + i] = this.#dv.getFloat64(SNAPSHOT.O_POS_BF + 8 * i, true);
     }
   }
 
-  /** Observer orientation `[w, x, y, z]`. */
-  observerQuat(out: Float32Array, at = 0): void {
+  /** Ownship attitude, body to BF, `[w, x, y, z]`. */
+  ownshipQuat(out: Float32Array, at = 0): void {
     for (let i = 0; i < 4; i++) {
       out[at + i] = this.#dv.getFloat32(SNAPSHOT.O_QUAT + 4 * i, true);
     }
   }
 
-  /** Observer velocity, BF m/s. */
-  observerVel(out: Float32Array, at = 0): void {
+  /** Ownship velocity, BF m/s. */
+  ownshipVel(out: Float32Array, at = 0): void {
     for (let i = 0; i < 3; i++) {
       out[at + i] = this.#dv.getFloat32(SNAPSHOT.O_VEL_BF + 4 * i, true);
     }
   }
 
-  observerSpeed(): number {
-    return this.#dv.getFloat32(SNAPSHOT.O_SPEED, true);
+  /** True airspeed, m/s. */
+  ownshipTas(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_TAS, true);
   }
 
-  observerThrottle(): number {
+  /** Calibrated airspeed, m/s. */
+  ownshipCas(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_CAS, true);
+  }
+
+  ownshipMach(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_MACH, true);
+  }
+
+  /** Angle of attack, radians. */
+  ownshipAlpha(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_ALPHA, true);
+  }
+
+  /** Sideslip, radians. */
+  ownshipBeta(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_BETA, true);
+  }
+
+  /** Body-axis load factor, g (1 in level flight). */
+  ownshipNz(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_NZ, true);
+  }
+
+  /** Throttle lever, 0 to 1. */
+  ownshipThrottle(): number {
     return this.#dv.getFloat32(SNAPSHOT.O_THROTTLE, true);
+  }
+
+  /** Net thrust, newtons. */
+  ownshipThrust(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_THRUST, true);
+  }
+
+  /** Fuel on board, kg. */
+  ownshipFuel(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_FUEL, true);
+  }
+
+  /** Mass, kg. */
+  ownshipMass(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_MASS, true);
+  }
+
+  /** Body rates (roll, pitch, yaw), rad/s. */
+  ownshipOmega(out: Float32Array, at = 0): void {
+    for (let i = 0; i < 3; i++) {
+      out[at + i] = this.#dv.getFloat32(SNAPSHOT.O_OMEGA + 4 * i, true);
+    }
+  }
+
+  /** Elevator, aileron and rudder, radians. */
+  ownshipSurfaces(out: Float32Array, at = 0): void {
+    for (let i = 0; i < 3; i++) {
+      out[at + i] = this.#dv.getFloat32(SNAPSHOT.O_SURFACES + 4 * i, true);
+    }
+  }
+
+  /** Height above MSL, metres. */
+  ownshipAltitude(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_ALTITUDE, true);
+  }
+
+  /** Afterburner stages burning. */
+  ownshipAbStage(): number {
+    return this.#dv.getUint8(SNAPSHOT.O_AB_STAGE);
+  }
+
+  /** `OWNSHIP_FLAG` bits. */
+  ownshipFlags(): number {
+    return this.#dv.getUint8(SNAPSHOT.O_FLAGS);
   }
 
   /** Body `i` position, BF metres. */

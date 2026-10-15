@@ -3,11 +3,17 @@
 use core::fmt;
 
 use content::{CpackError, Registry};
+use flight::ModelError;
+use flight::aircraft::AircraftModel;
+use flight::body::RigidState;
+use flight::engine::EngineCommand;
 
 use crate::hash::{StateHasher, SubsystemHashes};
-use crate::input::{ErraticPilot, FRAME_BYTES, InputFrame};
+use crate::input::{ErraticPilot, FRAME_BYTES, InputFrame, Script};
 use crate::layout::{core_state, input_script, profile};
+use crate::math::{DQuat, DVec3};
 use crate::observer::Observer;
+use crate::ownship::{AircraftSlot, Ownship};
 use crate::probe::ProbeWorld;
 use crate::profile::{ClockFn, Profiler, counter_array, write_counters};
 use crate::rng::RngStreams;
@@ -15,6 +21,7 @@ use crate::schedule::{Schedule, TickCtx};
 use crate::seams::replay::{NullReplaySink, ReplaySink};
 use crate::services::Services;
 use crate::snapshot::SnapshotBuffer;
+use crate::spawn::{SPAWN, spawn_trimmed};
 use crate::systems::{default_schedule, write_snapshot};
 use crate::terrain;
 use crate::time::SIM_DT;
@@ -60,6 +67,8 @@ pub enum LoadContentError {
     NotIdle,
     /// The bytes are not a valid pack.
     Invalid(CpackError),
+    /// The pack's aircraft cannot be flown (a pack that bypassed the baker, or a bug).
+    Model(ModelError),
 }
 
 impl fmt::Display for LoadContentError {
@@ -67,6 +76,7 @@ impl fmt::Display for LoadContentError {
         match self {
             Self::NotIdle => write!(f, "content can only be loaded while the core is idle"),
             Self::Invalid(e) => write!(f, "{e}"),
+            Self::Model(e) => write!(f, "the aircraft cannot be built: {e}"),
         }
     }
 }
@@ -113,14 +123,14 @@ impl SimCore {
             rng.stream("probe/reseed"),
         );
         let mut world = World {
-            observer: Observer::spawn(&*svc.geo),
+            ownship: Ownship::Spectator(Observer::spawn(&*svc.geo)),
             probe,
             input: crate::input::InputState::new(),
             counters: Counters::default(),
             snapshot: SnapshotBuffer::new(),
             replay: Box::new(NullReplaySink),
         };
-        write_snapshot(&mut world, 0, CoreState::Idle.code());
+        write_snapshot(&mut world, &svc, 0, CoreState::Idle.code());
         Self {
             tick: 0,
             state: CoreState::Idle,
@@ -138,20 +148,31 @@ impl SimCore {
         self.state = to;
         // The snapshot always says what state the core is in, even when no tick ran. It is not
         // offered to the replay sink: replays record ticks, and this snapshot repeats one.
-        write_snapshot(&mut self.world, self.tick, to.code());
+        write_snapshot(&mut self.world, &self.svc, self.tick, to.code());
     }
 
     /// Loads a baked content pack (a `.cpack`). Only an idle core accepts one, and a pack that
-    /// fails to load changes nothing. The pack's identity becomes part of the state hash.
+    /// fails to load changes nothing. The pack's identity becomes part of the state hash, and its
+    /// first aircraft (lowest handle) becomes the player's aircraft when the core starts.
     ///
     /// # Errors
     /// [`LoadContentError::NotIdle`] once the core has started, [`LoadContentError::Invalid`] if
-    /// the bytes are not a valid pack.
+    /// the bytes are not a valid pack, [`LoadContentError::Model`] if its aircraft cannot be
+    /// built.
     pub fn load_content(&mut self, bytes: &[u8]) -> Result<(), LoadContentError> {
         if self.state != CoreState::Idle {
             return Err(LoadContentError::NotIdle);
         }
-        self.svc.registry = Registry::from_cpack(bytes).map_err(LoadContentError::Invalid)?;
+        let registry = Registry::from_cpack(bytes).map_err(LoadContentError::Invalid)?;
+        let aircraft = match registry.aircraft_handles().next() {
+            Some(h) => Some(
+                AircraftModel::from_registry(&registry, h, SIM_DT)
+                    .map_err(LoadContentError::Model)?,
+            ),
+            None => None,
+        };
+        self.svc.registry = registry;
+        self.svc.aircraft = aircraft;
         Ok(())
     }
 
@@ -160,8 +181,30 @@ impl SimCore {
         self.world.replay = sink;
     }
 
-    /// `Idle -> Running`. Returns false (and changes nothing) from any other state.
+    /// `Idle -> Running`. Returns false (and changes nothing) from any other state. With
+    /// aircraft content the player's aircraft is allocated here, once, and spawned trimmed.
     pub fn start(&mut self) -> bool {
+        if self.state != CoreState::Idle {
+            return false;
+        }
+        if let Some(model) = self.svc.aircraft.as_ref() {
+            let parked = RigidState {
+                pos_bf: DVec3::ZERO,
+                vel_bf: DVec3::ZERO,
+                att: DQuat::IDENTITY,
+                omega_body: DVec3::ZERO,
+            };
+            let mut slot = Box::new(AircraftSlot {
+                state: model.state(parked, 0.0, EngineCommand::IDLE),
+                crashed: false,
+                respawn_ticks: 0,
+            });
+            if !spawn_trimmed(model, &self.svc, &SPAWN, &mut slot) {
+                self.world.counters.trim_failures =
+                    self.world.counters.trim_failures.wrapping_add(1);
+            }
+            self.world.ownship = Ownship::Aircraft(slot);
+        }
         self.transition(CoreState::Idle, CoreState::Running)
     }
 
@@ -231,14 +274,15 @@ impl SimCore {
     /// Selects the scripted pilot (see [`crate::layout::input_script`]). Returns false for an
     /// unknown kind, leaving the current script in place.
     pub fn set_input_script(&mut self, kind: u32) -> bool {
-        match kind as usize {
-            input_script::NONE => self.world.input.set_script(None),
-            input_script::ERRATIC => self
-                .world
-                .input
-                .set_script(Some(ErraticPilot::new(self.rng.stream("input/erratic")))),
+        let script = match kind as usize {
+            input_script::NONE => None,
+            input_script::ERRATIC => Some(Script::Erratic(ErraticPilot::new(
+                self.rng.stream("input/erratic"),
+            ))),
+            input_script::FLIGHT60 => Some(Script::Flight60),
             _ => return false,
-        }
+        };
+        self.world.input.set_script(script);
         true
     }
 
@@ -277,10 +321,16 @@ impl SimCore {
         &self.world.probe
     }
 
-    /// Read access to the observer.
+    /// What the player flies.
     #[must_use]
-    pub fn observer(&self) -> &Observer {
-        &self.world.observer
+    pub fn ownship(&self) -> &Ownship {
+        &self.world.ownship
+    }
+
+    /// The spectator observer, when there is no aircraft.
+    #[must_use]
+    pub fn observer(&self) -> Option<&Observer> {
+        self.world.ownship.spectator()
     }
 
     /// Read access to the input state.
@@ -361,7 +411,7 @@ impl SimCore {
         t.write_u64(u64::from(self.state as u8));
         t.write_u64(self.rng.master());
         let mut o = StateHasher::new();
-        self.world.observer.hash_into(&mut o);
+        self.world.ownship.hash_into(&mut o);
         let mut i = StateHasher::new();
         self.world.input.hash_into(&mut i);
         let mut c = StateHasher::new();
@@ -488,8 +538,8 @@ mod tests {
             c.step(1_000);
             assert!(c.probe().is_finite());
             assert!(c.probe().max_quat_norm_error() < 1e-12);
-            assert!(c.observer().pos_bf().is_finite());
-            assert!((c.observer().attitude().norm_squared() - 1.0).abs() < 1e-12);
+            assert!(c.observer().unwrap().pos_bf().is_finite());
+            assert!((c.observer().unwrap().attitude().norm_squared() - 1.0).abs() < 1e-12);
         }
     }
 
@@ -552,7 +602,7 @@ mod tests {
     #[test]
     fn host_input_steers_the_observer_and_a_stale_frame_does_not() {
         let mut c = running(1);
-        let before = c.observer().attitude();
+        let before = c.observer().unwrap().attitude();
         let mut records = Vec::new();
         records.extend_from_slice(&frame_bytes(1, |f| f.axes[axis::PITCH] = 1.0));
         records.extend_from_slice(&frame_bytes(1, |f| f.axes[axis::PITCH] = -1.0)); // duplicate seq
@@ -562,9 +612,14 @@ mod tests {
             "both queued; the second is dropped as stale"
         );
         c.step(30);
-        assert_ne!(c.observer().attitude(), before);
+        assert_ne!(c.observer().unwrap().attitude(), before);
         assert!(
-            c.observer().attitude().rotate(crate::math::DVec3::X).z > 0.2,
+            c.observer()
+                .unwrap()
+                .attitude()
+                .rotate(crate::math::DVec3::X)
+                .z
+                > 0.2,
             "nose went up"
         );
         assert_eq!(c.input().counters().stale, 1);
@@ -577,12 +632,12 @@ mod tests {
     fn the_reset_button_works_end_to_end() {
         let mut c = scripted(4);
         c.step(600);
-        let moved = c.observer().pos_bf();
+        let moved = c.observer().unwrap().pos_bf();
         assert!((moved.y + 6_000.0).abs() > 100.0 || moved.x.abs() > 100.0);
         // The scripted pilot presses reset on tick 1799.
         c.step(1_200);
         assert_eq!(c.tick(), 1_800);
-        let p = c.observer().pos_bf();
+        let p = c.observer().unwrap().pos_bf();
         // One tick after the reset the observer is back near its spawn point, 6 km south.
         assert!(p.x.abs() < 10.0 && (p.y + 6_000.0).abs() < 10.0, "{p:?}");
         let _ = button::RESET;
@@ -610,7 +665,7 @@ mod tests {
         assert_eq!(word(&c, snap::H_CORE_STATE), 3);
         c.resume();
         c.step(1);
-        let p = c.observer().pos_bf();
+        let p = c.observer().unwrap().pos_bf();
         let b = c.snapshot_bytes();
         assert_eq!(
             f64::from_le_bytes(b[snap::O_POS_BF..snap::O_POS_BF + 8].try_into().unwrap()),
@@ -623,50 +678,29 @@ mod tests {
         );
     }
 
-    /// A pack with one aircraft; sim-core cannot depend on the baker, so build the bytes here.
-    fn pack(empty_kg: f32) -> Vec<u8> {
-        use content::{AircraftDef, Category, Era};
-        let def = AircraftDef {
-            name_key: "ac.test.name".into(),
-            category: Category::LightFighter,
-            era: Era::G4,
-            crew: 1,
-            engine_count: 1,
-            hardpoints: 2,
-            sas_required: false,
-            empty_kg,
-            internal_fuel_kg: 1000.0,
-            max_takeoff_kg: 6000.0,
-            wing_area_m2: 20.0,
-            span_m: 9.0,
-            mac_m: 2.5,
-            inertia_xx_kgm2: 10_000.0,
-            inertia_yy_kgm2: 50_000.0,
-            inertia_zz_kgm2: 55_000.0,
-            inertia_xz_kgm2: 0.0,
-            n_max: 9.0,
-            n_min: -3.0,
-            mmo: 2.0,
-            vmo_ms: 350.0,
-            service_ceiling_m: 15_000.0,
-            thrust_mil_n: 50_000.0,
-            thrust_ab_n: 80_000.0,
-            cd0: 0.02,
-            induced_k: 0.13,
-            cl_alpha_per_rad: 3.5,
-            cl_max: 1.5,
-            static_margin_mac: 0.05,
+    /// The real core pack, baked from `content/core` (the baker is a dev-dependency), with the
+    /// Kestrel's empty mass replaced so tests can tell two packs apart.
+    pub(crate) fn pack(empty_kg: u32) -> Vec<u8> {
+        use content_bake::bake::{Sources, bake_sources};
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content/core");
+        let read = |rel: &str| {
+            let text =
+                std::fs::read_to_string(dir.join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
+            (rel.to_owned(), text)
         };
-        let fake_hash = |body: &[u8]| {
-            let mut h = StateHasher::new();
-            h.write_bytes(body);
-            let mut out = [0_u8; 32];
-            for (i, chunk) in out.chunks_mut(8).enumerate() {
-                chunk.copy_from_slice(&(h.finish() ^ i as u64).to_le_bytes());
-            }
-            out
-        };
-        content::cpack::write(&[("test:ac/one".into(), def)], fake_hash).unwrap()
+        let mut kestrel = read("aircraft/kestrel.json");
+        kestrel.1 = kestrel
+            .1
+            .replace("\"empty_kg\": 8400", &format!("\"empty_kg\": {empty_kg}"));
+        bake_sources(&Sources {
+            pack: read("pack.json"),
+            locale: read("locales/en.json"),
+            aircraft: vec![kestrel],
+            engines: vec![read("engines/f129.json")],
+            aero: vec![read("aero/kestrel.json")],
+        })
+        .expect("the core pack bakes")
+        .cpack
     }
 
     #[test]
@@ -674,8 +708,8 @@ mod tests {
         let mut c = SimCore::new(5);
         let before = c.subsystem_hashes();
         assert!(c.services().registry.is_empty());
-        c.load_content(&pack(3000.0)).unwrap();
-        assert_eq!(c.services().registry.len(), 1);
+        c.load_content(&pack(8400)).unwrap();
+        assert_eq!(c.services().registry.len(), 3);
         let after = c.subsystem_hashes();
         assert_ne!(before.content, after.content);
         assert_ne!(before.combined, after.combined);
@@ -685,33 +719,33 @@ mod tests {
                 before.tick,
                 before.rng,
                 before.bodies,
-                before.observer,
+                before.ownship,
                 before.input
             ),
             (
                 after.tick,
                 after.rng,
                 after.bodies,
-                after.observer,
+                after.ownship,
                 after.input
             )
         );
         // Different content, different identity; the same content, the same.
         let mut d = SimCore::new(5);
-        d.load_content(&pack(3001.0)).unwrap();
+        d.load_content(&pack(8401)).unwrap();
         assert_ne!(d.subsystem_hashes().content, after.content);
         let mut e = SimCore::new(5);
-        e.load_content(&pack(3000.0)).unwrap();
+        e.load_content(&pack(8400)).unwrap();
         assert_eq!(e.subsystem_hashes(), after);
     }
 
     #[test]
     fn content_is_refused_once_started_and_when_invalid() {
         let mut c = SimCore::new(5);
-        c.load_content(&pack(3000.0)).unwrap();
+        c.load_content(&pack(8400)).unwrap();
         let loaded = c.subsystem_hashes();
 
-        let mut damaged = pack(3100.0);
+        let mut damaged = pack(8500);
         let last = damaged.len() - 1;
         damaged[last] ^= 1;
         assert!(matches!(
@@ -729,11 +763,8 @@ mod tests {
         );
 
         c.start();
-        assert_eq!(
-            c.load_content(&pack(3100.0)),
-            Err(LoadContentError::NotIdle)
-        );
-        assert_eq!(c.services().registry.len(), 1);
+        assert_eq!(c.load_content(&pack(8500)), Err(LoadContentError::NotIdle));
+        assert_eq!(c.services().registry.len(), 3);
     }
 
     #[test]
@@ -835,6 +866,168 @@ mod tests {
         assert_eq!(c.fill_terrain(0.0, 0.0, 250.0), terrain::PATCH_BYTES);
         assert_eq!(c.terrain_bytes().len(), terrain::PATCH_BYTES);
         assert_eq!(c.fill_terrain(0.0, 0.0, -1.0), 0);
+    }
+
+    /// A started core flying the core pack's aircraft.
+    fn flying(seed: u64) -> SimCore {
+        let mut c = SimCore::new(seed);
+        c.load_content(&pack(8400)).unwrap();
+        assert!(c.start());
+        c
+    }
+
+    fn slot(c: &SimCore) -> &AircraftSlot {
+        c.ownship().aircraft().expect("an aircraft")
+    }
+
+    fn telemetry(c: &SimCore) -> flight::aircraft::Telemetry {
+        let model = c.services().aircraft.as_ref().unwrap();
+        model.telemetry(&slot(c).state, &c.services().flight_env(), 0.0)
+    }
+
+    /// The throttle lever that holds the engine where the spawn trimmed it.
+    fn trim_lever(c: &SimCore) -> f32 {
+        let model = c.services().aircraft.as_ref().unwrap();
+        let idle = model.engines()[0].model.idle_fraction();
+        let core = slot(c).state.engines[0].core;
+        (0.8 * (core - idle) / (1.0 - idle)) as f32
+    }
+
+    #[test]
+    fn the_aircraft_spawns_trimmed_and_holds_level_hands_off() {
+        let mut c = flying(1);
+        assert!(
+            c.observer().is_none(),
+            "content with an aircraft: no spectator"
+        );
+        let t = telemetry(&c);
+        assert!((t.air.tas_mps - 200.0).abs() < 1e-6);
+        let geo = &c.services().geo;
+        let p = t.ref_point_bf;
+        assert!(
+            (p.z - geo.ground_z_bf(0.0, -6_000.0) - 2_000.0).abs() < 1e-6,
+            "{p:?}"
+        );
+        let lever = trim_lever(&c);
+        assert!(lever > 0.0 && lever < 0.8, "dry power trims: lever {lever}");
+        let h0 = t.height_msl_m;
+        for seq in 1..=300 {
+            c.push_inputs(&frame_bytes(seq, |f| f.axes[axis::THROTTLE] = lever));
+            c.step(1);
+        }
+        let t = telemetry(&c);
+        let climb = c
+            .services()
+            .geo
+            .up_bf(slot(&c).state.body.pos_bf)
+            .dot(slot(&c).state.body.vel_bf);
+        assert!(
+            climb.abs() < 1.0,
+            "vertical speed after 5 s hands-off: {climb}"
+        );
+        assert!(
+            (t.height_msl_m - h0).abs() < 3.0,
+            "height moved {}",
+            t.height_msl_m - h0
+        );
+        assert_eq!(c.counters().fdm_faults, 0);
+        assert_eq!(c.counters().trim_failures, 0);
+    }
+
+    #[test]
+    fn the_stick_flies_the_aircraft_and_r_respawns_it() {
+        let mut c = flying(2);
+        let spawn = telemetry(&c).ref_point_bf;
+        for seq in 1..=60 {
+            c.push_inputs(&frame_bytes(seq, |f| f.axes[axis::PITCH] = 1.0));
+            c.step(1);
+        }
+        let t = telemetry(&c);
+        assert!(t.nz_g > 1.5, "a pull loads the airframe: n_z {}", t.nz_g);
+        assert!((t.ref_point_bf - spawn).length() > 100.0);
+        c.push_inputs(&frame_bytes(61, |f| f.buttons = 1 << button::RESET));
+        c.step(1);
+        let p = telemetry(&c).ref_point_bf;
+        assert!(
+            (p - spawn).length() < 6.0,
+            "one tick after the reset, near the spawn: {p:?}"
+        );
+        assert_eq!(c.counters().respawns, 1);
+    }
+
+    #[test]
+    fn a_crash_freezes_the_aircraft_then_it_respawns_after_two_seconds() {
+        let mut c = flying(3);
+        let mut seq = 0;
+        while !slot(&c).crashed {
+            seq += 1;
+            assert!(seq < 60 * 60, "never reached the ground");
+            c.push_inputs(&frame_bytes(seq, |f| {
+                f.axes[axis::PITCH] = -1.0;
+                f.axes[axis::THROTTLE] = 1.0;
+            }));
+            c.step(1);
+        }
+        assert_eq!(c.counters().crashes, 1);
+        let wreck = slot(&c).state;
+        let flags = c.snapshot_bytes()[snap::O_FLAGS];
+        assert_eq!(
+            u32::from(flags) & crate::layout::ownship_flag::CRASHED as u32,
+            2
+        );
+        c.step(119);
+        assert!(slot(&c).crashed);
+        assert_eq!(slot(&c).state, wreck, "frozen where it hit");
+        c.step(1);
+        assert!(!slot(&c).crashed, "respawned 120 ticks after the crash");
+        assert_eq!(c.counters().respawns, 1);
+        assert!((telemetry(&c).air.tas_mps - 200.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_flight60_script_flies_the_same_way_twice() {
+        let run = || {
+            let mut c = SimCore::new(crate::DEFAULT_SEED);
+            c.load_content(&pack(8400)).unwrap();
+            assert!(c.set_input_script(input_script::FLIGHT60 as u32));
+            assert!(c.start());
+            c.step(3_600);
+            c
+        };
+        let (a, b) = (run(), run());
+        assert_eq!(a.subsystem_hashes(), b.subsystem_hashes());
+        assert_eq!(a.snapshot_bytes(), b.snapshot_bytes());
+        assert_eq!(a.counters().fdm_faults, 0);
+        // The script flies the aircraft: not where it started, and the hash moved.
+        let fresh = flying(crate::DEFAULT_SEED);
+        assert_ne!(
+            a.subsystem_hashes().ownship,
+            fresh.subsystem_hashes().ownship
+        );
+    }
+
+    #[test]
+    fn the_snapshot_carries_the_aircraft() {
+        let mut c = flying(4);
+        c.step(1);
+        let b = c.snapshot_bytes();
+        let f32_at = |o: usize| f32::from_le_bytes(b[o..o + 4].try_into().unwrap());
+        assert_eq!(b[snap::O_FLAGS], 0, "flying normally");
+        assert!((f32_at(snap::O_TAS) - 200.0).abs() < 1.0);
+        assert!(f32_at(snap::O_MACH) > 0.55 && f32_at(snap::O_MACH) < 0.65);
+        assert!(
+            f32_at(snap::O_ALPHA).to_degrees() > 1.0 && f32_at(snap::O_ALPHA).to_degrees() < 6.0
+        );
+        assert!((f32_at(snap::O_NZ) - 1.0).abs() < 0.05);
+        assert!((f32_at(snap::O_MASS) - (8400.0 + 0.6 * 3100.0)).abs() < 1.0);
+        assert!(f32_at(snap::O_THRUST) > 10_000.0);
+        assert_eq!(f32_at(snap::O_THROTTLE), 0.5, "the lever before any input");
+        // The spectator says so.
+        let s = running(4);
+        assert_eq!(
+            u32::from(s.snapshot_bytes()[snap::O_FLAGS]),
+            crate::layout::ownship_flag::SPECTATOR as u32
+        );
     }
 
     #[test]

@@ -61,7 +61,7 @@ export async function measureGpu(opts: GpuBenchOptions): Promise<GpuBenchResult>
   interp.push(
     makeSnapshot({
       publishMs: 1000,
-      observer: { pos: [0, -6000, 1500], quat: NORTH },
+      ownship: { pos: [0, -6000, 1500], quat: NORTH },
       bodies: Array.from({ length: 32 }, (_, i) => ({
         pos: [((i % 8) - 3.5) * 700, -2500 + Math.floor(i / 8) * 900, 1400 + (i % 5) * 80] as [
           number,

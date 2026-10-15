@@ -14,6 +14,8 @@ export const PAD_BUTTON = {
   RIGHT_TRIGGER: 7,
   BACK: 8,
   START: 9,
+  DPAD_UP: 12,
+  DPAD_DOWN: 13,
 } as const;
 
 /** The part of a `Gamepad` this module reads. */

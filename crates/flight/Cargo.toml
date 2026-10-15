@@ -1,0 +1,20 @@
+[package]
+name = "flight"
+description = "The flight model: atmosphere, air data, table aerodynamics, propulsion, mass, 6-DOF rigid body, trim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+content.workspace = true
+simmath.workspace = true
+
+[dev-dependencies]
+# Unit tests fly the real Kestrel, baked from content/core.
+content-bake = { path = "../../tools/content-bake" }

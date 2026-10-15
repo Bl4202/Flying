@@ -48,7 +48,7 @@ test('the Hash button prints sixteen-digit values for every column', async ({ pa
   const out = byId(page, 'ov-hash-out');
   await expect(out).toContainText('combined');
   const text = await out.innerText();
-  const columns = ['combined', 'tick', 'rng', 'bodies', 'observer', 'input', 'content'];
+  const columns = ['combined', 'tick', 'rng', 'bodies', 'ownship', 'input', 'content'];
   for (const name of columns) {
     expect(text).toMatch(new RegExp(`^${name}\\s+[0-9a-f]{16}$`, 'm'));
   }

@@ -123,6 +123,8 @@ export class InputPump {
     let yawP = 0;
     let throttlePadRate = 0;
     let padReset = false;
+    let padTrimUp = false;
+    let padTrimDown = false;
     if (pad) {
       const g = this.#b.gamepad;
       pitchP = this.#pitchPad.step(calibrate(pad.axes[g.pitch.axis] ?? 0), dt);
@@ -134,6 +136,8 @@ export class InputPump {
       const lever = shapeStatic(calibrate(pad.axes[g.throttle.axis] ?? 0), g.throttle.shape);
       throttlePadRate = (g.throttle.invert ? -lever : lever) * g.throttle.ratePerSecond;
       padReset = (pad.buttons[g.reset.button] ?? 0) > 0.5;
+      padTrimUp = (pad.buttons[g.trimNoseUp.button] ?? 0) > 0.5;
+      padTrimDown = (pad.buttons[g.trimNoseDown.button] ?? 0) > 0.5;
       this.#padWasThere = true;
     } else if (this.#padWasThere) {
       // Unplugged mid-flight: drop the old readings rather than hold the last stick position.
@@ -147,7 +151,11 @@ export class InputPump {
     const pitch = larger(pitchK, pitchP);
     const roll = larger(rollK, rollP);
     const yaw = larger(yawK, yawP);
-    const buttons = kb.anyDown(k.reset) || padReset ? 1n << BigInt(BUTTON.RESET) : 0n;
+    const bit = (on: boolean, b: number): bigint => (on ? 1n << BigInt(b) : 0n);
+    const buttons =
+      bit(kb.anyDown(k.reset) || padReset, BUTTON.RESET) |
+      bit(kb.anyDown(k.trimNoseUp) || padTrimUp, BUTTON.TRIM_NOSE_UP) |
+      bit(kb.anyDown(k.trimNoseDown) || padTrimDown, BUTTON.TRIM_NOSE_DOWN);
     return this.#maybeSend(now, { pitch, roll, yaw, throttle, buttons }, 0);
   }
 

@@ -7,23 +7,58 @@ use std::sync::OnceLock;
 use schemars::schema_for;
 use serde_json::Value;
 
-use crate::model::{AircraftFile, PackFile};
+use crate::model::{AeroFile, AircraftFile, EngineFile, PackFile};
 
-/// Key suffixes that say what a number is measured in (GDD 62.5).
-pub const UNIT_SUFFIXES: &[&str] = &["_kg", "_m", "_m2", "_n", "_ms", "_kgm2", "_per_rad", "_mac"];
+/// Key suffixes that say what a number is measured in (GDD 62.5, Appendix A).
+pub const UNIT_SUFFIXES: &[&str] = &[
+    "_kg",
+    "_m",
+    "_m2",
+    "_n",
+    "_mps",
+    "_kgm2",
+    "_per_rad",
+    "_mac",
+    "_deg",
+    "_dps",
+    "_s",
+    "_pct",
+    "_kgpl",
+    "_kg_per_ns",
+];
 
-/// Numeric keys that have no unit.
+/// Numeric keys that have no unit. Table grids (`x`, `y`) name their units in `axes`; an envelope
+/// point's `value` takes the unit of its `metric`.
 pub const DIMENSIONLESS: &[&str] = &[
     "crew",
     "hardpoints",
     "count",
-    "cd0",
-    "induced_k",
-    "cl_max",
+    "feed_priority",
+    "max_mach",
+    "mmo",
     "n_max",
     "n_min",
-    "mmo",
+    "n_cmd_max",
+    "value",
+    "density_exp",
+    "idle_fraction",
+    "ab_stages",
+    "cl0",
+    "cd90",
+    "ground_effect_k",
+    "gear_cd0",
+    "flap_to_cd0",
+    "flap_ld_cd0",
+    "brake_cd0",
+    "flap_to_cl",
+    "flap_ld_cl",
+    "x",
+    "y",
 ];
+
+fn render_schema<T: schemars::JsonSchema>() -> Value {
+    serde_json::to_value(schema_for!(T)).expect("schema is JSON")
+}
 
 /// The schema of `aircraft/*.json`.
 ///
@@ -32,9 +67,27 @@ pub const DIMENSIONLESS: &[&str] = &[
 #[must_use]
 pub fn aircraft_schema() -> Value {
     static CACHE: OnceLock<Value> = OnceLock::new();
-    CACHE
-        .get_or_init(|| serde_json::to_value(schema_for!(AircraftFile)).expect("schema is JSON"))
-        .clone()
+    CACHE.get_or_init(render_schema::<AircraftFile>).clone()
+}
+
+/// The schema of `engines/*.json`.
+///
+/// # Panics
+/// Never in practice.
+#[must_use]
+pub fn engine_schema() -> Value {
+    static CACHE: OnceLock<Value> = OnceLock::new();
+    CACHE.get_or_init(render_schema::<EngineFile>).clone()
+}
+
+/// The schema of `aero/*.json`.
+///
+/// # Panics
+/// Never in practice.
+#[must_use]
+pub fn aero_schema() -> Value {
+    static CACHE: OnceLock<Value> = OnceLock::new();
+    CACHE.get_or_init(render_schema::<AeroFile>).clone()
 }
 
 /// The schema of `pack.json`.
@@ -43,14 +96,16 @@ pub fn aircraft_schema() -> Value {
 /// Never in practice: the derived schema is always representable as JSON.
 #[must_use]
 pub fn pack_schema() -> Value {
-    serde_json::to_value(schema_for!(PackFile)).expect("schema is JSON")
+    render_schema::<PackFile>()
 }
 
 /// `(file name, schema)` for every schema this tool owns.
 #[must_use]
 pub fn all() -> Vec<(&'static str, Value)> {
     vec![
+        ("aero.schema.json", aero_schema()),
         ("aircraft.schema.json", aircraft_schema()),
+        ("engine.schema.json", engine_schema()),
         ("pack.schema.json", pack_schema()),
     ]
 }
@@ -171,11 +226,20 @@ mod tests {
         let s = aircraft_schema();
         assert_eq!(s["additionalProperties"], false);
         assert_eq!(s["properties"]["category"]["enum"][0], "light_fighter");
-        let mass = &s["$defs"]["Mass"];
+        let mass = &s["$defs"]["MassFile"];
         assert_eq!(mass["additionalProperties"], false);
         assert_eq!(mass["properties"]["empty_kg"]["x-unit"], "kg");
         assert!(mass["properties"]["empty_kg"]["minimum"].is_number());
         assert_eq!(s["properties"]["schema"]["const"], "aircraft/1");
+    }
+
+    #[test]
+    fn the_table_schemas_name_their_axes() {
+        let s = aero_schema();
+        let axes = &s["$defs"]["AxisName"]["enum"];
+        assert_eq!(axes, &serde_json::json!(crate::model::AXES));
+        assert_eq!(s["properties"]["schema"]["const"], "aero/1");
+        assert_eq!(engine_schema()["properties"]["schema"]["const"], "engine/1");
     }
 
     #[test]

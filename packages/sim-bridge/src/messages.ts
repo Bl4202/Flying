@@ -77,13 +77,38 @@ export interface SimStats {
   snapshotsDropped: number;
   coreState: number;
   sleeper: 'atomics' | 'timer';
-  /** The observer as of the newest snapshot. Battlefield frame (east, north, up), SI units. */
-  observer: {
+  /**
+   * The ownship as of the newest snapshot: the aircraft, or the spectator (`flags` has
+   * `OWNSHIP_FLAG.SPECTATOR`, air data zero). Battlefield frame (east, north, up), SI units,
+   * angles in radians.
+   */
+  aircraft: {
+    /** Reference point, BF metres. */
     pos: [number, number, number];
     /** Body-to-BF attitude, `[w, x, y, z]`. */
     quat: [number, number, number, number];
-    speed: number;
+    /** True and calibrated airspeed, m/s. */
+    tas: number;
+    cas: number;
+    mach: number;
+    alpha: number;
+    beta: number;
+    /** Body-axis load factor, g. */
+    nz: number;
+    /** Throttle lever, 0 to 1. */
     throttle: number;
+    /** Net thrust, N. */
+    thrust: number;
+    /** Fuel and mass, kg. */
+    fuel: number;
+    mass: number;
+    /** Elevator, aileron, rudder, radians. */
+    surfaces: [number, number, number];
+    /** Height above MSL, m. */
+    altitude: number;
+    abStage: number;
+    /** `OWNSHIP_FLAG` bits. */
+    flags: number;
     /** Sequence number of the newest input frame the core had applied. */
     inputSeq: number;
   };
