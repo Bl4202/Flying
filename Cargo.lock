@@ -371,7 +371,11 @@ dependencies = [
 name = "sim-wasm"
 version = "0.0.2"
 dependencies = [
+ "content",
+ "content-bake",
+ "flight",
  "sim-core",
+ "simmath",
 ]
 
 [[package]]
