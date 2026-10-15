@@ -219,7 +219,7 @@ Assumptions are the premises this document makes. Open questions (OQ) must be re
 
 | ID | Item | Needed by |
 |---|---|---|
-| **OQ-01** | Confirm the stack in ADR-02 (Rust → WASM sim) and ADR-18 (Three.js WebGPURenderer + custom passes). If the team prefers TypeScript-only, the sim moves to a Worker using typed arrays; the budgets in §0.6 drop roughly 30–40 % and ADR-10's cross-build hash test is lost. | Before M1 |
+| **OQ-01** | Confirm the stack in ADR-02 (Rust → WASM sim) and ADR-18 (Three.js WebGPURenderer + custom passes). If the team prefers TypeScript-only, the sim moves to a Worker using typed arrays; the budgets in §0.6 drop roughly 30–40 % and ADR-10's cross-build hash test is lost. | Before M1. **Closed 2026-10-14 (v0.1a):** the Sim Core stays Rust → WASM (ADR-02 stands); the renderer half is revisited at v0.1c (`docs/open-questions.md`) |
 | **OQ-02** | Team size and target release scale (solo / small team / studio). This document sizes work with relative t-shirt sizes (§66), not calendar estimates. | Before M1 planning |
 | **OQ-03** | Hosting and distribution: static host + CDN with range-request support and the COOP/COEP headers (assumed), who pays for tile bandwidth, and whether a publisher-hosted CDN or a community-mirror model is used. | Before M2 |
 | **OQ-04** | Commercial or free release. Several open datasets have attribution (CC-BY) or share-alike (ODbL) duties that interact with redistribution (§45.9). | Before M2 |
@@ -1469,10 +1469,12 @@ Aerodynamic force coefficients are computed in wind axes (drag D opposes airspee
 ```text
 X = −D cosα cosβ − Y cosα sinβ + L sinα
 Y_b = −D sinβ + Y cosβ
-Z = −D sinα cosβ + Y sinα sinβ − L cosα
+Z = −D sinα cosβ − Y sinα sinβ − L cosα
 ```
 
 Check: with β = 0 and D = Y = 0 the force is `(L sinα, 0, −L cosα)`, perpendicular to the velocity direction `(cosα, 0, sinα)` as required.
+
+*Corrected in 0.2.1:* the side-force term of `Z` was printed `+ Y sinα sinβ`. The wind-to-body rotation applied to `(−D, Y, −L)` gives `− Y sinα sinβ`, and with that sign a pure side force stays perpendicular to the velocity at any α and β (the v0.1a flight model's test).
 
 ## 11.3 Atmosphere
 
@@ -1568,11 +1570,21 @@ All tables are monotone-checked by the content linter (no spikes > 25 % between 
 Beyond the table's validity, lift and drag are blended to a Newtonian flat-plate model so every α ∈ [−180°, 180°] has a defined, smooth result:
 
 ```text
-σ(α)  = 1 / (1 + exp(−(|α| − α_s) / w)),    α_s = α_stall (from C_L,max), w = 2°
+t(α)  = clamp((|α| − α_start(M)) / (α_end(M) − α_start(M)), 0, 1)
+σ(α)  = t² (3 − 2t)          C¹ smoothstep: exactly 0 below α_start, exactly 1 above α_end
 C_L   = (1 − σ) C_L,table + σ · C_D90 · sinα cosα
 C_D   = (1 − σ) C_D,table + σ · (C_D0 + C_D90 sin²α)
 C_D90 ≈ 1.2        (flat plate, low aspect ratio)
 ```
+
+`α_start(M)`, `α_end(M)`, `C_D90` and `x_ac,post` are aircraft data (the `post_stall` block of
+`aero/1`). The stall break and the fall of lift just past the peak belong in `C_L,table`; the blend
+only reshapes the region beyond it. The baker requires `α_start` to be at least 5° past each Mach
+row's lift peak (the Kestrel uses peak + 10°, with `α_end = α_start + 20°`).
+
+*Clarified in 0.2.1 (ADR-30):* this section first defined σ as a logistic centred on α_stall with
+w = 2°. That weights the table only 0.5 at the stall itself, which cuts the Kestrel's C_L,max from
+1.60 to 1.444 and raises its stall speed by 5.3 %, outside the C.9 tolerance.
 
 Pitching and yawing moments in the post-stall regime follow the same blend with an aerodynamic-centre shift to mid-chord (`C_m,post = −C_N · (x_ac,post − x_cg)/c̄`). This yields tumbling, flat-spin tendencies and rapid energy loss without special-casing.
 
@@ -1865,6 +1877,13 @@ Each aircraft file includes an `envelope` block (authored target performance). T
 | Sustained load factor / turn rate at listed points | ±5 % |
 | Take-off and landing ground roll | ±5 % |
 | Corner speed | ±5 % |
+
+*Clarified in 0.2.1 (ADR-31):* the procedures, cross-checks and gates are fixed in ADR-31. Sustained
+load factor is the **wind-axis** load factor of a level turn, `n = √(1 + (V·ω/g₀)²)`, not the
+body-axis accelerometer reading `n_z`, which is lower by the thrust's lift component (about 6.0
+against 6.4 at M 0.5). Points flown at a given speed carry it as data (`mach`). Points that need a
+model which does not exist yet (`requires: "gear"`) are reported as deferred, and the gate checks
+that the deferred set is exactly the expected one.
 
 It runs headlessly in CI (native build) and in the browser FDM Lab. The reference fighter's authored envelope (Appendix C, e.g. clean 9 500 kg: maximum level Mach 1.22 at sea level, 1.83 at 11 km; 1 g stall speed 58.3 m/s ≈ 113 kn at sea level; maximum climb rate ≈ 283 m/s at Mach 0.83) is the first acceptance target.
 
@@ -9370,7 +9389,7 @@ If a feature is too complex for the first build, create an abstraction that lets
 | Weather | `WeatherProvider` | Static cloud layers + uniform wind (M1) | Dynamic fronts, turbulence, orographic effects (M4) |
 | Terrain heights | `GeoService` | Procedural + base-pack heights (M0) | Full streamed GeoPack (M2) |
 | Line of sight | `LosService` | Terrain-only ray-march (M3) | Max-mip + horizon profiles + clouds/buildings (M4) |
-| Aerodynamics | `AeroModel` | Table lookup, 3 tables (M1) | Full table set with store/damage effects (M3) |
+| Aerodynamics | `AeroModel` | Table lookup (M1). *Wired in v0.1a:* `TableAero` in `crates/flight` (the full §11.6.1 build-up from the `aero/1` tables), re-exported as the seam and called concretely by the aircraft tick (ADR-29) | Full table set with store/damage effects (M3) |
 | Damage | `DamageModel` | Aggregate health bar (M3) | Component/subsystem model (M4) |
 | Sensors | `RadarModel` | Range/RCS threshold detection (M3) | Radar equation + Doppler + notch + ECM (M4) |
 | Missiles | `MissileModel` | Simple proportional navigation (M3) | Seeker/guidance/DLZ models (M4) |
@@ -10715,8 +10734,23 @@ interface Hardpoint { id: string; station: number; pos_body_m: [number, number, 
                       launch?: { eject_mps: number; offset_m: [number, number, number]; cant_deg?: number } }
 interface DamageComponent { id: string; kind: "wing"|"fuselage"|"tail"|"engine"|"canopy"|"radar"|"hydraulics"|"avionics"|"fuel_tank"|"gear"|"control_surface"|"weapon_station";
                             hp: number; armour_class: "none"|"light"|"medium"|"heavy"; volume: string; fire_prob?: number; leak_kgps?: number; effects: string[] }
-interface PerformanceEnvelope { points: { id: string; mass_kg: number; alt_m: number; config: string; metric: "max_mach"|"stall_mps"|"roc_mps"|"n_sust"|"turn_dps"|"ff_kgps"|"roll_m"; value: number; tol_pct: number }[] }
+interface PerformanceEnvelope { points: { id: string; mass_kg: number; alt_m: number; mach?: number /* required for n_sust, turn_dps */;
+                                          config: "clean"|"clean_mil"|"clean_ab"|"ref_ab"|"to_flaps_ab"|"ldg_brakes";
+                                          metric: "max_mach"|"stall_mps"|"roc_mps"|"n_sust"|"turn_dps"|"ff_kgps"|"roll_m"; value: number; tol_pct: number;
+                                          requires?: "gear" /* deferred until that model exists (§11.19) */ }[] }
 ```
+
+*Clarified in 0.2.1 (ADR-30): what v0.1a implements.* The generated `content/schemas/aircraft.schema.json` is
+normative for the fields that exist; the interface above remains the target. Differences:
+
+- Present now: identity, `mass` (with `tanks`), `geometry` without `gear`, `engines`, `aero`, `fcs`,
+  `hardpoints` (empty) and `envelope`. The rest arrives with the systems that read it.
+- `aero.config_deltas` and `aero.clmax_table` live in the aero tables (`aero/1`: its `config` block and
+  `lift.cl_max`), next to the coefficients they modify. `aero` gains `static_margin_mac`, checked
+  by the baker against the tables.
+- `fcs.gains_ref` is absent until the FCS (v0.1b). `fcs.actuators` is keyed by surface (`stab`,
+  `aileron`, `rudder`, `lef`, `tef`, `airbrake`), each with `range_deg`, `rate_dps` and a first-order
+  `tau_s` instead of `bandwidth_hz`; the airbrake uses `rate_per_s` over 0 to 1.
 
 ## A.3 `engine/1`
 
@@ -10733,6 +10767,12 @@ interface Engine {
   audio: { rpm_idle: number; rpm_max: number; blade_count: number; harmonics: number[] }
 }
 ```
+
+*Clarified in 0.2.1 (ADR-30): what v0.1a implements.* `kind` is `turbofan`. `idle_fraction` moved to
+`thrust` (it scales thrust, not fuel flow). `dynamics` gains `ab_stage_s` (the stage time
+constant of §11.8.2) and `ab_stages`; `start_time_s`, `idle_rpm_pct`, `egt_max_k`, `inlet.recovery`,
+the masses and dimensions, and `audio` arrive with the systems that read them. The inlet's
+angle-of-attack loss (§11.8.1) is data: `inlet.alpha_start_deg` and `inlet.alpha_span_deg`.
 
 ## A.4 `weapon/1` class blocks
 
@@ -11094,6 +11134,12 @@ The Kestrel is the reference light fighter (G4) and the first aircraft built (M1
 | Cruise TSFC (M 0.85, 11 km) | 0.85 lb/(lbf·h) |
 | Dynamics (*target*) | idle → military spool 4.0 s; military → AB light-off 1.5 s; AB cut-off 0.8 s; start 40 s |
 
+*Clarified in 0.2.1:* the two spool figures are times to near full thrust, not time constants. The
+§11.8.2 model with τ_up = 1.8 s reaches 90 % of military 4.1 s after selection; with the 0.6 s
+light-off delay and 0.5 s stage time constant, the afterburner reaches 90 % of its thrust 1.75 s
+after selection. The engine data uses §11.8.2's form (`content/core/engines/README.md`). No steady
+point of C.7 depends on these figures.
+
 ## C.4 Aerodynamics (reference polar)
 
 | Parameter | Value |
@@ -11158,6 +11204,10 @@ The FCS in Standard Assist augments damping and response; Manual relies on these
 Dry (military power), clean 9 500 kg: M_max 1.00 at SL, 1.07 at 6 km, 1.29 at 11 km.
 
 **Climb.** Maximum rate of climb at SL, 9 500 kg, afterburner: **283.1 m/s (55 700 ft/min) at Mach 0.83**.
+
+*Clarified in 0.2.1 (ADR-31):* the rate of climb is the maximum over Mach of the 1 g specific excess
+power `P_s = (T − D)·V/W`, as C.8 computes it. The Mach of the maximum is informative only: P_s is
+within 3 % of its maximum from M 0.74 to 0.88, so the best-climb Mach is not a gated metric.
 
 **1 g stall speeds (SL, ISA)**
 
@@ -11268,6 +11318,17 @@ def sustained_n(M, h, mass, ab=True):          # bisection on D(n) = T
 
 The take-off and landing integrations use the same polar with ground `C_L` of 0.55 (take-off) / 0.45 (landing), rolling resistance μ_r = 0.02, thrust `T_SL (ρ/ρ₀)^0.75`, and the configuration drag of C.4, integrated with a 0.01 s Euler step to `V_LOF` (take-off) or to 2 m/s (landing).
 
+*Clarified in 0.2.1 (ADR-31):*
+
+- **Altitude datum.** `isa(h)` above treats `h` as geopotential altitude, while the game's ISA
+  takes geometric height h_MSL and converts it (§11.3), and envelope `alt_m` is geometric like every
+  altitude in the game. The difference is not compensated: it moves M_max at 11 km by −0.05 % and
+  n_sust at 6 km by +0.25 %, both well inside the tolerances.
+- **Mach grid.** `max_level_mach` scans in steps of 0.01 and keeps the last Mach that passes, so it
+  floors. The true crossings are M 1.2288 (SL, AB), 1.8336 (11 km) and 1.0005 (SL, dry). The
+  conformance test measures a continuous Mach, so it reads about +0.7 % against `vmax_sl` by
+  construction.
+
 ## C.9 Authored envelope block (conformance test input)
 
 ```json
@@ -11277,17 +11338,23 @@ The take-off and landing integrations use the same polar with ground `C_L` of 0.
   { "id": "vmax_dry_sl",  "mass_kg": 9500,  "alt_m": 0,     "config": "clean_mil",  "metric": "max_mach",  "value": 1.00,  "tol_pct": 3 },
   { "id": "roc_sl",       "mass_kg": 9500,  "alt_m": 0,     "config": "clean_ab",   "metric": "roc_mps",   "value": 283.1, "tol_pct": 3 },
   { "id": "stall_clean",  "mass_kg": 9500,  "alt_m": 0,     "config": "clean",      "metric": "stall_mps", "value": 58.3,  "tol_pct": 3 },
-  { "id": "nsust_sl_m07", "mass_kg": 10500, "alt_m": 0,     "config": "ref_ab",     "metric": "n_sust",    "value": 8.45,  "tol_pct": 5 },
-  { "id": "turn_sl_m05",  "mass_kg": 10500, "alt_m": 0,     "config": "ref_ab",     "metric": "turn_dps",  "value": 20.5,  "tol_pct": 5 },
-  { "id": "nsust_6k_m09", "mass_kg": 10500, "alt_m": 6000,  "config": "ref_ab",     "metric": "n_sust",    "value": 5.58,  "tol_pct": 5 },
+  { "id": "nsust_sl_m07", "mass_kg": 10500, "alt_m": 0,     "mach": 0.7, "config": "ref_ab", "metric": "n_sust",   "value": 8.45,  "tol_pct": 5 },
+  { "id": "turn_sl_m05",  "mass_kg": 10500, "alt_m": 0,     "mach": 0.5, "config": "ref_ab", "metric": "turn_dps", "value": 20.5,  "tol_pct": 5 },
+  { "id": "nsust_6k_m09", "mass_kg": 10500, "alt_m": 6000,  "mach": 0.9, "config": "ref_ab", "metric": "n_sust",   "value": 5.58,  "tol_pct": 5 },
   { "id": "ff_mil_sl",    "mass_kg": 9500,  "alt_m": 0,     "config": "clean_mil",  "metric": "ff_kgps",   "value": 1.566, "tol_pct": 3 },
   { "id": "ff_ab_sl",     "mass_kg": 9500,  "alt_m": 0,     "config": "clean_ab",   "metric": "ff_kgps",   "value": 6.889, "tol_pct": 3 },
-  { "id": "to_roll",      "mass_kg": 10500, "alt_m": 0,     "config": "to_flaps_ab","metric": "roll_m",    "value": 195,   "tol_pct": 5 },
-  { "id": "ldg_roll",     "mass_kg": 8500,  "alt_m": 0,     "config": "ldg_brakes", "metric": "roll_m",    "value": 322,   "tol_pct": 5 }
+  { "id": "to_roll",      "mass_kg": 10500, "alt_m": 0,     "config": "to_flaps_ab","metric": "roll_m",    "value": 195,   "tol_pct": 5, "requires": "gear" },
+  { "id": "ldg_roll",     "mass_kg": 8500,  "alt_m": 0,     "config": "ldg_brakes", "metric": "roll_m",    "value": 322,   "tol_pct": 5, "requires": "gear" }
 ] } }
 ```
 
 The 6-DOF model has trim, control and unsteady effects the point-mass calculator lacks. The authored values are the targets; differences larger than the tolerance are resolved by retuning the data, not by changing the targets, unless the target itself is shown to be wrong.
+
+*Clarified in 0.2.1 (ADR-30, ADR-31):* `mach` is required on `n_sust` and `turn_dps` points (the id's
+`m07` is a label, the field is the data). `requires` names a model the point needs; until it exists
+the point is reported as deferred. `config` is one of `clean`, `clean_mil`, `clean_ab`, `ref_ab`
+(clean aerodynamics at the reference mass, afterburner; C.8 adds no store drag), `to_flaps_ab` and
+`ldg_brakes`.
 
 ## C.10 Hardpoints and stations
 
@@ -11767,7 +11834,7 @@ Each template has ≥ 6 weighted variants and urgency variants (calm/urgent/pani
 | Format | Single Markdown file (`GDD.md`), headings per the table of contents; Appendices A–I |
 | Roadmap companion | `roadmap.md` (version plan v0.0 → v1.0) |
 | Version scheme | `MAJOR.MINOR.PATCH`: MAJOR = change of vision/platform; MINOR = new or changed chapters/ADRs; PATCH = corrections/clarifications |
-| Current version | 0.2.0 (browser-native rewrite of the first draft) |
+| Current version | 0.2.1 (v0.1a flight-model clarifications) |
 
 ## I.2 Change log
 
@@ -11775,6 +11842,7 @@ Each template has ≥ 6 weighted variants and urgency variants (calm/urgent/pani
 |---|---|
 | 0.1.x | First draft, engine-agnostic/desktop assumptions (superseded) |
 | 0.2.0 | Browser-native specification: WebGPU/WebGL2 renderer, Rust→WASM Sim Core, worker topology, WebRTC networking, OPFS/IndexedDB storage; all 71 chapters and Appendices A–I written; replay decision aligned with ADR-09 (snapshot-based); Kestrel reference data computed |
+| 0.2.1 | Clarifications from building the v0.1a flight model (ADR-29, ADR-30, ADR-31): §11.2.4 sign of the side-force term of `Z`; §11.6.3 post-stall blend is a data-driven smoothstep; §11.19 sustained load factor is wind-axis, `mach` and `requires` on envelope points; §61.5 Aero seam wired; A.2 and A.3 notes on what `aircraft/1` and `engine/1` implement now; C.3 spool figures against §11.8.2; C.7 rate of climb is the maximum 1 g P_s; C.8 altitude datum and 0.01 Mach floor; C.9 envelope fields; OQ-01 closed. No gate or target changed |
 
 ## I.3 Ownership
 

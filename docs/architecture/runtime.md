@@ -1,8 +1,9 @@
-# Runtime architecture, as built in v0.0b
+# Runtime architecture, as built in v0.1a
 
 What runs where, how bytes move, and which switches change it. The decisions behind it are
 ADR-17 (roles), ADR-24 (renderer), ADR-25 (topology, IPC, ABI), ADR-26 (loop pacing); this page
-is the map. Code references are to files in the repository.
+is the map. Code references are to files in the repository. The aircraft inside the core is
+described in [flight.md](flight.md).
 
 ## Topology
 
@@ -14,8 +15,9 @@ Main thread   boot -> Service Worker isolation -> flags -> features -> GameFlow
    |  Input channel (96 B frames)                          |  control: typed postMessage
    v                                                       v
 Sim Worker    WASM core - FixedStepClock - step(1) x n (n <= 5) - stats at 4 Hz
-   |  Snapshot channel (10 368 B per tick, latest wins)
-   |  Terrain patch, once, over a direct MessagePort
+   |  Snapshot channel (10 432 B per tick, latest wins)
+   |  Terrain patch over a direct MessagePort: at start, then again around the aircraft
+   |  whenever it is more than 8 km from the patch centre (checked every 500 ms)
    v
 Render Worker OffscreenCanvas - interpolate two snapshots - Renderer (WebGPU | WebGL2 | Null)
               - stats at 4 Hz
@@ -51,14 +53,18 @@ Little-endian, defined in `crates/sim-core/src/layout.rs`, generated into
 | Block | Size | Contents |
 |---|---|---|
 | `InputFrame` | 96 B | `seq` u32, `flags` u32 (bit 0: neutral), `t_ms` f64, 12 axes f32 (pitch, roll, yaw, throttle, throttle2, brake L and R, trim P, R and Y, cursor X and Y), 64 buttons, 2 hats |
-| Snapshot v1 | 10 368 B | 64 B header (magic `FGSN`, version, tick, `publish_time_ms`, last input `seq`, body count, core state, `input_t_ms`), observer (position f64x3, attitude, velocity, speed, throttle), 256 bodies as structure of arrays |
-| Snapshot SAB | 31 168 B | 64 B header (magic, version, slot size and count, the `published` word, one sequence counter per slot) and 3 slots |
+| Snapshot v2 | 10 432 B | 64 B header (magic `FGSN`, version 2, tick, `publish_time_ms`, last input `seq`, body count, core state, `input_t_ms`); 128 B ownship (reference-point position f64x3, attitude, velocity, TAS, CAS, Mach, α, β, n_z, throttle, thrust, fuel, mass, body rates, surface positions, altitude, AB stage, flags: spectator, crashed, flameout, stall warning, numerical fault); 256 bodies as structure of arrays from byte 192 |
+| Snapshot SAB | 31 360 B | 64 B header (magic, version, slot size and count, the `published` word, one sequence counter per slot) and 3 slots |
 | Input ring SAB | 6 176 B | 32 B header (record size, capacity 64, write and read positions, dropped count) and 64 frames |
-| Profile block | 144 B | ticks, tick time (last, EWMA), 11 stage times (last, EWMA), 8 counters |
+| Profile block | 144 B | ticks, tick time (last, EWMA), 11 stage times (last, EWMA), 9 counters (inputs applied, non-finite, stale and overflowed; FDM faults, crashes, respawns, snapshots, trim failures) |
 | Terrain patch | 465 980 B | origin f64x3, posts, spacing, then 129 x 129 vertices of position, normal and height |
 
 Battlefield frame (BF) is east, north, up; render axes are `(x, y, z) -> (x, z, -y)`. Attitudes are
-`[w, x, y, z]`. Body (FRD) to BF for the observer; the camera applies the BF-to-render rotation.
+`[w, x, y, z]`. Body (FRD) to BF for the ownship; the camera applies the BF-to-render rotation.
+
+The **ownship** is the player's aircraft: the core pack's lowest-handle aircraft, spawned trimmed
+when the core starts. With no aircraft content it is the v0.0b observer, and the snapshot flags it
+`spectator`.
 
 ## Sim ABI v2 (`crates/sim-wasm/src/abi.rs`)
 
@@ -74,9 +80,12 @@ fg_tick_lo/hi()              fg_state_hash_lo/hi()            fg_subsystem_hash_
 import: env.fg_now() -> f64  (profiling clock; the threads build also imports env.memory)
 ```
 
-Hash kinds: 0 combined, 1 tick, 2 rng, 3 bodies, 4 observer, 5 input, 6 content. `fg_init` leaves
+Hash kinds: 0 combined, 1 tick, 2 rng, 3 bodies, 4 ownship, 5 input, 6 content. Input scripts: 0
+none (live input), 1 erratic (the 10⁶-tick determinism run), 2 flight60 (the 60 s scripted flight
+of `AC-11.7`). Buttons: 0 reset, 1 pitch trim nose up, 2 pitch trim nose down. `fg_init` leaves
 the core idle; callers load content, choose a script, then `fg_start`. The pointer-lifetime and
-view-refresh rules are in `crates/sim-wasm/UNSAFE.md`.
+view-refresh rules are in `crates/sim-wasm/UNSAFE.md`. v0.1a changed the snapshot layout and these
+constants, not the exports, so the ABI is still version 2.
 
 ## Messages
 
@@ -95,7 +104,7 @@ Typed in `packages/sim-bridge/src/messages.ts` (Sim Worker) and
 | From the Sim Worker | Contents |
 |---|---|
 | `ready` | ABI version, build, sleeper, content hash |
-| `stats` (4 Hz) | tick, rate, dropped time, tick-cost and input-latency quantiles (interval and run), queue drops, core state, the observer's pose, stage timings when profiling |
+| `stats` (4 Hz) | tick, rate, dropped time, tick-cost and input-latency quantiles (interval and run), queue drops, core state, the aircraft block of the latest snapshot, stage timings when profiling |
 | `state`, `hash`, `error` | as named |
 
 The Render Worker takes `init` (the canvas, snapshot channel, terrain port), `canvas` (a fresh one),
@@ -119,8 +128,11 @@ Unknown keys and bad values are ignored with a warning in the log.
 
 Keys and toggles: `Ctrl+Shift+D` opens the debug overlay. Flying: `W`/`S` pitch (`W` pushes the
 nose down), `A`/`D` roll, `Q`/`E` yaw, `Shift` and `Page Up` raise the throttle, `Ctrl` and `Page
-Down` lower it, `R` resets. Browsers keep `Ctrl+W`, `Ctrl+R` and similar for themselves, so
-`Page Up` and `Page Down` are the dependable throttle keys.
+Down` lower it, `]` and `[` trim the nose up and down while held (on a pad, d-pad down and up),
+`R` respawns. The stick moves the control surfaces directly; there is no flight-control system
+before v0.1b. The throttle's military detent is at 80 % of the lever, with four afterburner
+stages above it. Browsers keep `Ctrl+W`, `Ctrl+R` and similar for themselves, so `Page Up` and
+`Page Down` are the dependable throttle keys.
 
 ## Error codes
 
@@ -153,5 +165,7 @@ Down` lower it, `R` resets. Browsers keep `Ctrl+W`, `Ctrl+R` and similar for the
 | PS-0, gates, the first-run benchmark | `packages/perf/src/` |
 | Audio seam | `packages/audio/src/` |
 | Composition root, demo wiring, self-tests, Vite config | `packages/app-shell/` |
-| Core, seams, observer, snapshot | `crates/sim-core/src/` |
+| Core, seams, ownship, spawn, snapshot | `crates/sim-core/src/` |
+| Flight model; the conformance test | `crates/flight/src/`; `crates/flight-test/src/` ([flight.md](flight.md)) |
+| Terrain patch re-centring | `packages/sim-host/src/terrain-follow.ts`, `sim.worker.ts` |
 | C ABI | `crates/sim-wasm/src/abi.rs` |

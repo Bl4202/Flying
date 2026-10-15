@@ -7,7 +7,7 @@ Rust workspace (GDD §61.2–§61.3).
 | `simmath` | deterministic `f64` maths: `DVec3`, `DQuat`, `DMat3` and the software-`libm` wrappers in `dmath`. Depends only on `libm` |
 | `flight` | the flight model (GDD 11): ISA atmosphere, air data, tables, table aerodynamics, propulsion, mass and fuel, actuators, the 6-DOF rigid body with RK4 at 120 Hz, trim and linearisation. Depends only on `simmath` and `content`; knows nothing of the tick schedule or the browser |
 | `flight-test` | the Performance Conformance Test (GDD 11.19, ADR-31): a test pilot, the flight-test procedures and the `conformance_report/1` report. Depends on `flight`, `simmath`, `content`, `serde_json` |
-| `sim-core` | the deterministic core: tick schedule, observer, input, snapshot, hashes, the 13 seams. Depends only on `content` and `simmath` (it re-exports `math` and `dmath`) |
+| `sim-core` | the deterministic core: tick schedule, the ownship (the aircraft, or the observer as a spectator), spawn, crash and respawn, input, snapshot, hashes, the 16 seams. Depends only on `content`, `simmath` and `flight` (it re-exports `math` and `dmath`, and `flight::aero` as the Aero seam) |
 | `sim-wasm` | the hand-written C ABI (v2) the core is built into for the browser; the only crate with `unsafe` (see `UNSAFE.md`), so it also hosts the no-allocation tests |
 | `content` | the dependency-free `.cpack` reader and writer and the registry |
 | `protocol` | wire types and the `Transport` seam with a loopback implementation |
