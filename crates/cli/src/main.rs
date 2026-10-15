@@ -2,8 +2,9 @@
 //!
 //! ```text
 //! fg version
-//! fg hash  [--seed HEX] [--script none|erratic] [--content PATH] (--ticks N | --at T1,T2,...)
-//! fg bench [--seed HEX] [--script none|erratic] [--content PATH] [--ticks N] [--json]
+//! fg hash  [--seed HEX] [--script none|erratic|flight60] [--content PATH]
+//!          (--ticks N | --at T1,T2,... | --every N --ticks N)
+//! fg bench [--seed HEX] [--script none|erratic|flight60] [--content PATH] [--ticks N] [--json]
 //! fg conformance --content PATH [--aircraft-index N] [--json PATH] [--traces DIR]
 //!                [--only ID,...] [--expect-deferred ID,...]
 //! ```
@@ -25,8 +26,9 @@ use sim_core::{DEFAULT_SEED, SimCore};
 
 const USAGE: &str = "usage:
   fg version
-  fg hash  [--seed HEX] [--script none|erratic] [--content PATH] (--ticks N | --at T1,T2,...)
-  fg bench [--seed HEX] [--script none|erratic] [--content PATH] [--ticks N] [--json]
+  fg hash  [--seed HEX] [--script none|erratic|flight60] [--content PATH]
+//!          (--ticks N | --at T1,T2,... | --every N --ticks N)
+  fg bench [--seed HEX] [--script none|erratic|flight60] [--content PATH] [--ticks N] [--json]
   fg conformance --content PATH [--aircraft-index N] [--json PATH] [--traces DIR]
                  [--only ID,...] [--expect-deferred ID,...]";
 
@@ -127,7 +129,12 @@ fn parse(args: &[String], switches: &[&str]) -> Result<Parsed, String> {
                 setup.script = match value.as_str() {
                     "none" => input_script::NONE as u32,
                     "erratic" => input_script::ERRATIC as u32,
-                    other => return Err(format!("unknown --script {other:?} (none or erratic)")),
+                    "flight60" => input_script::FLIGHT60 as u32,
+                    other => {
+                        return Err(format!(
+                            "unknown --script {other:?} (none, erratic or flight60)"
+                        ));
+                    }
                 };
             }
             "--content" => {
@@ -145,17 +152,24 @@ fn parse(args: &[String], switches: &[&str]) -> Result<Parsed, String> {
 fn run_hash(args: &[String]) -> Result<(), String> {
     let Parsed { setup, rest, .. } = parse(args, &[])?;
     let mut at: Option<Vec<u64>> = None;
+    let mut last: Option<u64> = None;
+    let mut every: Option<u64> = None;
     for (flag, value) in &rest {
         match flag.as_str() {
-            "--ticks" => {
-                let n: u64 = value.parse().map_err(|e| format!("bad --ticks: {e}"))?;
-                at = Some(vec![n]);
+            "--ticks" => last = Some(value.parse().map_err(|e| format!("bad --ticks: {e}"))?),
+            "--every" => {
+                every = Some(value.parse().map_err(|e| format!("bad --every: {e}"))?);
             }
             "--at" => at = Some(parse_ticks(value)?),
             other => return Err(format!("unknown flag {other}")),
         }
     }
-    let ticks = at.ok_or("one of --ticks or --at is required")?;
+    let ticks = match (at, last, every) {
+        (Some(at), None, None) => at,
+        (None, Some(n), None) => vec![n],
+        (None, Some(n), Some(k)) if k > 0 => every_ticks(n, k),
+        _ => return Err("use --ticks N, --at T1,T2,... or --every K --ticks N".into()),
+    };
     if ticks.windows(2).any(|w| w[0] >= w[1]) {
         return Err("--at ticks must be strictly increasing".into());
     }
@@ -168,13 +182,13 @@ fn run_hash(args: &[String]) -> Result<(), String> {
         let h = core.subsystem_hashes();
         writeln!(
             out,
-            "{{\"tick\":{},\"combined\":\"{:016x}\",\"tick_h\":\"{:016x}\",\"rng\":\"{:016x}\",\"bodies\":\"{:016x}\",\"observer\":\"{:016x}\",\"input\":\"{:016x}\",\"content\":\"{:016x}\"}}",
+            "{{\"tick\":{},\"combined\":\"{:016x}\",\"tick_h\":\"{:016x}\",\"rng\":\"{:016x}\",\"bodies\":\"{:016x}\",\"ownship\":\"{:016x}\",\"input\":\"{:016x}\",\"content\":\"{:016x}\"}}",
             core.tick(),
             h.combined,
             h.tick,
             h.rng,
             h.bodies,
-            h.observer,
+            h.ownship,
             h.input,
             h.content
         )
@@ -225,10 +239,10 @@ fn run_bench(args: &[String]) -> Result<(), String> {
         ns_per_tick[ns_per_tick.len() / 2],
         ns_per_tick[ns_per_tick.len() - 1],
     );
-    let script = if setup.script == input_script::NONE as u32 {
-        "none"
-    } else {
-        "erratic"
+    let script = match setup.script as usize {
+        input_script::NONE => "none",
+        input_script::ERRATIC => "erratic",
+        _ => "flight60",
     };
     if on.iter().any(|f| f == "--json") {
         println!(
@@ -243,6 +257,15 @@ fn run_bench(args: &[String]) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+/// `0, k, 2k, ..., n` (and `n` itself if it is not a multiple of `k`).
+fn every_ticks(n: u64, k: u64) -> Vec<u64> {
+    let mut v: Vec<u64> = (0..=n / k).map(|i| i * k).collect();
+    if !n.is_multiple_of(k) {
+        v.push(n);
+    }
+    v
 }
 
 fn parse_ticks(list: &str) -> Result<Vec<u64>, String> {
@@ -287,6 +310,13 @@ mod tests {
     }
 
     #[test]
+    fn every_lists_the_checkpoints() {
+        assert_eq!(every_ticks(180, 60), [0, 60, 120, 180]);
+        assert_eq!(every_ticks(130, 60), [0, 60, 120, 130]);
+        assert_eq!(every_ticks(3_600, 60).len(), 61);
+    }
+
+    #[test]
     fn the_script_changes_the_input_hash_and_the_observer() {
         let run = |script| {
             let mut setup = parse(&[], &[]).unwrap().setup;
@@ -298,7 +328,7 @@ mod tests {
         let quiet = run(input_script::NONE as u32);
         let busy = run(input_script::ERRATIC as u32);
         assert_ne!(quiet.input, busy.input);
-        assert_ne!(quiet.observer, busy.observer);
+        assert_ne!(quiet.ownship, busy.ownship);
         // The probe world does not depend on input.
         assert_eq!((quiet.rng, quiet.bodies), (busy.rng, busy.bodies));
     }

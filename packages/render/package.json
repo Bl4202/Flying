@@ -1,7 +1,7 @@
 {
   "name": "@flying/render",
   "private": true,
-  "version": "0.0.2",
+  "version": "0.1.0",
   "type": "module",
   "description": "Renderer seam, WebGPU and WebGL2 backends, WGSL sources",
   "exports": {

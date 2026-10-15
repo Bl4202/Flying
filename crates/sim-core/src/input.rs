@@ -139,7 +139,7 @@ pub struct InputState {
     pending_len: usize,
     /// `t_ms` of the last applied frame, for latency measurement. Never hashed.
     last_applied_t_ms: f64,
-    script: Option<ErraticPilot>,
+    script: Option<Script>,
 }
 
 impl Default for InputState {
@@ -171,7 +171,7 @@ impl InputState {
     }
 
     /// Installs (or removes) the scripted pilot that stands in for a person.
-    pub fn set_script(&mut self, script: Option<ErraticPilot>) {
+    pub fn set_script(&mut self, script: Option<Script>) {
         self.script = script;
     }
 
@@ -190,8 +190,11 @@ impl InputState {
     /// everything queued by the host, in order.
     pub fn ingest(&mut self, tick: u64) {
         self.edges = 0;
-        if let Some(pilot) = self.script.as_mut() {
-            let frame = pilot.next_frame(tick);
+        if let Some(script) = self.script.as_mut() {
+            let frame = match script {
+                Script::Erratic(pilot) => pilot.next_frame(tick),
+                Script::Flight60 => flight60_frame(tick),
+            };
             // Exercise the real wire path: encode, then decode what a host would have sent.
             let mut wire = [0_u8; FRAME_BYTES];
             frame.encode(&mut wire);
@@ -270,6 +273,12 @@ impl InputState {
         bit < 64 && self.edges & (1_u64 << bit) != 0
     }
 
+    /// True if button `bit` is down in the latest frame (for held controls such as trim).
+    #[must_use]
+    pub fn held(&self, bit: usize) -> bool {
+        bit < 64 && self.latest.buttons & (1_u64 << bit) != 0
+    }
+
     /// Counters since creation.
     #[must_use]
     pub fn counters(&self) -> InputCounters {
@@ -309,13 +318,77 @@ impl InputState {
         h.write_u64(u64::from(c.applied) | (u64::from(c.nonfinite) << 32));
         h.write_u64(u64::from(c.stale) | (u64::from(c.overflow) << 32));
         match &self.script {
-            Some(p) => {
+            Some(Script::Erratic(p)) => {
                 h.write_u64(1);
                 p.hash_into(h);
             }
+            // A pure function of the tick: nothing to hash but which script it is.
+            Some(Script::Flight60) => h.write_u64(2),
             None => h.write_u64(0),
         }
     }
+}
+
+/// A scripted pilot that stands in for a person (see [`crate::layout::input_script`]).
+#[derive(Clone, Debug)]
+pub enum Script {
+    /// Random-walk stick and throttle with an occasional reset.
+    Erratic(ErraticPilot),
+    /// The 60 s scripted flight of `AC-11.7`, [`flight60_frame`].
+    Flight60,
+}
+
+/// Length of the Flight60 script, ticks (60 s).
+pub const FLIGHT60_TICKS: u64 = 3_600;
+
+/// The frame of the Flight60 script for `tick`: a fixed, input-only flight that exercises the
+/// whole flight model (`AC-11.7`). By second:
+///
+/// | s | input |
+/// |---|---|
+/// | 0-4 | neutral, throttle 0.5 |
+/// | 5-9 | throttle 1.0 (afterburner light-off) |
+/// | 10-14 | pitch +0.5 |
+/// | 15-19 | roll +1.0 |
+/// | 20-24 | neutral, throttle 0.8 |
+/// | 25-29 | pitch -0.3 |
+/// | 30-39 | aileron then rudder doublets, +-0.5 for 1 s each |
+/// | 40-49 | throttle 0, pitch +0.8 (towards the stall) |
+/// | 50-54 | neutral, throttle 0.8 |
+/// | 55-59 | trim nose up held 2.5 s, then nose down held 2.5 s |
+///
+/// After 60 s it holds neutral at 0.8. Sequence numbers and timestamps come from the tick.
+#[must_use]
+pub fn flight60_frame(tick: u64) -> InputFrame {
+    use crate::layout::button;
+    let mut frame = InputFrame::neutral(u32::try_from((tick + 1) & 0xFFFF_FFFF).unwrap_or(0));
+    frame.t_ms = tick as f64 * (1_000.0 / 60.0);
+    let s = tick / 60;
+    let (pitch, roll, yaw, throttle) = match s {
+        0..=4 => (0.0, 0.0, 0.0, 0.5),
+        5..=9 => (0.0, 0.0, 0.0, 1.0),
+        10..=14 => (0.5, 0.0, 0.0, 1.0),
+        15..=19 => (0.0, 1.0, 0.0, 1.0),
+        25..=29 => (-0.3, 0.0, 0.0, 0.8),
+        30..=39 => match (s - 30) % 4 {
+            0 => (0.0, 0.5, 0.0, 0.8),
+            1 => (0.0, -0.5, 0.0, 0.8),
+            2 => (0.0, 0.0, 0.5, 0.8),
+            _ => (0.0, 0.0, -0.5, 0.8),
+        },
+        40..=49 => (0.8, 0.0, 0.0, 0.0),
+        _ => (0.0, 0.0, 0.0, 0.8),
+    };
+    frame.axes[axis::PITCH] = pitch;
+    frame.axes[axis::ROLL] = roll;
+    frame.axes[axis::YAW] = yaw;
+    frame.axes[axis::THROTTLE] = throttle;
+    if (3_300..3_450).contains(&tick) {
+        frame.buttons |= 1 << button::TRIM_NOSE_UP;
+    } else if (3_450..FLIGHT60_TICKS).contains(&tick) {
+        frame.buttons |= 1 << button::TRIM_NOSE_DOWN;
+    }
+    frame
 }
 
 /// A seeded random-walk pilot: smooth stick wandering, drifting throttle, an occasional reset
@@ -540,9 +613,9 @@ mod tests {
     #[test]
     fn the_script_goes_through_the_wire_path_and_changes_the_hash() {
         let mut s = InputState::new();
-        s.set_script(Some(ErraticPilot::new(
+        s.set_script(Some(Script::Erratic(ErraticPilot::new(
             crate::rng::RngStreams::new(1).stream("input/erratic"),
-        )));
+        ))));
         let mut h0 = StateHasher::new();
         s.hash_into(&mut h0);
         s.ingest(0);
@@ -565,5 +638,30 @@ mod tests {
         a.hash_into(&mut ha);
         b.hash_into(&mut hb);
         assert_eq!(ha.finish(), hb.finish());
+    }
+
+    #[test]
+    fn the_flight60_script_follows_its_table() {
+        let at = |s: f64| flight60_frame((s * 60.0) as u64);
+        assert_eq!(at(0.0).seq, 1);
+        assert_eq!(at(2.0).axes[axis::THROTTLE], 0.5);
+        assert_eq!(at(7.0).axes[axis::THROTTLE], 1.0);
+        assert_eq!(at(12.0).axes[axis::PITCH], 0.5);
+        assert_eq!(at(17.0).axes[axis::ROLL], 1.0);
+        assert_eq!(at(30.5).axes[axis::ROLL], 0.5);
+        assert_eq!(at(31.5).axes[axis::ROLL], -0.5);
+        assert_eq!(at(32.5).axes[axis::YAW], 0.5);
+        assert_eq!(at(33.5).axes[axis::YAW], -0.5);
+        assert_eq!(at(45.0).axes[axis::PITCH], 0.8);
+        assert_eq!(at(45.0).axes[axis::THROTTLE], 0.0);
+        assert_eq!(at(56.0).buttons, 1 << button::TRIM_NOSE_UP);
+        assert_eq!(at(58.0).buttons, 1 << button::TRIM_NOSE_DOWN);
+        assert_eq!(at(61.0).buttons, 0);
+        // Through the wire path, the trim buttons read as held.
+        let mut st = InputState::new();
+        st.set_script(Some(Script::Flight60));
+        st.ingest(3_400);
+        assert!(st.held(button::TRIM_NOSE_UP) && !st.held(button::TRIM_NOSE_DOWN));
+        assert!(!st.held(64));
     }
 }

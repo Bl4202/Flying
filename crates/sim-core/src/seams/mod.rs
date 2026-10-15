@@ -9,7 +9,7 @@
 //! | Line of sight | [`los::LosService`] | `OpenSky`, `TerrainLos` | in `Services` | M4 |
 //! | Strategic | [`strategic::StrategicContext`] | `NoStrategicContext` | in `Services` | after 1.0 |
 //! | Replay | [`replay::ReplaySink`] | `NullReplaySink`, `CountingReplaySink` | wired | M2 |
-//! | Aero | [`aero::AeroModel`] | `NoAero`, `LinearAero` | provisional | M1 |
+//! | Aero | [`aero::AeroModel`] | `TableAero` (the flight model), `NoAero`, `LinearAero` | wired (v0.1a) | M3 (stores and damage) |
 //! | Damage | [`damage::DamageModel`] | `AggregateHealth` | provisional | M4 |
 //! | Radar | [`radar::RadarModel`] | `NoRadar`, `RangeRcsRadar` | provisional | M4 |
 //! | Missile | [`missile::MissileModel`] | `ProportionalNav` | provisional | M3 |

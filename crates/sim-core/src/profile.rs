@@ -122,10 +122,11 @@ pub fn counter_array(
     c[counter::INPUT_NONFINITE] = input.nonfinite;
     c[counter::INPUT_STALE] = input.stale;
     c[counter::INPUT_OVERFLOW] = input.overflow;
-    c[counter::OBSERVER_RESETS] = world.observer_resets;
-    c[counter::GROUND_CLAMPS] = world.ground_clamps;
-    c[counter::BOUNDARY_CLAMPS] = world.boundary_clamps;
+    c[counter::FDM_FAULTS] = world.fdm_faults;
+    c[counter::CRASHES] = world.crashes;
+    c[counter::RESPAWNS] = world.respawns;
     c[counter::SNAPSHOTS] = world.snapshots;
+    c[counter::TRIM_FAILURES] = world.trim_failures;
     c
 }
 
@@ -198,13 +199,18 @@ mod tests {
             overflow: 4,
         };
         let world = crate::world::Counters {
-            observer_resets: 5,
-            ground_clamps: 6,
-            boundary_clamps: 7,
+            fdm_faults: 5,
+            crashes: 6,
+            respawns: 7,
             snapshots: 8,
+            trim_failures: 9,
+            // Spectator diagnostics are not exported.
+            observer_resets: 100,
+            ground_clamps: 101,
+            boundary_clamps: 102,
         };
         let arr = counter_array(input, world);
-        assert_eq!(arr, [1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(arr, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
         let mut block = [0xFF_u8; p::SIZE];
         write_counters(&mut block, &arr);
         for (i, want) in arr.iter().enumerate() {

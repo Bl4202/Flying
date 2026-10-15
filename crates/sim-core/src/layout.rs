@@ -32,7 +32,7 @@ layouts! {
         VERSION = 2,
         // Frames the host can hand over per `fg_push_inputs` call.
         INPUT_BATCH = 8,
-        SNAPSHOT_LAYOUT_VERSION = 1,
+        SNAPSHOT_LAYOUT_VERSION = 2,
     }
 
     /// `InputFrame`, 96 bytes (GDD 58.2).
@@ -64,9 +64,12 @@ layouts! {
         CURSOR_Y = 11,
     }
 
-    /// Bit indices into `InputFrame.buttons`.
+    /// Bit indices into `InputFrame.buttons`. `RESET` acts on the press; the trim buttons act
+    /// while held.
     button {
         RESET = 0,
+        TRIM_NOSE_UP = 1,
+        TRIM_NOSE_DOWN = 2,
     }
 
     /// Bits of `InputFrame.flags`.
@@ -75,10 +78,13 @@ layouts! {
         NEUTRAL = 1,
     }
 
-    /// Snapshot v1: header, observer block, bodies in structure-of-arrays form.
+    /// Snapshot v2: header, the ownship block (the player's aircraft, or the spectator),
+    /// bodies in structure-of-arrays form. `O_POS_BF` is the aircraft's reference point, not its
+    /// centre of gravity, so the camera does not move as fuel burns. `O_SURFACES` is elevator,
+    /// aileron, rudder in radians; `O_FLAGS` holds `ownship_flag` bits.
     snapshot {
         MAGIC = 0x4E53_4746,
-        VERSION = 1,
+        VERSION = 2,
         HEADER_SIZE = 64,
         H_MAGIC = 0,
         H_VERSION = 4,
@@ -88,18 +94,46 @@ layouts! {
         H_BODY_COUNT = 28,
         H_CORE_STATE = 32,
         H_INPUT_T_MS = 40,
-        OBSERVER = 64,
+        OWNSHIP = 64,
+        OWNSHIP_SIZE = 128,
         O_POS_BF = 64,
         O_QUAT = 88,
         O_VEL_BF = 104,
-        O_SPEED = 116,
-        O_THROTTLE = 120,
+        O_TAS = 116,
+        O_CAS = 120,
+        O_MACH = 124,
+        O_ALPHA = 128,
+        O_BETA = 132,
+        O_NZ = 136,
+        O_THROTTLE = 140,
+        O_THRUST = 144,
+        O_FUEL = 148,
+        O_MASS = 152,
+        O_OMEGA = 156,
+        O_SURFACES = 168,
+        O_ALTITUDE = 180,
+        O_AB_STAGE = 184,
+        O_FLAGS = 185,
         BODY_CAPACITY = 256,
-        B_X = 128,
-        B_Y = 2176,
-        B_Z = 4224,
-        B_QUAT = 6272,
-        SIZE = 10368,
+        B_X = 192,
+        B_Y = 2240,
+        B_Z = 4288,
+        B_QUAT = 6336,
+        SIZE = 10432,
+    }
+
+    /// Bits of the snapshot's `O_FLAGS`.
+    ownship_flag {
+        // No aircraft content: the ownship is the kinematic spectator.
+        SPECTATOR = 1,
+        // Hit the ground; respawns shortly.
+        CRASHED = 2,
+        // An engine has flamed out.
+        FLAMEOUT = 4,
+        // Angle of attack within 3 degrees of the lift peak.
+        STALL_WARN = 8,
+        // The integrator gave up twice in a tick; respawns shortly.
+        NUMERICAL_FAULT = 16,
     }
 
     /// Shared snapshot buffer: three slots under a seqlock. `H_PUBLISHED` counts publications
@@ -111,8 +145,8 @@ layouts! {
         VERSION = 1,
         HEADER_SIZE = 64,
         SLOT_COUNT = 3,
-        SLOT_BYTES = 10368,
-        SIZE = 31168,
+        SLOT_BYTES = 10432,
+        SIZE = 31360,
         H_MAGIC = 0,
         H_VERSION = 4,
         H_SLOT_BYTES = 8,
@@ -146,7 +180,7 @@ layouts! {
         STAGE_MS_LAST = 16,
         STAGE_MS_EWMA = 60,
         COUNTERS = 104,
-        COUNTER_COUNT = 8,
+        COUNTER_COUNT = 9,
     }
 
     /// Tick stages in execution order (GDD 61.4.3).
@@ -170,10 +204,13 @@ layouts! {
         INPUT_NONFINITE = 1,
         INPUT_STALE = 2,
         INPUT_OVERFLOW = 3,
-        OBSERVER_RESETS = 4,
-        GROUND_CLAMPS = 5,
-        BOUNDARY_CLAMPS = 6,
+        // Integrator faults (each a rolled-back tick; GDD 11.10).
+        FDM_FAULTS = 4,
+        CRASHES = 5,
+        RESPAWNS = 6,
         SNAPSHOTS = 7,
+        // Spawns where the trim solver failed and a fallback attitude was used.
+        TRIM_FAILURES = 8,
     }
 
     /// Terrain patch handed to the renderer once.
@@ -221,7 +258,7 @@ layouts! {
         TICK = 1,
         RNG = 2,
         BODIES = 3,
-        OBSERVER = 4,
+        OWNSHIP = 4,
         INPUT = 5,
         CONTENT = 6,
     }
@@ -230,6 +267,8 @@ layouts! {
     input_script {
         NONE = 0,
         ERRATIC = 1,
+        // The 60 s scripted flight of AC-11.7.
+        FLIGHT60 = 2,
     }
 }
 
@@ -244,16 +283,29 @@ const _: () = {
     assert!(f::BUTTONS + 8 == f::HATS);
     assert!(f::HATS + f::HAT_COUNT <= f::SIZE);
 
-    // Snapshot: header, observer, then four structure-of-arrays blocks that end exactly at SIZE.
+    // Snapshot: header, ownship, then four structure-of-arrays blocks that end exactly at SIZE.
     assert!(s::H_INPUT_T_MS + 8 <= s::HEADER_SIZE);
-    assert!(s::OBSERVER == s::HEADER_SIZE);
-    assert!(s::O_POS_BF == s::OBSERVER);
+    assert!(s::OWNSHIP == s::HEADER_SIZE);
+    assert!(s::O_POS_BF == s::OWNSHIP);
     assert!(s::O_POS_BF + 24 == s::O_QUAT);
     assert!(s::O_QUAT + 16 == s::O_VEL_BF);
-    assert!(s::O_VEL_BF + 12 == s::O_SPEED);
-    assert!(s::O_SPEED + 4 == s::O_THROTTLE);
-    assert!(s::O_THROTTLE + 4 <= s::OBSERVER + 64);
-    assert!(s::B_X == s::OBSERVER + 64);
+    assert!(s::O_VEL_BF + 12 == s::O_TAS);
+    assert!(s::O_TAS + 4 == s::O_CAS);
+    assert!(s::O_CAS + 4 == s::O_MACH);
+    assert!(s::O_MACH + 4 == s::O_ALPHA);
+    assert!(s::O_ALPHA + 4 == s::O_BETA);
+    assert!(s::O_BETA + 4 == s::O_NZ);
+    assert!(s::O_NZ + 4 == s::O_THROTTLE);
+    assert!(s::O_THROTTLE + 4 == s::O_THRUST);
+    assert!(s::O_THRUST + 4 == s::O_FUEL);
+    assert!(s::O_FUEL + 4 == s::O_MASS);
+    assert!(s::O_MASS + 4 == s::O_OMEGA);
+    assert!(s::O_OMEGA + 12 == s::O_SURFACES);
+    assert!(s::O_SURFACES + 12 == s::O_ALTITUDE);
+    assert!(s::O_ALTITUDE + 4 == s::O_AB_STAGE);
+    assert!(s::O_AB_STAGE + 1 == s::O_FLAGS);
+    assert!(s::O_FLAGS < s::OWNSHIP + s::OWNSHIP_SIZE);
+    assert!(s::B_X == s::OWNSHIP + s::OWNSHIP_SIZE);
     assert!(s::B_Y == s::B_X + s::BODY_CAPACITY * 8);
     assert!(s::B_Z == s::B_Y + s::BODY_CAPACITY * 8);
     assert!(s::B_QUAT == s::B_Z + s::BODY_CAPACITY * 8);
@@ -274,7 +326,7 @@ const _: () = {
     assert!(p::STAGE_MS_EWMA + p::STAGE_COUNT * 4 == p::COUNTERS);
     assert!(p::COUNTERS + p::COUNTER_COUNT * 4 <= p::SIZE);
     assert!(stage::PUBLISH + 1 == p::STAGE_COUNT);
-    assert!(counter::SNAPSHOTS + 1 == p::COUNTER_COUNT);
+    assert!(counter::TRIM_FAILURES + 1 == p::COUNTER_COUNT);
 
     // Terrain patch: header, then one packed vertex per post.
     assert!(terrain::VERTEX_COUNT == terrain::POSTS * terrain::POSTS);

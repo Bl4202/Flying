@@ -3,7 +3,7 @@
  * JSON-lines format as `fg hash`, so the determinism check can compare native and WASM (ADR-10).
  *
  * Usage: node wasm-hash.ts --variant single|threads --seed HEX --at T1,T2,... [--dir wasm-out]
- *                           [--script none|erratic] [--content PATH.cpack]
+ *                           [--script none|erratic|flight60] [--content PATH.cpack]
  */
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -36,14 +36,14 @@ const bytes = readFileSync(join(dir, `sim.${variant}.wasm`));
 const sim = await instantiateSim(bytes, variant, manifest.threads_initial_pages);
 
 const scriptText = arg('script') ?? 'none';
-const script =
-  scriptText === 'none'
-    ? INPUT_SCRIPT.NONE
-    : scriptText === 'erratic'
-      ? INPUT_SCRIPT.ERRATIC
-      : undefined;
+const scripts: Record<string, number> = {
+  none: INPUT_SCRIPT.NONE,
+  erratic: INPUT_SCRIPT.ERRATIC,
+  flight60: INPUT_SCRIPT.FLIGHT60,
+};
+const script = scripts[scriptText];
 if (script === undefined) {
-  console.error('--script none|erratic');
+  console.error('--script none|erratic|flight60');
   process.exit(2);
 }
 const contentPath = arg('content');
@@ -70,7 +70,7 @@ for (const target of ticks) {
     tick_h: hex64(sim.hash(HASH_KIND.TICK)),
     rng: hex64(sim.hash(HASH_KIND.RNG)),
     bodies: hex64(sim.hash(HASH_KIND.BODIES)),
-    observer: hex64(sim.hash(HASH_KIND.OBSERVER)),
+    ownship: hex64(sim.hash(HASH_KIND.OWNSHIP)),
     input: hex64(sim.hash(HASH_KIND.INPUT)),
     content: hex64(sim.hash(HASH_KIND.CONTENT)),
   };

@@ -61,7 +61,7 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "cli"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "content",
  "flight-test",
@@ -77,11 +77,11 @@ checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
 name = "content"
-version = "0.0.2"
+version = "0.1.0"
 
 [[package]]
 name = "content-bake"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "content",
  "schemars",
@@ -135,7 +135,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "flight"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "content",
  "content-bake",
@@ -144,7 +144,7 @@ dependencies = [
 
 [[package]]
 name = "flight-test"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "content",
  "content-bake",
@@ -226,7 +226,7 @@ dependencies = [
 
 [[package]]
 name = "protocol"
-version = "0.0.2"
+version = "0.1.0"
 
 [[package]]
 name = "quote"
@@ -355,7 +355,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "protocol",
  "sim-core",
@@ -374,16 +374,17 @@ dependencies = [
 
 [[package]]
 name = "sim-core"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "content",
  "content-bake",
+ "flight",
  "simmath",
 ]
 
 [[package]]
 name = "sim-wasm"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "content",
  "content-bake",
@@ -394,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "simmath"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "libm",
 ]
@@ -437,9 +438,10 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "brotli",
+ "content-bake",
  "serde_json",
  "sha2",
  "sim-core",

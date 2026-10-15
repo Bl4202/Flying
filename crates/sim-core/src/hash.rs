@@ -73,8 +73,8 @@ pub struct SubsystemHashes {
     pub rng: u64,
     /// Probe-world body state.
     pub bodies: u64,
-    /// Observer (the player's stand-in body) state.
-    pub observer: u64,
+    /// The ownship: the player's aircraft, or the spectator without aircraft content.
+    pub ownship: u64,
     /// Validated input state, including the scripted pilot.
     pub input: u64,
     /// The loaded content pack's identity (zero-content packs hash too).
@@ -86,19 +86,19 @@ pub struct SubsystemHashes {
 impl SubsystemHashes {
     /// Combines the subsystem hashes.
     #[must_use]
-    pub fn new(tick: u64, rng: u64, bodies: u64, observer: u64, input: u64, content: u64) -> Self {
+    pub fn new(tick: u64, rng: u64, bodies: u64, ownship: u64, input: u64, content: u64) -> Self {
         let mut h = StateHasher::new();
         h.write_u64(tick);
         h.write_u64(rng);
         h.write_u64(bodies);
-        h.write_u64(observer);
+        h.write_u64(ownship);
         h.write_u64(input);
         h.write_u64(content);
         Self {
             tick,
             rng,
             bodies,
-            observer,
+            ownship,
             input,
             content,
             combined: h.finish(),

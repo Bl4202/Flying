@@ -3,7 +3,7 @@
 export const ABI = {
   VERSION: 2,
   INPUT_BATCH: 8,
-  SNAPSHOT_LAYOUT_VERSION: 1,
+  SNAPSHOT_LAYOUT_VERSION: 2,
 } as const;
 
 export const INPUT_FRAME = {
@@ -35,6 +35,8 @@ export const AXIS = {
 
 export const BUTTON = {
   RESET: 0,
+  TRIM_NOSE_UP: 1,
+  TRIM_NOSE_DOWN: 2,
 } as const;
 
 export const INPUT_FLAG = {
@@ -43,7 +45,7 @@ export const INPUT_FLAG = {
 
 export const SNAPSHOT = {
   MAGIC: 0x4e534746,
-  VERSION: 1,
+  VERSION: 2,
   HEADER_SIZE: 64,
   H_MAGIC: 0,
   H_VERSION: 4,
@@ -53,18 +55,40 @@ export const SNAPSHOT = {
   H_BODY_COUNT: 28,
   H_CORE_STATE: 32,
   H_INPUT_T_MS: 40,
-  OBSERVER: 64,
+  OWNSHIP: 64,
+  OWNSHIP_SIZE: 128,
   O_POS_BF: 64,
   O_QUAT: 88,
   O_VEL_BF: 104,
-  O_SPEED: 116,
-  O_THROTTLE: 120,
+  O_TAS: 116,
+  O_CAS: 120,
+  O_MACH: 124,
+  O_ALPHA: 128,
+  O_BETA: 132,
+  O_NZ: 136,
+  O_THROTTLE: 140,
+  O_THRUST: 144,
+  O_FUEL: 148,
+  O_MASS: 152,
+  O_OMEGA: 156,
+  O_SURFACES: 168,
+  O_ALTITUDE: 180,
+  O_AB_STAGE: 184,
+  O_FLAGS: 185,
   BODY_CAPACITY: 256,
-  B_X: 128,
-  B_Y: 2176,
-  B_Z: 4224,
-  B_QUAT: 6272,
-  SIZE: 10368,
+  B_X: 192,
+  B_Y: 2240,
+  B_Z: 4288,
+  B_QUAT: 6336,
+  SIZE: 10432,
+} as const;
+
+export const OWNSHIP_FLAG = {
+  SPECTATOR: 1,
+  CRASHED: 2,
+  FLAMEOUT: 4,
+  STALL_WARN: 8,
+  NUMERICAL_FAULT: 16,
 } as const;
 
 export const SNAPSHOT_SAB = {
@@ -72,8 +96,8 @@ export const SNAPSHOT_SAB = {
   VERSION: 1,
   HEADER_SIZE: 64,
   SLOT_COUNT: 3,
-  SLOT_BYTES: 10368,
-  SIZE: 31168,
+  SLOT_BYTES: 10432,
+  SIZE: 31360,
   H_MAGIC: 0,
   H_VERSION: 4,
   H_SLOT_BYTES: 8,
@@ -105,7 +129,7 @@ export const PROFILE = {
   STAGE_MS_LAST: 16,
   STAGE_MS_EWMA: 60,
   COUNTERS: 104,
-  COUNTER_COUNT: 8,
+  COUNTER_COUNT: 9,
 } as const;
 
 export const STAGE = {
@@ -127,10 +151,11 @@ export const COUNTER = {
   INPUT_NONFINITE: 1,
   INPUT_STALE: 2,
   INPUT_OVERFLOW: 3,
-  OBSERVER_RESETS: 4,
-  GROUND_CLAMPS: 5,
-  BOUNDARY_CLAMPS: 6,
+  FDM_FAULTS: 4,
+  CRASHES: 5,
+  RESPAWNS: 6,
   SNAPSHOTS: 7,
+  TRIM_FAILURES: 8,
 } as const;
 
 export const TERRAIN = {
@@ -169,7 +194,7 @@ export const HASH_KIND = {
   TICK: 1,
   RNG: 2,
   BODIES: 3,
-  OBSERVER: 4,
+  OWNSHIP: 4,
   INPUT: 5,
   CONTENT: 6,
 } as const;
@@ -177,4 +202,5 @@ export const HASH_KIND = {
 export const INPUT_SCRIPT = {
   NONE: 0,
   ERRATIC: 1,
+  FLIGHT60: 2,
 } as const;

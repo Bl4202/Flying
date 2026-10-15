@@ -86,6 +86,20 @@ pub fn with_input_buffer<R>(f: impl FnOnce(&mut [u8]) -> R) -> R {
     with_state(|s| f(&mut s.input))
 }
 
+/// Runs `f` on the reserved content buffer (empty without a reservation): how a native host
+/// fills what a WebAssembly host writes through the address [`fg_content_reserve`] returns.
+#[doc(hidden)]
+pub fn with_content_buffer<R>(f: impl FnOnce(&mut [u8]) -> R) -> R {
+    with_state(|s| f(&mut s.content))
+}
+
+/// Runs `f` on the profile block (counters always, timings while profiling), or returns `None`
+/// before `fg_init`: the native view of what [`fg_profile_ptr`] points at.
+#[doc(hidden)]
+pub fn with_profile<R>(f: impl FnOnce(&[u8]) -> R) -> Option<R> {
+    with_core(|c| f(c.profile_bytes()))
+}
+
 fn join(lo: u32, hi: u32) -> u64 {
     u64::from(lo) | (u64::from(hi) << 32)
 }
@@ -115,7 +129,7 @@ fn subsystem(kind: u32) -> u64 {
             hash_kind::TICK => h.tick,
             hash_kind::RNG => h.rng,
             hash_kind::BODIES => h.bodies,
-            hash_kind::OBSERVER => h.observer,
+            hash_kind::OWNSHIP => h.ownship,
             hash_kind::INPUT => h.input,
             hash_kind::CONTENT => h.content,
             _ => 0,
@@ -180,7 +194,9 @@ pub extern "C" fn fg_load_content(len: u32) -> u32 {
                 content_status::OK as u32
             }
             Err(LoadContentError::NotIdle) => content_status::NOT_IDLE as u32,
-            Err(LoadContentError::Invalid(_)) => content_status::INVALID as u32,
+            Err(LoadContentError::Invalid(_) | LoadContentError::Model(_)) => {
+                content_status::INVALID as u32
+            }
         }
     })
 }
@@ -449,7 +465,7 @@ mod tests {
             (hash_kind::TICK, h.tick),
             (hash_kind::RNG, h.rng),
             (hash_kind::BODIES, h.bodies),
-            (hash_kind::OBSERVER, h.observer),
+            (hash_kind::OWNSHIP, h.ownship),
             (hash_kind::INPUT, h.input),
             (hash_kind::CONTENT, h.content),
         ] {
