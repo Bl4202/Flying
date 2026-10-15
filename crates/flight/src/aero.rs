@@ -718,7 +718,8 @@ mod tests {
             best
         };
         assert!((peak_at(0.3) - 1.6558).abs() < 0.004, "{}", peak_at(0.3));
-        let c12 = (1.00 + 0.015 / 1.6) / (1.0 - 0.15 / 1.6);
+        // M 1.2: C_L,max 1.00, C_m,ac -0.015, SM 0.13.
+        let c12 = (1.00 + 0.015 / 1.6) / (1.0 - 0.13 / 1.6);
         assert!(
             (peak_at(1.2) - c12).abs() < 0.004,
             "{} vs {c12}",
@@ -817,10 +818,10 @@ mod tests {
         assert!(with(&|i| i.air.q_hat = 0.01).cm < base.cm);
         assert!(with(&|i| i.alpha_dot_rps = 0.5).cm < base.cm);
         assert!(with(&|i| i.air.r_hat = 0.05).cn < 0.0);
-        // Control power falls beyond 15 degrees: 20 deg acts like 17 (eta 0.85).
+        // Control power falls beyond 15 degrees: 20 deg acts like 19 (eta 0.95).
         let c20 = with(&|i| i.surfaces.aileron_rad = 20f64.to_radians());
         assert!(
-            (c20.cl_roll - 0.16 * 17f64.to_radians()).abs() < 1e-6,
+            (c20.cl_roll - 0.16 * 19f64.to_radians()).abs() < 1e-6,
             "{}",
             c20.cl_roll
         );
