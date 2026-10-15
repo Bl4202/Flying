@@ -1,52 +1,53 @@
-import { expect, test, type Page } from '@playwright/test';
-import { byId, HEADERS_BASE, openGame } from './support.ts';
+import { expect, test } from '@playwright/test';
+import { byId, HEADERS_BASE, openGame, overlayNumber, overlaySurfaces } from './support.ts';
 
-const value = async (page: Page, id: string): Promise<number> =>
-  Number.parseFloat((await byId(page, id).getAttribute('data-value')) ?? 'NaN');
+const value = overlayNumber;
 
-test('holding W pushes the nose down; releasing it stops the change', async ({ page }) => {
+test('holding S pulls the nose up and loads the airframe', async ({ page }) => {
   await openGame(page, `${HEADERS_BASE}?debug=1`);
-  await expect.poll(() => value(page, 'ov-pitch')).toBeCloseTo(0, 0);
-  await page.keyboard.down('KeyW');
-  await expect.poll(() => value(page, 'ov-pitch'), { timeout: 10_000 }).toBeLessThan(-5);
-  await page.keyboard.up('KeyW');
-  // The sim has the key's release within a tick or two; after that the pitch only drifts with the axis return.
-  await page.waitForTimeout(1500);
-  const settled = await value(page, 'ov-pitch');
-  await page.waitForTimeout(1000);
-  expect(await value(page, 'ov-pitch')).toBeCloseTo(settled, 1);
+  const pitch0 = await value(page, 'ov-pitch');
+  await page.keyboard.down('KeyS');
+  await expect.poll(() => value(page, 'ov-nz'), { timeout: 5_000 }).toBeGreaterThan(1.3);
+  await expect.poll(() => value(page, 'ov-pitch'), { timeout: 5_000 }).toBeGreaterThan(pitch0 + 3);
+  await page.keyboard.up('KeyS');
 });
 
-test('R puts the observer back at the start', async ({ page }) => {
+test('R respawns the aircraft: level, heading north, at 200 m/s', async ({ page }) => {
   await openGame(page, `${HEADERS_BASE}?debug=1`);
+  const spawnPitch = await value(page, 'ov-pitch');
   await page.keyboard.down('KeyW');
   await expect.poll(() => value(page, 'ov-pitch'), { timeout: 10_000 }).toBeLessThan(-20);
   await page.keyboard.up('KeyW');
-  // Let the emulated stick return to centre, so the reset leaves nothing behind to integrate.
+  // Let the emulated stick return to centre, so the reset leaves nothing behind.
   await page.waitForTimeout(1000);
   await page.keyboard.press('KeyR');
   await expect
-    .poll(async () => Math.abs(await value(page, 'ov-pitch')), { timeout: 10_000 })
-    .toBeLessThan(1);
-  await expect(byId(page, 'ov-heading')).toHaveAttribute('data-value', '0.0°');
+    .poll(async () => Math.abs((await value(page, 'ov-tas')) - 200), { timeout: 10_000 })
+    .toBeLessThan(3);
+  expect(Math.abs((await value(page, 'ov-pitch')) - spawnPitch)).toBeLessThan(1);
+  const heading = await value(page, 'ov-heading');
+  expect(Math.min(heading, 360 - heading)).toBeLessThan(0.5);
 });
 
-test('losing focus sends a neutral frame: the sticks go to zero while the throttle holds', async ({
+test('losing focus sends a neutral frame: the stick centres while the throttle holds', async ({
   page,
 }) => {
   await openGame(page, `${HEADERS_BASE}?debug=1`);
+  const [trim] = await overlaySurfaces(page);
   await page.keyboard.down('KeyW');
-  await expect.poll(() => value(page, 'ov-pitch'), { timeout: 10_000 }).toBeLessThan(-5);
+  // Stick forward: elevator trailing edge down, well away from the trim.
+  await expect
+    .poll(async () => (await overlaySurfaces(page))[0], { timeout: 10_000 })
+    .toBeGreaterThan(trim + 5);
   const throttleBefore = await value(page, 'ov-throttle');
   // A blur with the key still held, as when the person switches windows.
   await page.evaluate(() => {
     window.dispatchEvent(new Event('blur'));
   });
-  await page.waitForTimeout(1500);
-  const settled = await value(page, 'ov-pitch');
-  await page.waitForTimeout(1000);
-  expect(await value(page, 'ov-pitch')).toBeCloseTo(settled, 1);
-  expect(await value(page, 'ov-throttle')).toBeCloseTo(throttleBefore, 1);
+  await expect
+    .poll(async () => Math.abs((await overlaySurfaces(page))[0] - trim), { timeout: 5_000 })
+    .toBeLessThan(0.5);
+  expect(await value(page, 'ov-throttle')).toBeCloseTo(throttleBefore, 2);
   await page.keyboard.up('KeyW');
 });
 

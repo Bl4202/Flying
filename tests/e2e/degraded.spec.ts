@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test';
-import { byId, HEADERS_BASE, openGame, PAGES_BASE, sampleAfter, simRate } from './support.ts';
+import {
+  byId,
+  HEADERS_BASE,
+  openGame,
+  overlayNumber,
+  PAGES_BASE,
+  sampleAfter,
+  simRate,
+} from './support.ts';
 
 async function windowOfPlay(page: Parameters<typeof openGame>[0]) {
   await page.waitForTimeout(1000);
@@ -25,18 +33,14 @@ test.describe('no isolation: no headers and no Service Worker', () => {
     expect(rate).toBeLessThan(62);
     expect(b.render.frames - a.render.frames).toBeGreaterThan(60);
 
-    // Input still reaches the core, through the 30 Hz message path.
-    await expect(byId(page, 'ov-pitch')).toHaveAttribute('data-value', /^0\.0°$/);
+    // Input still reaches the core, through the 30 Hz message path: the spawn is near level, and
+    // pushing the stick lowers the nose.
+    const pitch0 = await overlayNumber(page, 'ov-pitch');
+    expect(Math.abs(pitch0)).toBeLessThan(5);
     await page.keyboard.down('KeyW');
     await expect
-      .poll(
-        async () =>
-          Number.parseFloat((await byId(page, 'ov-pitch').getAttribute('data-value')) ?? '0'),
-        {
-          timeout: 10_000,
-        },
-      )
-      .toBeLessThan(-5);
+      .poll(() => overlayNumber(page, 'ov-pitch'), { timeout: 10_000 })
+      .toBeLessThan(pitch0 - 3);
     await page.keyboard.up('KeyW');
   });
 
