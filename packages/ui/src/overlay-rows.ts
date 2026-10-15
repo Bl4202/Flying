@@ -3,7 +3,7 @@
  * labelled rows, and nothing here touches the DOM, so the formatting is easy to test.
  */
 import type { RenderStats } from '@flying/render/messages';
-import { quatRotate, STAGE, type Quantiles, type SimStats } from '@flying/sim-bridge';
+import { OWNSHIP_FLAG, quatRotate, STAGE, type Quantiles, type SimStats } from '@flying/sim-bridge';
 
 export interface OverlayModel {
   build: string;
@@ -50,12 +50,51 @@ export const STAGE_NAMES = Object.entries(STAGE)
   .sort((a, b) => a[1] - b[1])
   .map(([name]) => name.toLowerCase());
 
+const DEG = 180 / Math.PI;
+/** Metres per second to knots. */
+const KNOTS = 3600 / 1852;
+
+/** The ownship's flags in words: `ok`, or what is wrong. */
+export function flagsText(flags: number): string {
+  const words: string[] = [];
+  const names: [number, string][] = [
+    [OWNSHIP_FLAG.SPECTATOR, 'spectator'],
+    [OWNSHIP_FLAG.CRASHED, 'crashed'],
+    [OWNSHIP_FLAG.NUMERICAL_FAULT, 'numerical fault'],
+    [OWNSHIP_FLAG.FLAMEOUT, 'flameout'],
+    [OWNSHIP_FLAG.STALL_WARN, 'stall'],
+  ];
+  for (const [bit, word] of names) {
+    if ((flags & bit) !== 0) words.push(word);
+  }
+  return words.length === 0 ? 'ok' : words.join(', ');
+}
+
+/**
+ * Ids and labels of the ownship rows, in order. Related numbers share a row so the page stays
+ * within its DOM budget (AC-53.4); the first number in each row is the one its id names.
+ */
+const OWNSHIP_ROWS: [string, string][] = [
+  ['alt', 'Altitude'],
+  ['pitch', 'Pitch/roll'],
+  ['heading', 'Heading'],
+  ['tas', 'TAS/CAS'],
+  ['mach', 'Mach'],
+  ['alpha', 'Alpha/beta'],
+  ['nz', 'n_z'],
+  ['throttle', 'Throttle'],
+  ['thrust', 'Thrust'],
+  ['fuel', 'Fuel/mass'],
+  ['surfaces', 'Surfaces'],
+  ['status', 'Status'],
+];
+
 function titleCase(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /** Pitch, roll and heading in degrees, from the body-to-BF attitude quaternion. */
-export function attitudeDegrees(quat: SimStats['observer']['quat']): {
+export function attitudeDegrees(quat: SimStats['aircraft']['quat']): {
   pitch: number;
   roll: number;
   heading: number;
@@ -115,7 +154,10 @@ export function buildOverlayRows(m: OverlayModel): OverlayRow[] {
   add(
     'input',
     'Input sent',
-    m.input === undefined ? DASH : `${String(m.input.sent)} (${String(m.input.refused)} refused)`,
+    m.input === undefined
+      ? DASH
+      : `${String(m.input.sent)} (${String(m.input.refused)} refused)` +
+          (s === undefined ? '' : `, core at ${String(s.aircraft.inputSeq)}`),
   );
 
   add('fps', 'FPS', fixed(r?.fps, 1));
@@ -131,20 +173,42 @@ export function buildOverlayRows(m: OverlayModel): OverlayRow[] {
   );
 
   if (s === undefined) {
-    for (const id of ['pos', 'pitch', 'roll', 'heading', 'speed', 'throttle', 'seq']) {
-      add(id, titleCase(id), DASH);
+    for (const [id, label] of OWNSHIP_ROWS) {
+      add(id, label, DASH);
     }
   } else {
-    const o = s.observer;
+    const o = s.aircraft;
     const a = attitudeDegrees(o.quat);
-    add('pos', 'Pos E/N/U', `${o.pos[0].toFixed(0)} ${o.pos[1].toFixed(0)} ${o.pos[2].toFixed(0)}`);
-    add('pitch', 'Pitch', fixed(a.pitch, 1, '°'));
-    add('roll', 'Roll', fixed(a.roll, 1, '°'));
+    const label = (id: string): string => OWNSHIP_ROWS.find((r) => r[0] === id)?.[1] ?? id;
+    add(
+      'alt',
+      label('alt'),
+      `${fixed(o.altitude, 0, ' m')} at E ${o.pos[0].toFixed(0)} N ${o.pos[1].toFixed(0)}`,
+    );
+    add('pitch', label('pitch'), `${fixed(a.pitch, 1, '°')} / ${fixed(a.roll, 1, '°')}`);
     // Rounded first, so 359.96 reads as 0.0 rather than 360.0.
-    add('heading', 'Heading', fixed((Math.round(a.heading * 10) / 10) % 360, 1, '°'));
-    add('speed', 'Speed', fixed(o.speed, 1, ' m/s'));
-    add('throttle', 'Throttle', fixed(o.throttle, 2));
-    add('seq', 'Input seq', String(o.inputSeq));
+    add('heading', label('heading'), fixed((Math.round(a.heading * 10) / 10) % 360, 1, '°'));
+    add('tas', label('tas'), `${fixed(o.tas, 1, ' m/s')} / ${fixed(o.cas * KNOTS, 0, ' kn')}`);
+    add('mach', label('mach'), fixed(o.mach, 3));
+    add(
+      'alpha',
+      label('alpha'),
+      `${fixed(o.alpha * DEG, 1, '°')} / ${fixed(o.beta * DEG, 1, '°')}`,
+    );
+    add('nz', label('nz'), fixed(o.nz, 2, ' g'));
+    add(
+      'throttle',
+      label('throttle'),
+      `${fixed(o.throttle, 2)}${o.abStage > 0 ? ` AB ${String(o.abStage)}` : ''}`,
+    );
+    add('thrust', label('thrust'), fixed(o.thrust / 1000, 1, ' kN'));
+    add('fuel', label('fuel'), `${fixed(o.fuel, 0, ' kg')} / ${fixed(o.mass, 0, ' kg')}`);
+    add(
+      'surfaces',
+      label('surfaces'),
+      `e ${fixed(o.surfaces[0] * DEG, 1)} a ${fixed(o.surfaces[1] * DEG, 1)} r ${fixed(o.surfaces[2] * DEG, 1)}°`,
+    );
+    add('status', label('status'), flagsText(o.flags));
   }
 
   const profile = s?.profile ?? null;

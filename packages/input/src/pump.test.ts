@@ -246,6 +246,25 @@ describe('InputPump: gamepad', () => {
     expect(r.frames.at(-1)?.axes[AXIS.THROTTLE]).toBe(0);
   });
 
+  it('holds pitch trim with the brackets', () => {
+    const r = rig();
+    r.keyboard.keyDown('BracketRight', false);
+    r.pump.update();
+    expect(r.frames.at(-1)?.buttons).toBe(1n << BigInt(BUTTON.TRIM_NOSE_UP));
+    r.keyboard.keyUp('BracketRight');
+    r.keyboard.keyDown('BracketLeft', false);
+    r.advance(4);
+    r.pump.update();
+    expect(r.frames.at(-1)?.buttons).toBe(1n << BigInt(BUTTON.TRIM_NOSE_DOWN));
+  });
+
+  it('trims with the d-pad like the stick: down is nose up', () => {
+    const r = rig();
+    r.setPad(r.padWith({}, { [PAD_BUTTON.DPAD_DOWN]: 1 }));
+    r.pump.update();
+    expect(r.frames.at(-1)?.buttons).toBe(1n << BigInt(BUTTON.TRIM_NOSE_UP));
+  });
+
   it('presses reset with Back', () => {
     const r = rig();
     r.setPad(r.padWith({}, { [PAD_BUTTON.BACK]: 1 }));

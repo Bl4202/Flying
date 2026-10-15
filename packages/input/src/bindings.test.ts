@@ -17,6 +17,7 @@ describe('default bindings (GDD 58.5)', () => {
       expect.arrayContaining(['ControlLeft', 'ControlRight', 'PageDown']),
     );
     expect(k.reset).toEqual(['KeyR']);
+    expect([k.trimNoseUp, k.trimNoseDown]).toEqual([['BracketRight'], ['BracketLeft']]);
   });
 
   it('puts the pad on the right stick, the triggers and the left stick', () => {
