@@ -21,9 +21,11 @@ pub mod engine;
 pub mod env;
 pub mod error;
 pub mod frames;
+pub mod linearise;
 pub mod mass;
 pub mod physical;
 pub mod table;
+pub mod trim;
 
 pub use error::ModelError;
 

@@ -438,6 +438,20 @@ impl AircraftModel {
         }
     }
 
+    /// The rigid-body derivative and every non-gravitational force (body axes, N) at a state,
+    /// with its surfaces, engines and fuel as they are. For trim, linearisation and test pilots.
+    #[must_use]
+    pub fn derivative<E: FlightEnv>(
+        &self,
+        s: &AircraftState,
+        env: &E,
+        t_s: f64,
+    ) -> (RigidDeriv, DVec3) {
+        let mass = self.mass.props(&s.fuel);
+        let st = self.stage(&s.body, s, &mass, env, t_s);
+        (st.deriv, st.force_body_n)
+    }
+
     /// Display and measurement quantities at the current state.
     #[must_use]
     pub fn telemetry<E: FlightEnv>(&self, s: &AircraftState, env: &E, t_s: f64) -> Telemetry {

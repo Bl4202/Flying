@@ -17,6 +17,7 @@ use flight::controls::PilotControls;
 use flight::engine::EngineCommand;
 use flight::env::SphereSea;
 use flight::frames::{Euler, attitude};
+use flight::trim::{TrimProblem, TrimSetup, guess_level, solve, state_of};
 use simmath::dmath;
 use simmath::math::DVec3;
 
@@ -95,14 +96,22 @@ fn a_tick_allocates_nothing() {
         let t = model.telemetry(&s, &world, f64::from(tick) / 60.0);
         assert!(t.air.tas_mps.is_finite());
     }
-    // A persistent fault, then the in-place respawn a caller would do.
+    // A persistent fault, then the in-place respawn a caller would do: trimmed level flight.
     s.body.omega_body = DVec3::new(99.0, 0.0, 0.0);
     let calm = Commands {
         surfaces: Surfaces::NEUTRAL,
         engine: EngineCommand::IDLE,
     };
     assert_eq!(model.step_tick(&mut s, &calm, &world, 20.0).faults, 2);
-    s = spawn;
+    let setup = TrimSetup {
+        pos_bf: spawn.body.pos_bf,
+        fuel: spawn.fuel,
+        config: Surfaces::NEUTRAL,
+    };
+    let guess = guess_level(&model, &setup, 200.0, 1.0, &world);
+    let trim = solve(&model, &TrimProblem::level(), &setup, guess, &world);
+    assert!(trim.converged);
+    s = state_of(&model, &setup, &trim.point, &world);
     model.step_tick(&mut s, &calm, &world, 20.0);
     assert_eq!(allocations() - before, 0, "the tick allocated");
 }

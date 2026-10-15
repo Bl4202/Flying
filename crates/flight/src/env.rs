@@ -44,22 +44,36 @@ pub trait FlightEnv {
 }
 
 /// A sphere covered by sea at height 0, BF origin on its surface with `+z` up there. Still air,
-/// standard day. The Performance Conformance Test flies in this world (ADR-31).
+/// standard day.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SphereSea {
     /// Sphere radius, m.
     pub radius_m: f64,
+    /// Height of the surface above MSL, m; `-inf` for none.
+    pub ground_m: f64,
 }
 
 impl Default for SphereSea {
     fn default() -> Self {
         Self {
             radius_m: EARTH_RADIUS_M,
+            ground_m: 0.0,
         }
     }
 }
 
 impl SphereSea {
+    /// The same sphere with no surface: the air goes on below MSL and nothing is ever in ground
+    /// effect. The Performance Conformance Test flies here, so its sea-level points measure the
+    /// aircraft and not the ground (ADR-31).
+    #[must_use]
+    pub fn open() -> Self {
+        Self {
+            ground_m: f64::NEG_INFINITY,
+            ..Self::default()
+        }
+    }
+
     fn centre_bf(self) -> DVec3 {
         DVec3::new(0.0, 0.0, -self.radius_m)
     }
@@ -79,7 +93,7 @@ impl FlightEnv for SphereSea {
     }
 
     fn ground_height_m(&self, _pos_bf: DVec3) -> f64 {
-        0.0
+        self.ground_m
     }
 }
 
@@ -140,5 +154,13 @@ mod tests {
         );
         assert_eq!(FlatSea.wind_bf(DVec3::ZERO, 0.0), DVec3::ZERO);
         assert_eq!(FlatSea.day(), NonStandardDay::ISA);
+    }
+
+    #[test]
+    fn the_open_sphere_has_no_ground() {
+        let open = SphereSea::open();
+        assert_eq!(open.ground_height_m(DVec3::ZERO), f64::NEG_INFINITY);
+        assert_eq!(open.height_msl_m(DVec3::ZERO), 0.0);
+        assert_eq!(SphereSea::default().ground_height_m(DVec3::ZERO), 0.0);
     }
 }
