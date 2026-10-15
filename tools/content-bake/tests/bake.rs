@@ -442,6 +442,12 @@ fn malformed_aircraft_are_rejected_at_the_right_pointer() {
                 "mass range",
             ),
             (
+                "a turn point without its Mach",
+                remove("/envelope/points/5", "mach"),
+                "/envelope/points/5",
+                "has no `mach`",
+            ),
+            (
                 "unknown envelope metric",
                 set("/envelope/points/0/metric", json!("speed")),
                 "/envelope/points/0/metric",
