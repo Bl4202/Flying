@@ -151,6 +151,8 @@ pub struct EnvelopePoint {
     pub mass_kg: f32,
     /// Height above MSL, m.
     pub alt_m: f32,
+    /// Flight Mach number, for metrics measured at a given speed (`n_sust`, `turn_dps`).
+    pub mach: Option<f32>,
     /// Configuration.
     pub config: EnvelopeConfig,
     /// What is measured.
@@ -265,6 +267,8 @@ impl AircraftDef {
             w.str(&p.id)?;
             w.f32(p.mass_kg);
             w.f32(p.alt_m);
+            w.bool(p.mach.is_some());
+            w.f32(p.mach.unwrap_or(0.0));
             w.u8(p.config.code());
             w.u8(p.metric.code());
             w.f32(p.value);
@@ -397,6 +401,12 @@ impl EnvelopePoint {
     fn decode(r: &mut Reader<'_>) -> Result<Self, CpackError> {
         let id = r.str()?;
         let (mass_kg, alt_m) = (r.f32()?, r.f32()?);
+        let has_mach = r.bool()?;
+        let mach = r.f32()?;
+        if !has_mach && mach.to_bits() != 0 {
+            return Err(CpackError::Record("an absent envelope Mach is not zero"));
+        }
+        let mach = has_mach.then_some(mach);
         let config = EnvelopeConfig::from_code(r.u8()?)
             .ok_or(CpackError::Record("unknown envelope configuration"))?;
         let metric =
@@ -413,6 +423,7 @@ impl EnvelopePoint {
             id,
             mass_kg,
             alt_m,
+            mach,
             config,
             metric,
             value,
@@ -512,6 +523,7 @@ pub(crate) mod tests {
                     id: "vmax_sl".into(),
                     mass_kg: 9500.0,
                     alt_m: 0.0,
+                    mach: None,
                     config: EnvelopeConfig::CleanAb,
                     metric: Metric::MaxMach,
                     value: 1.22,
@@ -522,6 +534,7 @@ pub(crate) mod tests {
                     id: "to_roll".into(),
                     mass_kg: 10500.0,
                     alt_m: 0.0,
+                    mach: Some(0.0),
                     config: EnvelopeConfig::ToFlapsAb,
                     metric: Metric::RollM,
                     value: 195.0,

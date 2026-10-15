@@ -279,6 +279,16 @@
           "minLength": 1,
           "type": "string"
         },
+        "mach": {
+          "description": "Flight Mach number; required for the metrics measured at a given speed (`n_sust`,\n`turn_dps`).",
+          "format": "double",
+          "maximum": 5.0,
+          "minimum": 0.0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "mass_kg": {
           "description": "Aircraft mass.",
           "format": "double",

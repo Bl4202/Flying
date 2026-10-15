@@ -682,6 +682,20 @@ fn check_envelope(c: &mut Ctx<'_>, a: &AircraftFile) {
             Metric::from_name,
             |x| x.name(),
         );
+        let at_speed = matches!(
+            Metric::from_name(&p.metric),
+            Some(Metric::NSust | Metric::TurnDps)
+        );
+        if at_speed && p.mach.is_none() {
+            c.err(
+                &at,
+                format!(
+                    "envelope point `{}` measures {} but has no `mach`",
+                    p.id, p.metric
+                ),
+                "add the Mach number the point is flown at",
+            );
+        }
         if let Some(r) = &p.requires {
             check_names(
                 c,

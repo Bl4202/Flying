@@ -413,6 +413,11 @@ pub struct EnvelopePointFile {
     /// Height above MSL.
     #[schemars(extend("x-unit" = "m"), range(min = -500.0, max = 30000.0))]
     pub alt_m: f64,
+    /// Flight Mach number; required for the metrics measured at a given speed (`n_sust`,
+    /// `turn_dps`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(range(min = 0.0, max = 5.0))]
+    pub mach: Option<f64>,
     /// Configuration.
     #[schemars(schema_with = "config_schema")]
     pub config: String,
@@ -515,6 +520,7 @@ impl AircraftFile {
                     id: p.id.clone(),
                     mass_kg: p.mass_kg as f32,
                     alt_m: p.alt_m as f32,
+                    mach: p.mach.map(|m| m as f32),
                     config: EnvelopeConfig::from_name(&p.config)?,
                     metric: Metric::from_name(&p.metric)?,
                     value: p.value as f32,
@@ -681,6 +687,7 @@ impl AircraftFile {
                         id: p.id.clone(),
                         mass_kg: f(p.mass_kg),
                         alt_m: f(p.alt_m),
+                        mach: p.mach.map(f),
                         config: p.config.name().to_owned(),
                         metric: p.metric.name().to_owned(),
                         value: f(p.value),
