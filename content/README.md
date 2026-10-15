@@ -13,9 +13,12 @@ ADR-30), which is what the sim loads.
 | `core/locales/en.json` | Display strings by key. Every key must be used, every used key must exist |
 | `schemas/*.schema.json` | **Generated** from the Rust types in `tools/content-bake/src/model.rs`; do not edit |
 
-Add an aircraft by adding files; no code changes. Ids look like `core:ac/kestrel`,
-`core:eng/f129`, `core:aero/kestrel`; an aircraft names its engines (`engines[].ref`) and its
-tables (`aero.tables_ref`) by id, and the baker checks that they exist and are of the right kind.
+Add an aircraft by adding files; no code changes (the steps are in
+`docs/architecture/flight.md`). Ids look like `core:ac/kestrel`, `core:eng/f129`,
+`core:aero/kestrel`; an aircraft names its engines (`engines[].ref`) and its tables
+(`aero.tables_ref`) by id, and the baker checks that they exist and are of the right kind. Until
+aircraft selection exists, the game flies the aircraft whose id sorts first, so a new aircraft
+that sorts before `core:ac/kestrel` changes the player's aircraft and the determinism goldens.
 
 **Units.** Every number carries its unit in its key (`empty_kg`, `span_m`, `vmo_mps`,
 `alpha_limit_deg`, `tau_s`, `dry_kg_per_ns`, `cl_p_per_rad`) except a short list of dimensionless

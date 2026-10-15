@@ -70,6 +70,8 @@ Total to the Campaign Build is about 33 months (M0–M6), plus about 6 months fo
 
 **Note (2026-10-14):** the conformance method is fixed in [ADR-31](adr/0031-performance-conformance-test-method.md). The two ground-roll points of the envelope need the gear model, so at v0.1a they are reported as deferred and `AC-3.2` passes on the ten airborne points; it closes fully at v0.1b. Work is on branch `v0.1a` and merges to `main` only after `v0.0b` is tagged.
 
+**Status (2026-10-15):** both exit criteria pass on branch `v0.1a` (draft PR #5). In the conformance run, the ten airborne points use at most 35 % of their tolerance, and flight60 hashes equal across native, debug, WASM single and WASM threads at all 61 checkpoints. The real Kestrel replaces the observer as the player's aircraft, flown with direct surface control until v0.1b. Still open: the merge (waiting for the `v0.0b` tag), the performance re-baseline with runs A and B against the new staging, and the exit checklist ([docs/exit/v0.1a.md](exit/v0.1a.md)).
+
 ### v0.1b: Control and ground (about 4 weeks)
 - Flight control system: Full / Standard / Reduced / Manual assist (§11.11); limiters (α, g, overspeed).
 - Ground handling: gear model, friction, take-off and landing, crash criteria (§11.13).
