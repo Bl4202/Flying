@@ -88,6 +88,25 @@ jobs:
           node: 'false'
       - run: cargo xtask determinism --ticks 1000000 --skip-wasm
 
+  # ADR-31: the Performance Conformance Test flies the Kestrel's envelope (release build; the
+  # flying itself takes about a second). The report and the 10 Hz traces are kept either way.
+  conformance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+        with:
+          node: 'false'
+      - run: cargo xtask conformance
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: conformance-report
+          path: target/conformance
+          if-no-files-found: warn
+          retention-days: 14
+
   # AC-61.7: two clean builds, the second from a copy at another path, byte-identical.
   repro:
     runs-on: ubuntu-24.04
@@ -181,7 +200,7 @@ jobs:
 
   deploy-staging:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint, test, build, determinism, determinism-arm64, repro, e2e, perf-smoke]
+    needs: [lint, test, build, determinism, determinism-arm64, conformance, repro, e2e, perf-smoke]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
