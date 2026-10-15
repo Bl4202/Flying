@@ -12,6 +12,10 @@ use serde_json::Value;
 const RULES: &[(&str, &[&str])] = &[
     ("simmath", &["libm"]),
     ("flight", &["simmath", "content"]),
+    (
+        "flight-test",
+        &["content", "flight", "serde_json", "simmath"],
+    ),
     ("sim-core", &["content", "simmath"]),
     ("protocol", &[]),
     ("content", &[]),
@@ -27,7 +31,10 @@ const RULES: &[(&str, &[&str])] = &[
         ],
     ),
     ("sim-wasm", &["sim-core"]),
-    ("cli", &["sim-core"]),
+    (
+        "cli",
+        &["content", "flight", "flight-test", "serde_json", "sim-core"],
+    ),
     ("server", &["sim-core", "protocol"]),
 ];
 
