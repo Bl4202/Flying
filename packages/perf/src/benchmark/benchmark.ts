@@ -46,6 +46,8 @@ export interface BenchmarkDeps {
     variant: Variant;
     wasmUrl: string;
     threadsInitialPages: number;
+    /** The content pack the kernel loads, so it times a tick with the aircraft flying. */
+    contentUrl: string;
     spawn(): KernelWorkerLike;
   };
   /** Starts a renderer on a throwaway surface of 1920 x 1080; rejects if none can start. */
@@ -81,6 +83,7 @@ export async function runBenchmark(deps: BenchmarkDeps): Promise<BenchmarkReport
       variant: k.variant,
       wasmUrl: k.wasmUrl,
       threadsInitialPages: k.threadsInitialPages,
+      contentUrl: k.contentUrl,
       spawn: () => k.spawn(),
       sharedStart: deps.isolated,
     };

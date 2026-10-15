@@ -64,7 +64,7 @@ describe('the scene the contract draws', () => {
       interp.push(
         makeSnapshot({
           publishMs: 1000,
-          observer: { pos: [shift, shift - 8000, 1500] },
+          ownship: { pos: [shift, shift - 8000, 1500] },
           bodies: [{ pos: [shift + 400, shift - 3800, 1450] }],
         }),
       );

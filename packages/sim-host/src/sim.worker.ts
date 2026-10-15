@@ -14,6 +14,7 @@ import {
   openInputSource,
   openSnapshotSink,
   parseSimCommand,
+  SnapshotReader,
   type SimEvent,
   type SimHandle,
   type SimInit,
@@ -24,9 +25,12 @@ import {
   MAX_CATCH_UP_TICKS,
   SIM_DT_MS,
   STATS_INTERVAL_MS,
+  TERRAIN_CHECK_MS,
+  TERRAIN_FILL_WARN_MS,
   TERRAIN_SPACING_M,
 } from './constants.ts';
 import { SimLoop } from './sim-loop.ts';
+import { nextPatchCentre } from './terrain-follow.ts';
 import { createSleeper, type Sleeper } from './sleeper.ts';
 
 interface WorkerScope {
@@ -41,6 +45,9 @@ let loop: SimLoop | undefined;
 let sleeper: Sleeper | undefined;
 let allowStall = false;
 let stopped = false;
+/** Where the renderer's terrain patch comes from, and the BF east/north of its centre. */
+let terrainPort: MessagePort | null = null;
+let patchCentre: [number, number] = [0, 0];
 const closers: (() => void)[] = [];
 
 function post(event: SimEvent): void {
@@ -139,13 +146,12 @@ async function init(cmd: SimInit): Promise<void> {
   }
 
   if (cmd.terrainPort !== null) {
-    const patch = handle.fillTerrain(0, 0, TERRAIN_SPACING_M);
-    if (patch === undefined) {
-      throw new Error('SYS-008: terrain patch could not be generated');
-    }
-    const copy = patch.slice().buffer;
-    cmd.terrainPort.postMessage({ type: 'terrain', patch: copy }, [copy]);
-    cmd.terrainPort.close();
+    terrainPort = cmd.terrainPort;
+    sendPatch(handle, [0, 0]);
+    closers.push(() => {
+      terrainPort?.close();
+      terrainPort = null;
+    });
   }
 
   const inputs = openInputSource(cmd.input);
@@ -177,6 +183,32 @@ async function init(cmd: SimInit): Promise<void> {
   void run();
 }
 
+/** Generates the terrain patch around `centre` and sends it to the renderer. */
+function sendPatch(handle: SimHandle, centre: [number, number]): void {
+  if (terrainPort === null) return;
+  const t0 = monotonicMs();
+  const patch = handle.fillTerrain(centre[0], centre[1], TERRAIN_SPACING_M);
+  if (patch === undefined) {
+    throw new Error('SYS-008: terrain patch could not be generated');
+  }
+  const spent = monotonicMs() - t0;
+  if (spent > TERRAIN_FILL_WARN_MS) {
+    console.warn(`terrain patch took ${spent.toFixed(1)} ms to generate`);
+  }
+  patchCentre = centre;
+  const copy = patch.slice().buffer;
+  terrainPort.postMessage({ type: 'terrain', patch: copy }, [copy]);
+}
+
+/** Moves the terrain patch under the aircraft when it has flown away from the middle. */
+function followTerrain(handle: SimHandle): void {
+  if (terrainPort === null) return;
+  const pos = new Float64Array(3);
+  new SnapshotReader(handle.snapshot()).ownshipPos(pos);
+  const next = nextPatchCentre(patchCentre, [pos[0] ?? 0, pos[1] ?? 0]);
+  if (next !== undefined) sendPatch(handle, next);
+}
+
 /** Lets the worker's message events run: a message-port round trip is one macrotask. */
 const yielder = new MessageChannel();
 function yieldToMessages(): Promise<void> {
@@ -193,6 +225,7 @@ async function run(): Promise<void> {
     return;
   }
   let nextReport = monotonicMs() + STATS_INTERVAL_MS;
+  let nextTerrainCheck = monotonicMs() + TERRAIN_CHECK_MS;
   try {
     while (!stopped) {
       if (loop.clock.running) {
@@ -204,6 +237,10 @@ async function run(): Promise<void> {
       if (now >= nextReport) {
         post({ type: 'stats', stats: loop.report() });
         nextReport = now + STATS_INTERVAL_MS;
+      }
+      if (now >= nextTerrainCheck) {
+        followTerrain(sim);
+        nextTerrainCheck = now + TERRAIN_CHECK_MS;
       }
       await yieldToMessages();
       const wait = loop.clock.running ? loop.clock.nextDue() - monotonicMs() : IDLE_POLL_MS;

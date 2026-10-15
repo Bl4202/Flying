@@ -12,17 +12,30 @@ interface Decoded {
   body_count: number;
   core_state: number;
   input_t_ms: number;
-  observer: {
+  ownship: {
     pos_bf: number[];
     quat: number[];
     vel_bf: number[];
-    speed: number;
+    tas: number;
+    cas: number;
+    mach: number;
+    alpha: number;
+    beta: number;
+    nz: number;
     throttle: number;
+    thrust: number;
+    fuel: number;
+    mass: number;
+    omega: number[];
+    surfaces: number[];
+    altitude: number;
+    ab_stage: number;
+    flags: number;
   };
   bodies: { pos_bf: number[]; quat: number[] }[];
 }
 const vector = JSON.parse(
-  readFileSync(new URL('../../../tests/vectors/snapshot_v1.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../tests/vectors/snapshot_v2.json', import.meta.url), 'utf8'),
 ) as { size: number; hex: string; decoded: Decoded };
 
 const bytes = (): Uint8Array =>
@@ -49,19 +62,54 @@ describe('SnapshotReader against the Rust reference snapshot', () => {
     expect(r.inputTimeMs()).toBe(d.input_t_ms);
   });
 
-  it('reads the observer', () => {
+  it('reads the ownship (the aircraft, in this vector)', () => {
     const r = new SnapshotReader(bytes());
+    const o = d.ownship;
     const pos = new Float64Array(3);
     const quat = new Float32Array(4);
     const vel = new Float32Array(3);
-    r.observerPos(pos);
-    r.observerQuat(quat);
-    r.observerVel(vel);
-    expect([...pos]).toEqual(d.observer.pos_bf);
-    expect([...quat]).toEqual(d.observer.quat);
-    expect([...vel]).toEqual(d.observer.vel_bf);
-    expect(r.observerSpeed()).toBe(d.observer.speed);
-    expect(r.observerThrottle()).toBe(d.observer.throttle);
+    const omega = new Float32Array(3);
+    const surfaces = new Float32Array(3);
+    r.ownshipPos(pos);
+    r.ownshipQuat(quat);
+    r.ownshipVel(vel);
+    r.ownshipOmega(omega);
+    r.ownshipSurfaces(surfaces);
+    expect([...pos]).toEqual(o.pos_bf);
+    expect([...quat]).toEqual(o.quat);
+    expect([...vel]).toEqual(o.vel_bf);
+    expect([...omega]).toEqual(o.omega);
+    expect([...surfaces]).toEqual(o.surfaces);
+    expect([
+      r.ownshipTas(),
+      r.ownshipCas(),
+      r.ownshipMach(),
+      r.ownshipAlpha(),
+      r.ownshipBeta(),
+      r.ownshipNz(),
+      r.ownshipThrottle(),
+      r.ownshipThrust(),
+      r.ownshipFuel(),
+      r.ownshipMass(),
+      r.ownshipAltitude(),
+      r.ownshipAbStage(),
+      r.ownshipFlags(),
+    ]).toEqual([
+      o.tas,
+      o.cas,
+      o.mach,
+      o.alpha,
+      o.beta,
+      o.nz,
+      o.throttle,
+      o.thrust,
+      o.fuel,
+      o.mass,
+      o.altitude,
+      o.ab_stage,
+      o.flags,
+    ]);
+    expect(o.tas, 'the aircraft is flying').toBeGreaterThan(50);
   });
 
   it('reads bodies (the vector lists the first three and the last)', () => {
@@ -80,9 +128,9 @@ describe('SnapshotReader against the Rust reference snapshot', () => {
   it('writes into the caller-chosen offset', () => {
     const r = new SnapshotReader(bytes());
     const pos = new Float64Array(6);
-    r.observerPos(pos, 3);
+    r.ownshipPos(pos, 3);
     expect([...pos.subarray(0, 3)]).toEqual([0, 0, 0]);
-    expect([...pos.subarray(3)]).toEqual(d.observer.pos_bf);
+    expect([...pos.subarray(3)]).toEqual(d.ownship.pos_bf);
   });
 });
 
@@ -103,7 +151,7 @@ describe('snapshot validity and stamping', () => {
     b[0] = (b[0] ?? 0) ^ 0xff;
     expect(new SnapshotReader(b).valid()).toBe(false);
     const c = bytes();
-    c[SNAPSHOT.H_VERSION] = 2;
+    c[SNAPSHOT.H_VERSION] = 1; // a v1 snapshot
     expect(new SnapshotReader(c).valid()).toBe(false);
     expect(new SnapshotReader(new Uint8Array(SNAPSHOT.SIZE)).valid()).toBe(false);
   });

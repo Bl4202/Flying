@@ -87,6 +87,7 @@ function deps(over: Partial<BenchmarkDeps> = {}) {
       variant: 'single',
       wasmUrl: 'sim.single.wasm',
       threadsInitialPages: 0,
+      contentUrl: 'core.cpack',
       spawn: () => kernelWorker(300_000, kernelInits),
     },
     makeRenderer: () => {
@@ -175,6 +176,7 @@ describe('runBenchmark', () => {
         variant: 'single',
         wasmUrl: 'x',
         threadsInitialPages: 0,
+        contentUrl: 'x.cpack',
         spawn: () => {
           throw new Error('workers are blocked');
         },

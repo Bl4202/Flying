@@ -1,5 +1,6 @@
 /**
- * The CPU kernel of the first-run benchmark: a private simulation core stepped flat out for a set
+ * The CPU kernel of the first-run benchmark: a private simulation core, with the core content
+ * loaded so the player's aircraft flies the 6-DOF model hands-off, stepped flat out for a set
  * time. Several of these at once, released together, show how well the machine scales across
  * cores (GDD 60.8). Each worker owns its own module instance, so there is no shared state to
  * contend on; what scales (or does not) is the machine.
@@ -35,7 +36,12 @@ async function prepare(cmd: KernelInit): Promise<void> {
     url: cmd.wasmUrl,
     threadsInitialPages: cmd.threadsInitialPages,
   });
+  const response = await fetch(cmd.contentUrl);
+  if (!response.ok) {
+    throw new Error(`SYS-005: ${cmd.contentUrl} returned ${String(response.status)}`);
+  }
   sim.init(0x1f1e5eed00000001n);
+  sim.loadContent(new Uint8Array(await response.arrayBuffer()));
   if (!sim.start()) throw new Error('SYS-004: the benchmark core would not start');
   scope.postMessage({ type: 'ready' });
 

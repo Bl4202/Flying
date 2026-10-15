@@ -147,8 +147,10 @@ export class SimLoop {
     const snap = new SnapshotReader(d.sim.snapshot());
     const pos = new Float64Array(3);
     const quat = new Float32Array(4);
-    snap.observerPos(pos);
-    snap.observerQuat(quat);
+    const surfaces = new Float32Array(3);
+    snap.ownshipPos(pos);
+    snap.ownshipQuat(quat);
+    snap.ownshipSurfaces(surfaces);
     const stats: SimStats = {
       atMs: d.sharedNowMs(),
       tick,
@@ -163,11 +165,23 @@ export class SimLoop {
       snapshotsDropped: d.snapshots.dropped(),
       coreState: d.sim.coreState(),
       sleeper: d.sleeper,
-      observer: {
+      aircraft: {
         pos: [pos[0] ?? 0, pos[1] ?? 0, pos[2] ?? 0],
         quat: [quat[0] ?? 1, quat[1] ?? 0, quat[2] ?? 0, quat[3] ?? 0],
-        speed: snap.observerSpeed(),
-        throttle: snap.observerThrottle(),
+        tas: snap.ownshipTas(),
+        cas: snap.ownshipCas(),
+        mach: snap.ownshipMach(),
+        alpha: snap.ownshipAlpha(),
+        beta: snap.ownshipBeta(),
+        nz: snap.ownshipNz(),
+        throttle: snap.ownshipThrottle(),
+        thrust: snap.ownshipThrust(),
+        fuel: snap.ownshipFuel(),
+        mass: snap.ownshipMass(),
+        surfaces: [surfaces[0] ?? 0, surfaces[1] ?? 0, surfaces[2] ?? 0],
+        altitude: snap.ownshipAltitude(),
+        abStage: snap.ownshipAbStage(),
+        flags: snap.ownshipFlags(),
         inputSeq: snap.lastInputSeq(),
       },
       profile: null,

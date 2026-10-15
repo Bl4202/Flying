@@ -30,11 +30,15 @@ if (!built && process.env['REQUIRE_WASM'] === '1') {
 }
 
 const SEED = 0x1f1e_5eed_0000_0001n;
-const golden = built
-  ? (JSON.parse(readFileSync(new URL('tests/golden/determinism.json', root), 'utf8')) as {
-      checkpoints: { tick: number; combined: string; content: string }[];
-    })
-  : undefined;
+interface Golden {
+  checkpoints: { tick: number; combined: string; content: string; ownship: string }[];
+}
+const readGolden = (name: string): Golden | undefined =>
+  built
+    ? (JSON.parse(readFileSync(new URL(`tests/golden/${name}`, root), 'utf8')) as Golden)
+    : undefined;
+const golden = readGolden('determinism.json');
+const flight60 = readGolden('flight60.json');
 
 async function load(variant: 'single' | 'threads', hostNow?: () => number): Promise<SimHandle> {
   const manifest = JSON.parse(readFileSync(new URL('wasm-manifest.json', wasmDir), 'utf8')) as {
@@ -85,6 +89,21 @@ describe.skipIf(!built).each(['single', 'threads'] as const)('sim handle (%s)', 
     expect(expected).toBeDefined();
     expect(hex(sim.hash(HASH_KIND.COMBINED))).toBe(expected?.combined);
     expect(hex(sim.hash(HASH_KIND.CONTENT))).toBe(expected?.content);
+  });
+
+  it('flies the 60 s scripted flight to the golden hashes (AC-11.7)', async () => {
+    const sim = await load(variant);
+    sim.init(SEED);
+    sim.loadContent(pack());
+    expect(sim.setInputScript(INPUT_SCRIPT.FLIGHT60)).toBe(true);
+    expect(sim.start()).toBe(true);
+    for (const tick of [600, 3_600]) {
+      sim.step(tick - Number(sim.tick()));
+      const expected = flight60?.checkpoints.find((c) => c.tick === tick);
+      expect(expected).toBeDefined();
+      expect(hex(sim.hash(HASH_KIND.OWNSHIP))).toBe(expected?.ownship);
+      expect(hex(sim.hash(HASH_KIND.COMBINED))).toBe(expected?.combined);
+    }
   });
 
   it('refuses damaged content, content after start, and unknown scripts', async () => {
