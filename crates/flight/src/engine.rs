@@ -174,8 +174,9 @@ pub trait EngineModel {
     /// selected): what a trimmed spawn starts with.
     fn steady(&self, cmd: EngineCommand) -> EngineState;
 
-    /// The afterburner stage currently lit, 0 for none.
-    fn ab_stage(&self, state: &EngineState, cmd: EngineCommand) -> u8;
+    /// How many afterburner stages are burning, 0 for none: they light in turn as the level
+    /// rises.
+    fn ab_stage(&self, state: &EngineState) -> u8;
 }
 
 /// A turbofan or turbojet with an optional staged afterburner (GDD 11.8).
@@ -385,12 +386,14 @@ impl EngineModel for Turbofan {
         }
     }
 
-    fn ab_stage(&self, s: &EngineState, cmd: EngineCommand) -> u8 {
-        if s.ab_lit {
-            cmd.ab_stage.min(self.ab_stages)
-        } else {
-            0
+    fn ab_stage(&self, s: &EngineState) -> u8 {
+        if !s.ab_lit || self.ab_stages == 0 {
+            return 0;
         }
+        // ALGO: a stage counts once the level is within 1e-3 of a stage of it, so a settled
+        // level reads as its stage.
+        let n = f64::from(self.ab_stages);
+        (s.ab_level * n - 1e-3).ceil().clamp(1.0, n) as u8
     }
 }
 
@@ -545,12 +548,20 @@ mod tests {
         let cmd = EngineCommand::max_ab(4);
         run(&e, &mut s, cmd, &air, 0.55);
         assert!(!s.ab_lit && s.ab_level == 0.0, "still waiting at 0.55 s");
-        assert_eq!(e.ab_stage(&s, cmd), 0);
+        assert_eq!(e.ab_stage(&s), 0);
         run(&e, &mut s, cmd, &air, 0.1);
         assert!(s.ab_lit, "lit by 0.65 s");
-        assert_eq!(e.ab_stage(&s, cmd), 4);
+        assert_eq!(e.ab_stage(&s), 1, "the first stage lights first");
         run(&e, &mut s, cmd, &air, 3.0);
         assert!(s.ab_level > 0.99);
+        assert_eq!(e.ab_stage(&s), 4);
+        let mut half = e.steady(EngineCommand {
+            dry: 1.0,
+            ab_stage: 2,
+        });
+        assert_eq!(e.ab_stage(&half), 2, "a settled level reads as its stage");
+        run(&e, &mut half, EngineCommand::max_ab(4), &air, 5.0);
+        assert_eq!(e.ab_stage(&half), 4);
         // Back to military: the afterburner goes out and runs down with its own time constant.
         run(&e, &mut s, EngineCommand::MILITARY, &air, 0.8);
         assert!(!s.ab_lit);

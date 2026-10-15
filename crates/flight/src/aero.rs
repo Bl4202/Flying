@@ -437,8 +437,7 @@ impl TableAero {
             (1.0 - blend) * self.cm_0.eval(a_deg, m) - blend * plate_normal * self.plate_arm_mac;
 
         // Rate terms: alpha-dot is non-dimensionalised like q.
-        let v = air.tas_mps.max(MIN_TAS_FOR_ANGLES_MPS);
-        let alpha_dot_hat = input.alpha_dot_rps * self.mac_m / (2.0 * v);
+        let alpha_dot_hat = self.alpha_dot_hat(input.alpha_dot_rps, air.tas_mps);
         let t = &self.lateral;
         Coefficients {
             cl,
@@ -462,38 +461,65 @@ impl TableAero {
         }
     }
 
-    /// Force and moment about the reference point from coefficients.
+    /// `alpha_dot c / 2V`, with the airspeed guarded like the other rate non-dimensionals.
+    fn alpha_dot_hat(&self, alpha_dot_rps: f64, tas_mps: f64) -> f64 {
+        alpha_dot_rps * self.mac_m / (2.0 * tas_mps.max(MIN_TAS_FOR_ANGLES_MPS))
+    }
+
+    /// The body-axis force of the lift, drag and side-force coefficients (GDD 11.2.4).
     #[must_use]
-    pub fn forces(&self, c: &Coefficients, air: &AirData) -> (DVec3, DVec3) {
+    pub fn force(&self, c: &Coefficients, air: &AirData) -> DVec3 {
         let qs = air.qbar_pa * self.wing_area_m2;
         let (sa, ca) = (dmath::sin(air.alpha_rad), dmath::cos(air.alpha_rad));
         let (sb, cb) = (dmath::sin(air.beta_rad), dmath::cos(air.beta_rad));
         let (lift, drag, side) = (qs * c.cl, qs * c.cd, qs * c.cy);
-        let force = DVec3::new(
+        DVec3::new(
             -drag * ca * cb - side * ca * sb + lift * sa,
             -drag * sb + side * cb,
             -drag * sa * cb - side * sa * sb - lift * ca,
-        );
-        let moment = DVec3::new(
+        )
+    }
+
+    /// The moment of the moment coefficients about the reference point.
+    #[must_use]
+    pub fn moment_ref(&self, c: &Coefficients, air: &AirData) -> DVec3 {
+        let qs = air.qbar_pa * self.wing_area_m2;
+        DVec3::new(
             qs * self.span_m * c.cl_roll,
             qs * self.mac_m * c.cm,
             qs * self.span_m * c.cn,
-        );
-        (force, moment)
+        )
+    }
+
+    /// Like [`AeroModel::evaluate`], with the angle-of-attack rate supplied once the
+    /// aerodynamic force is known: `alpha_dot` receives the body force and returns the rate. The
+    /// force does not depend on the rate (no lift term in it), so this is exact; the rigid-body
+    /// step uses it to get the rate from the accelerations of the same stage.
+    pub fn evaluate_with(
+        &self,
+        input: &AeroInput,
+        alpha_dot: impl FnOnce(DVec3) -> f64,
+    ) -> AeroOutput {
+        if input.air.qbar_pa.is_nan() || input.air.qbar_pa <= 0.0 {
+            return AeroOutput::ZERO;
+        }
+        let mut c = self.coefficients(&AeroInput {
+            alpha_dot_rps: 0.0,
+            ..*input
+        });
+        let force = self.force(&c, &input.air);
+        c.cm += self.cm_alpha_dot * self.alpha_dot_hat(alpha_dot(force), input.air.tas_mps);
+        AeroOutput {
+            force_body_n: force,
+            moment_body_nm: self.moment_ref(&c, &input.air)
+                + (self.ref_point_body_m - input.cg_body_m).cross(force),
+        }
     }
 }
 
 impl AeroModel for TableAero {
     fn evaluate(&self, input: &AeroInput) -> AeroOutput {
-        if input.air.qbar_pa.is_nan() || input.air.qbar_pa <= 0.0 {
-            return AeroOutput::ZERO;
-        }
-        let c = self.coefficients(input);
-        let (force, moment_ref) = self.forces(&c, &input.air);
-        AeroOutput {
-            force_body_n: force,
-            moment_body_nm: moment_ref + (self.ref_point_body_m - input.cg_body_m).cross(force),
-        }
+        self.evaluate_with(input, |_| input.alpha_dot_rps)
     }
 }
 
@@ -630,7 +656,7 @@ mod tests {
                     cl: 1.0,
                     ..Coefficients::default()
                 };
-                let (f, _) = m.forces(&lift_only, &input.air);
+                let f = m.force(&lift_only, &input.air);
                 assert!(
                     f.dot(vel).abs() < 1e-9 * f.length(),
                     "lift at {alpha_deg}/{beta_deg}"
@@ -640,7 +666,7 @@ mod tests {
                     cy: 1.0,
                     ..Coefficients::default()
                 };
-                let (f, _) = m.forces(&side_only, &input.air);
+                let f = m.force(&side_only, &input.air);
                 assert!(
                     f.dot(vel).abs() < 1e-9 * f.length(),
                     "side at {alpha_deg}/{beta_deg}"
@@ -649,7 +675,7 @@ mod tests {
                     cd: 1.0,
                     ..Coefficients::default()
                 };
-                let (f, _) = m.forces(&drag_only, &input.air);
+                let f = m.force(&drag_only, &input.air);
                 assert!(
                     (f.normalized_or(DVec3::X) + vel).length() < 1e-12,
                     "drag opposes"
@@ -826,6 +852,30 @@ mod tests {
         assert!((ld.cd - clean.cd - 0.03 - induced).abs() < 1e-7);
         let to = with(&|s| s.tef_rad = 15f64.to_radians());
         assert!((to.cl - clean.cl - 0.3).abs() < 1e-7);
+    }
+
+    #[test]
+    fn the_alpha_rate_enters_only_the_pitching_moment() {
+        let m = kestrel_aero();
+        let mut input = at(6.0, 0.5);
+        let still = m.evaluate(&input);
+        input.alpha_dot_rps = 0.4;
+        let moving = m.evaluate(&input);
+        assert_eq!(moving.force_body_n, still.force_body_n);
+        assert_eq!(moving.moment_body_nm.x, still.moment_body_nm.x);
+        // C_m,alpha_dot -3 per unit of alpha_dot c / 2V: dM = q S c (-3) (0.4 * 3.2 / 400).
+        let expected = 20_000.0 * 28.0 * 3.2 * -3.0 * (0.4 * 3.2 / 400.0);
+        let dm = moving.moment_body_nm.y - still.moment_body_nm.y;
+        assert!(
+            (dm - expected).abs() < 1e-6 * expected.abs(),
+            "{dm} vs {expected}"
+        );
+        // Supplied after the force, the same result.
+        let late = m.evaluate_with(&at(6.0, 0.5), |f| {
+            assert_eq!(f, still.force_body_n);
+            0.4
+        });
+        assert_eq!(late, moving);
     }
 
     #[test]

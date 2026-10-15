@@ -11,13 +11,16 @@
 
 pub mod actuators;
 pub mod aero;
+pub mod aircraft;
 pub mod airdata;
 pub mod atmosphere;
+pub mod body;
 pub mod controls;
 pub mod energy;
 pub mod engine;
 pub mod env;
 pub mod error;
+pub mod frames;
 pub mod mass;
 pub mod physical;
 pub mod table;
