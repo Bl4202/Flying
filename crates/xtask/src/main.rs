@@ -1,6 +1,7 @@
 //! Build, check and determinism orchestration. Run as `cargo xtask <command>`.
 
 mod bench;
+mod conformance;
 mod content;
 mod determinism;
 mod genabi;
@@ -11,7 +12,7 @@ mod wasm;
 
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: cargo xtask <command>\n\ncommands:\n  check-layers   enforce crate dependency layering (AC-61.1)\n  gen-abi [--check]   regenerate (or verify) the TypeScript layout constants and shared test vectors\n  content [--schemas | --check]   bake content/core into content-out/ (or regenerate / verify the JSON Schemas)\n  wasm [single|threads|all]   build, optimise and verify the WASM modules\n  determinism [--ticks N] [--bless] [--skip-wasm]   native vs WASM state hashes + golden\n  repro   build twice (second from a copy elsewhere) and compare every output\n  bench [--strict] [--update] [--ticks N]   time the native tick against tests/perf/baseline.json";
+const USAGE: &str = "usage: cargo xtask <command>\n\ncommands:\n  check-layers   enforce crate dependency layering (AC-61.1)\n  gen-abi [--check]   regenerate (or verify) the TypeScript layout constants and shared test vectors\n  content [--schemas | --check]   bake content/core into content-out/ (or regenerate / verify the JSON Schemas)\n  wasm [single|threads|all]   build, optimise and verify the WASM modules\n  determinism [--ticks N] [--bless] [--skip-wasm]   native vs WASM state hashes + golden\n  repro   build twice (second from a copy elsewhere) and compare every output\n  bench [--strict] [--update] [--ticks N]   time the native tick against tests/perf/baseline.json\n  conformance [--only ID,...]   fly the Performance Conformance Test (ADR-31) and gate on it";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -23,6 +24,7 @@ fn main() -> ExitCode {
         Some("repro") => repro::run_command(),
         Some("bench") => bench::run_command(&args[1..]),
         Some("determinism") => determinism::run_command(&args[1..]),
+        Some("conformance") => conformance::run_command(&args[1..]),
         _ => Err(USAGE.to_string()),
     };
     match result {

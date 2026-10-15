@@ -1,0 +1,21 @@
+[package]
+name = "flight-test"
+description = "Performance Conformance Test: scripted flight-test procedures against an aircraft's envelope"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+content.workspace = true
+flight.workspace = true
+serde_json = "1.0.152"
+simmath.workspace = true
+
+[dev-dependencies]
+content-bake = { path = "../../tools/content-bake" }

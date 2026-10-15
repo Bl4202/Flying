@@ -80,6 +80,22 @@ to be wrong, that is also an ADR, with the evidence.
 and CSV traces. `cargo xtask conformance` bakes, builds in release and gates on the exit code.
 A required CI job `conformance` runs it on every push.
 
+## Clarifications (2026-10-14, v0.1a, before the first conformance run)
+
+These fill gaps in the text above; none loosens a gate.
+
+- **Cross-check bands not stated above:** `roc_sl` 0.5 %, `stall_clean` 0.5 %, `ff_*` 0.1 %.
+- **The world has no surface.** Over a sea at height 0 the sea-level points would be in ground
+  effect, which removes all induced drag at h = 0 (GDD 11.6.5). The procedures fly the same
+  sphere with no surface (`SphereSea::open()`), so the air continues below MSL and nothing is in
+  ground effect.
+- **Points flown at a speed carry it as data.** `n_sust` and `turn_dps` points have a `mach`
+  field (`nsust_sl_m07` is M 0.7 by its data, not by its name); the baker requires it.
+- **The stall run settles holding the trimmed angle of attack**, not altitude, since the engine
+  has just gone to idle.
+- **The coordination loop is `r = g sin(phi) cos(theta) / V + 2 beta`.** Positive sideslip has the
+  nose left of the airflow and is removed by yawing right.
+
 ## Alternatives considered
 
 - **Hold altitude through the stall.** Closer to a flight test, but at 1 kn/s it needs a large

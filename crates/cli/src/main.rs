@@ -4,12 +4,17 @@
 //! fg version
 //! fg hash  [--seed HEX] [--script none|erratic] [--content PATH] (--ticks N | --at T1,T2,...)
 //! fg bench [--seed HEX] [--script none|erratic] [--content PATH] [--ticks N] [--json]
+//! fg conformance --content PATH [--aircraft-index N] [--json PATH] [--traces DIR]
+//!                [--only ID,...] [--expect-deferred ID,...]
 //! ```
 //!
 //! `fg hash` prints one JSON object per requested tick with the combined and per-subsystem state
 //! hashes as 16-digit hex strings. The determinism check compares this output to the WebAssembly
 //! builds (ADR-10). `fg bench` times the tick; its wall-clock numbers are observations about the
-//! machine and never feed state.
+//! machine and never feed state. `fg conformance` runs the Performance Conformance Test
+//! (ADR-31) and exits 1 when its gate fails.
+
+mod conformance;
 
 use std::io::Write;
 use std::process::ExitCode;
@@ -21,7 +26,9 @@ use sim_core::{DEFAULT_SEED, SimCore};
 const USAGE: &str = "usage:
   fg version
   fg hash  [--seed HEX] [--script none|erratic] [--content PATH] (--ticks N | --at T1,T2,...)
-  fg bench [--seed HEX] [--script none|erratic] [--content PATH] [--ticks N] [--json]";
+  fg bench [--seed HEX] [--script none|erratic] [--content PATH] [--ticks N] [--json]
+  fg conformance --content PATH [--aircraft-index N] [--json PATH] [--traces DIR]
+                 [--only ID,...] [--expect-deferred ID,...]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -36,6 +43,18 @@ fn main() -> ExitCode {
         }
         Some("hash") => run_hash(&args[1..]),
         Some("bench") => run_bench(&args[1..]),
+        Some("conformance") => {
+            let build = format!(
+                "fg {} {}",
+                env!("CARGO_PKG_VERSION"),
+                option_env!("GIT_SHA").unwrap_or("unknown")
+            );
+            match conformance::run(&args[1..], &build) {
+                Ok(true) => Ok(()),
+                Ok(false) => return ExitCode::from(1),
+                Err(e) => Err(e),
+            }
+        }
         _ => Err(String::new()),
     };
     match result {
