@@ -47,7 +47,7 @@ function world(shift: number, looking: 'ahead' | 'up', bodies: boolean) {
   interp.push(
     makeSnapshot({
       publishMs: 1000,
-      observer: { pos: eye, quat: looking === 'up' ? LOOKING_UP : NORTH },
+      ownship: { pos: eye, quat: looking === 'up' ? LOOKING_UP : NORTH },
       bodies: list,
     }),
   );

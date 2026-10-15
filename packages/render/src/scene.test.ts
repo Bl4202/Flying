@@ -71,7 +71,7 @@ describe('SceneBuilder', () => {
 
   it('gives the terrain patch offset relative to the eye in render axes, subtracted in f64', () => {
     const eye: [number, number, number] = [400_000.013, -399_999.987, 2000];
-    const u = new SceneBuilder().build(world({ observer: { pos: eye } }), {
+    const u = new SceneBuilder().build(world({ ownship: { pos: eye } }), {
       aspect: 1,
       zRange: '0to1',
       timeS: 0,
@@ -86,7 +86,7 @@ describe('SceneBuilder', () => {
 
   it('puts a point straight ahead of the observer at the centre of the screen', () => {
     const scene = new SceneBuilder();
-    const state = world({ observer: { pos: [0, -6000, 1000], quat: NORTH } });
+    const state = world({ ownship: { pos: [0, -6000, 1000], quat: NORTH } });
     const f = scene.build(state, {
       aspect: 16 / 9,
       zRange: '0to1',
@@ -110,7 +110,7 @@ describe('SceneBuilder', () => {
 
   it('fills one instance per body: eye-relative position, size, and an orientation taking body to render axes', () => {
     const state = world({
-      observer: { pos: [0, 0, 1000] },
+      ownship: { pos: [0, 0, 1000] },
       bodies: [
         { pos: [100, 2000, 1500], quat: NORTH },
         { pos: [-50, 500, 900], quat: NORTH },

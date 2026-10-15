@@ -67,10 +67,10 @@ export class SceneBuilder {
     const f = this.#frame;
     projection(this.#proj, FOV_Y, opts.aspect, NEAR_M, opts.zRange);
     viewRotation(this.#view, [
-      state.observerQuat[0] ?? 1,
-      state.observerQuat[1] ?? 0,
-      state.observerQuat[2] ?? 0,
-      state.observerQuat[3] ?? 0,
+      state.ownshipQuat[0] ?? 1,
+      state.ownshipQuat[1] ?? 0,
+      state.ownshipQuat[2] ?? 0,
+      state.ownshipQuat[3] ?? 0,
     ]);
     mul4(this.#vp, this.#proj, this.#view);
 
@@ -89,7 +89,7 @@ export class SceneBuilder {
       Math.max(1, Math.floor(opts.patchInstances ?? 1)),
     );
     if (opts.patchOriginBf) {
-      relativeToEye(this.#rel, 0, opts.patchOriginBf, 0, state.observerPosBf);
+      relativeToEye(this.#rel, 0, opts.patchOriginBf, 0, state.ownshipPosBf);
       u[24] = this.#rel[0] ?? 0;
       u[25] = this.#rel[1] ?? 0;
       u[26] = this.#rel[2] ?? 0;
@@ -101,7 +101,7 @@ export class SceneBuilder {
     const n = Math.min(state.bodyCount, SNAPSHOT.BODY_CAPACITY);
     for (let i = 0; i < n; i++) {
       const at = i * MARKER_INSTANCE_FLOATS;
-      relativeToEye(f.instances, at, state.bodyPosBf, i * 3, state.observerPosBf);
+      relativeToEye(f.instances, at, state.bodyPosBf, i * 3, state.ownshipPosBf);
       f.instances[at + 3] = MARKER_SIZE_M;
       // Body axes -> render axes is the BF rotation of the body, after the BF -> render change.
       const q = quatMul(BF_TO_RENDER, [

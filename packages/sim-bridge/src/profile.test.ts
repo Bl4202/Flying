@@ -10,7 +10,8 @@ describe('profile block', () => {
     expect(STAGE_NAMES[STAGE.PUBLISH]).toBe('publish');
     expect(COUNTER_NAMES).toHaveLength(PROFILE.COUNTER_COUNT);
     expect(COUNTER_NAMES[COUNTER.INPUT_APPLIED]).toBe('input_applied');
-    expect(COUNTER_NAMES[COUNTER.OBSERVER_RESETS]).toBe('observer_resets');
+    expect(COUNTER_NAMES[COUNTER.FDM_FAULTS]).toBe('fdm_faults');
+    expect(COUNTER_NAMES[COUNTER.TRIM_FAILURES]).toBe('trim_failures');
     expect(COUNTER_NAMES[COUNTER.SNAPSHOTS]).toBe('snapshots');
   });
 

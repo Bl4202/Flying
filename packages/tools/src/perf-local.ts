@@ -118,16 +118,41 @@ async function measureDisplayHz(): Promise<number> {
   );
 }
 
-/** Holds each key for a while, in a pattern that exercises every axis and the throttle. */
+/**
+ * Holds each key for a while (`''` is hands off), in a pattern that exercises every axis and the
+ * throttle. The stick drives the surfaces directly (no FCS before v0.1b), so the inputs are short
+ * taps in opposing pairs with hands-off spells between them: long full-deflection holds tumble the
+ * aircraft and the run would mostly measure crashes. The second half mirrors the first, so leftover
+ * bank does not build into a spiral dive. Measured on the Kestrel (v0.1a): two minutes without a
+ * crash, about 23 km flown, so the terrain patch re-centres at least once.
+ */
 const MANOEUVRE: readonly (readonly [string, number])[] = [
-  ['KeyS', 1200],
-  ['KeyD', 2000],
-  ['ShiftLeft', 1500],
-  ['KeyA', 2000],
-  ['KeyW', 1000],
-  ['KeyE', 1500],
-  ['KeyQ', 1500],
-  ['PageDown', 1200],
+  ['ShiftLeft', 600],
+  ['', 1500],
+  ['KeyS', 300],
+  ['', 1500],
+  ['KeyW', 300],
+  ['', 1000],
+  ['KeyD', 300],
+  ['', 1000],
+  ['KeyA', 300],
+  ['', 1500],
+  ['KeyE', 400],
+  ['KeyQ', 400],
+  ['', 1500],
+  ['PageDown', 600],
+  ['', 1500],
+  ['KeyS', 300],
+  ['', 1500],
+  ['KeyW', 300],
+  ['', 1000],
+  ['KeyA', 300],
+  ['', 1000],
+  ['KeyD', 300],
+  ['', 1500],
+  ['KeyQ', 400],
+  ['KeyE', 400],
+  ['', 1500],
 ];
 
 async function fly(seconds: number): Promise<FlightSummary> {
@@ -139,12 +164,12 @@ async function fly(seconds: number): Promise<FlightSummary> {
   const end = Date.now() + seconds * 1000;
   let step = 0;
   while (Date.now() < end) {
-    const [key, ms] = MANOEUVRE[step % MANOEUVRE.length] ?? ['KeyS', 1000];
+    const [key, ms] = MANOEUVRE[step % MANOEUVRE.length] ?? ['', 1000];
     step += 1;
-    await page.keyboard.down(key);
+    if (key !== '') await page.keyboard.down(key);
     const holdUntil = Math.min(end, Date.now() + ms);
     while (Date.now() < holdUntil) {
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(Math.min(500, Math.max(holdUntil - Date.now(), 0)));
       const s = await page.evaluate(() => {
         const hooks = (window as unknown as { __flying?: Hooks }).__flying;
         return hooks?.stats();
@@ -157,7 +182,7 @@ async function fly(seconds: number): Promise<FlightSummary> {
       if (s?.sim) hz.push(s.sim.hz);
       for (const t of await byId(page, 'toast').allTextContents()) toasts.add(t);
     }
-    await page.keyboard.up(key);
+    if (key !== '') await page.keyboard.up(key);
   }
   const mean = (xs: number[]): number =>
     xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length;

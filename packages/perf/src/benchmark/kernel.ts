@@ -9,6 +9,8 @@ export interface KernelInit {
   variant: Variant;
   wasmUrl: string;
   threadsInitialPages: number;
+  /** The content pack, so the kernel flies the real aircraft (a real tick). */
+  contentUrl: string;
   /** How long to step, milliseconds. */
   ms: number;
   /** A shared word the workers wait on, or null to wait for a `go` message. */
@@ -39,6 +41,7 @@ export interface KernelOptions {
   variant: Variant;
   wasmUrl: string;
   threadsInitialPages: number;
+  contentUrl: string;
   spawn(): KernelWorkerLike;
   /** Use a `SharedArrayBuffer` for the common start (only where the page is isolated). */
   sharedStart: boolean;
@@ -98,6 +101,7 @@ export async function runKernel(opts: KernelOptions): Promise<KernelRun> {
         type: 'init',
         variant: opts.variant,
         wasmUrl: opts.wasmUrl,
+        contentUrl: opts.contentUrl,
         threadsInitialPages: opts.threadsInitialPages,
         ms: opts.ms,
         startFlag: flagBuffer,

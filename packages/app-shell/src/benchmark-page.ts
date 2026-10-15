@@ -22,7 +22,7 @@ import { SHADERS } from '@flying/render/shader-sources';
 import { scriptUrl, type DeepFeatures, type Flags, type Kv } from '@flying/platform-web';
 import { EXPECTED_ABI_VERSION } from '@flying/sim-bridge/sim-handle';
 import { mountBenchmarkPanel } from '@flying/ui';
-import { wasmUrl } from './selftest.ts';
+import { coreContentUrl, wasmUrl } from './selftest.ts';
 
 export interface BenchmarkPageArgs {
   root: HTMLElement;
@@ -68,6 +68,7 @@ export async function runBenchmarkPage(
         variant: 'single',
         wasmUrl: wasmUrl('single'),
         threadsInitialPages: 0,
+        contentUrl: coreContentUrl,
         spawn: () =>
           new Worker(scriptUrl(kernelWorkerUrl), { type: 'module' }) as unknown as KernelWorkerLike,
       },

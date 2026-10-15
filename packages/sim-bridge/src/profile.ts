@@ -26,10 +26,11 @@ export const COUNTER_NAMES = [
   'input_nonfinite',
   'input_stale',
   'input_overflow',
-  'observer_resets',
-  'ground_clamps',
-  'boundary_clamps',
+  'fdm_faults',
+  'crashes',
+  'respawns',
   'snapshots',
+  'trim_failures',
 ] as const;
 
 export interface Profile {
