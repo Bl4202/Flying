@@ -769,7 +769,10 @@ pub struct DynamicsFile {
     /// Afterburner light-off delay.
     #[schemars(extend("x-unit" = "s"), range(min = 0.0, max = 10.0))]
     pub ab_lightoff_s: f64,
-    /// Afterburner cut-off time.
+    /// Time constant of the afterburner level rising once lit.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.0, max = 10.0))]
+    pub ab_stage_s: f64,
+    /// Time constant of the afterburner level falling when it is throttled back or cut.
     #[schemars(extend("x-unit" = "s"), range(min = 0.0, max = 10.0))]
     pub ab_cutoff_s: f64,
     /// Afterburner stages (0 for none).
@@ -821,6 +824,7 @@ impl EngineFile {
             spool_up_s: d.spool_up_s as f32,
             spool_down_s: d.spool_down_s as f32,
             ab_lightoff_s: d.ab_lightoff_s as f32,
+            ab_stage_s: d.ab_stage_s as f32,
             ab_cutoff_s: d.ab_cutoff_s as f32,
             ab_stages: d.ab_stages,
             inlet_alpha_start_deg: self.inlet.alpha_start_deg as f32,
@@ -854,6 +858,7 @@ impl EngineFile {
                 spool_up_s: f(e.spool_up_s),
                 spool_down_s: f(e.spool_down_s),
                 ab_lightoff_s: f(e.ab_lightoff_s),
+                ab_stage_s: f(e.ab_stage_s),
                 ab_cutoff_s: f(e.ab_cutoff_s),
                 ab_stages: e.ab_stages,
             },

@@ -34,7 +34,9 @@ pub struct EngineDef {
     pub spool_down_s: f32,
     /// Afterburner light-off delay, s.
     pub ab_lightoff_s: f32,
-    /// Afterburner cut-off time, s.
+    /// Time constant of the afterburner level rising once lit, s.
+    pub ab_stage_s: f32,
+    /// Time constant of the afterburner level falling when it is throttled back or cut, s.
     pub ab_cutoff_s: f32,
     /// Afterburner stages (0 for none).
     pub ab_stages: u8,
@@ -67,6 +69,7 @@ impl EngineDef {
             self.spool_up_s,
             self.spool_down_s,
             self.ab_lightoff_s,
+            self.ab_stage_s,
             self.ab_cutoff_s,
             self.inlet_alpha_start_deg,
             self.inlet_alpha_span_deg,
@@ -96,6 +99,7 @@ impl EngineDef {
             spool_up_s: r.f32()?,
             spool_down_s: r.f32()?,
             ab_lightoff_s: r.f32()?,
+            ab_stage_s: r.f32()?,
             ab_cutoff_s: r.f32()?,
             inlet_alpha_start_deg: r.f32()?,
             inlet_alpha_span_deg: r.f32()?,
@@ -135,6 +139,7 @@ pub(crate) mod tests {
             spool_up_s: 1.8,
             spool_down_s: 1.2,
             ab_lightoff_s: 0.6,
+            ab_stage_s: 0.5,
             ab_cutoff_s: 0.8,
             ab_stages: 4,
             inlet_alpha_start_deg: 15.0,

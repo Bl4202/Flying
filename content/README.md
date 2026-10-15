@@ -8,7 +8,7 @@ ADR-30), which is what the sim loads.
 |---|---|
 | `core/pack.json` | Pack identity: id (the namespace of every id inside), version, licence |
 | `core/aircraft/*.json` | One aircraft per file (`aircraft/1`): mass and tanks, geometry, engine installations, limits, FCS data, the performance envelope. `kestrel.json` is Appendix C of the GDD |
-| `core/engines/*.json` | One engine type per file (`engine/1`): thrust deck, TSFC, spool and afterburner dynamics |
+| `core/engines/*.json` | One engine type per file (`engine/1`): thrust deck, TSFC, spool and afterburner dynamics. Derivations in its `README.md` |
 | `core/aero/*.json` | One airframe's aerodynamic tables per file (`aero/1`). `kestrel.json` is **generated** by `kestrel_gen.rs` next to it (see its `README.md`) |
 | `core/locales/en.json` | Display strings by key. Every key must be used, every used key must exist |
 | `schemas/*.schema.json` | **Generated** from the Rust types in `tools/content-bake/src/model.rs`; do not edit |
