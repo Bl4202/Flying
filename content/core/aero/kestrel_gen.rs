@@ -66,8 +66,9 @@ const CL_ALPHA: [(f64, f64); 6] = [
 
 /// Per Mach grid point: static margin (fraction of MAC; the aerodynamic centre moves aft through
 /// the transonic range), C_m at zero lift (Mach tuck), and elevator power C_m,de per radian
-/// (falling transonically, GDD 11.6.4). Chosen so that trimmed elevator stays within about 23
-/// degrees everywhere in the envelope (*target*).
+/// (falling transonically, GDD 11.6.4). Chosen so that the trimmed elevator, after the
+/// control-effectiveness fall-off, stays within 23 degrees everywhere in the envelope up to
+/// C_L,max or 9 g (*target*; see the tuning log).
 const PITCH: [(f64, f64, f64); 12] = [
     (0.06, 0.010, -0.65),
     (0.06, 0.010, -0.65),
@@ -75,12 +76,12 @@ const PITCH: [(f64, f64, f64); 12] = [
     (0.06, 0.010, -0.65),
     (0.08, 0.005, -0.60),
     (0.10, 0.0, -0.55),
-    (0.12, -0.010, -0.48),
-    (0.15, -0.015, -0.45),
-    (0.16, -0.015, -0.42),
-    (0.18, -0.015, -0.36),
-    (0.18, -0.015, -0.33),
-    (0.18, -0.015, -0.30),
+    (0.12, -0.010, -0.50),
+    (0.13, -0.015, -0.50),
+    (0.14, -0.015, -0.48),
+    (0.15, -0.015, -0.42),
+    (0.15, -0.015, -0.38),
+    (0.15, -0.015, -0.34),
 ];
 
 /// Elevator lift per unit of elevator moment: the stabilator acts 1.6 MAC behind the reference
@@ -291,9 +292,9 @@ pub fn render() -> String {
             &[
                 (0.0, 1.0),
                 (15.0, 1.0),
-                (20.0, 0.85),
-                (25.0, 0.75),
-                (30.0, 0.7)
+                (20.0, 0.95),
+                (25.0, 0.9),
+                (30.0, 0.85)
             ],
             3
         ),

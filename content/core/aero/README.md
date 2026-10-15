@@ -21,11 +21,11 @@ Performance Conformance Test (ADR-31) is the judge.
 | `lift.cl_base` | Per Mach row: linear `C_L,alpha * alpha` to a knee at 0.8 C, a quadratic with zero slope at the peak C at `1.2 C / C_L,alpha` (about 31.6 deg at low Mach), then 0.88 C at +6 deg, 0.80 C at +14 deg, fading to the flat plate `1.2 sin cos` by 60 deg. The negative side has the same shape at 0.6 C. `C_L0 = 0`, as in C.8 |
 | peak C | `C = (C_L,max - C_m,ac / 1.6) / (1 - SM / 1.6)`: the untrimmed peak whose **trimmed** value is the table's `C_L,max`. At the stall the elevator cancels `C_m,ac - SM C` and loses `C_L,de / C_m,de = 1 / 1.6` of lift per unit of moment. Low Mach: 1.6558 (stall trim about -7.9 deg, lift loss 0.056) |
 | `pitch.cm_0` | `C_m,ac - SM C_L` until the peak, then over 20 deg a fade to the flat plate's normal force `1.2 sin alpha` acting at mid-chord (0.23 MAC behind the reference point at 27 % MAC) |
-| SM, `C_m,ac`, `C_m,de` by Mach | SM 0.06 to M 0.8 (C.4, so `C_m,alpha = -0.216` as C.5), then aft through the transonic range to 0.18 at M 2; Mach tuck `C_m,ac` from +0.010 to -0.015; `C_m,de` from -0.65 to -0.30. Chosen so trimmed elevator stays within about 23 deg over the envelope (*target*) |
+| SM, `C_m,ac`, `C_m,de` by Mach | SM 0.06 to M 0.8 (C.4, so `C_m,alpha = -0.216` as C.5), then aft through the transonic range to 0.15 from M 2; Mach tuck `C_m,ac` from +0.010 to -0.015; `C_m,de` from -0.65 to -0.34. Chosen so the trimmed elevator, after the control-effectiveness fall-off, stays within 23 deg up to C_L,max or 9 g over the envelope (*target*) |
 | `lift.cl_de_per_rad` | `-C_m,de / 1.6`: the stabilator acts 1.6 MAC behind the reference point |
 | `post_stall` | blend from `alpha_peak + 10` to `alpha_peak + 30` deg (ADR-30: the stall itself is in `cl_base`); `cd90` 1.2, flat-plate centre at 0.50 MAC (GDD 11.6.3) |
 | `lateral`, damping | C.5, plus `C_lr` +0.10, `C_np` -0.03, `C_nda` -0.01, `C_ldr` +0.01 (*targets*) |
-| `control_effectiveness` | 1 to 15 deg, 0.85 at 20, 0.75 at 25, 0.70 at 30 (GDD 11.7) |
+| `control_effectiveness` | 1 to 15 deg, 0.95 at 20, 0.90 at 25, 0.85 at 30 (GDD 11.7: falls beyond 15 deg; *target*) |
 | `config` | C.4 increments; flap lift 0.30 so flapped `C_L,max` is 1.90 |
 
 The fuel tanks in `aircraft/kestrel.json` are placed so the CG stays at the reference point: the
@@ -42,3 +42,4 @@ point moved, by how much (ADR-31).
 | Date | Change | Effect |
 |---|---|---|
 | 2026-10-14 | Initial tables as derived above | (baseline; conformance not yet run) |
+| 2026-10-14 | Before conformance, from the trim solver's elevator check (WP6): `control_effectiveness` 0.85/0.75/0.70 at 20/25/30 deg became 0.95/0.90/0.85; from M 1.05 up, `C_m,de` -0.48/-0.45/-0.42/-0.36/-0.33/-0.30 became -0.50/-0.50/-0.48/-0.42/-0.38/-0.34 and the static margin 0.15/0.16/0.18 at M 1.2/1.5/2+ became 0.13/0.14/0.15. The design review had sized the elevator without the fall-off, so trim at C_L,max needed 31 to 34 deg from M 1.2 up (beyond the 25 deg travel) | Supersonic stall trim -32 deg became about -18 deg. Subsonic rows unchanged, so no C.9 point moves (all are subsonic or 1 g, where trim adds no drag) |
