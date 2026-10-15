@@ -10,32 +10,66 @@
     "empty_kg": 8400,
     "internal_fuel_kg": 3100,
     "max_takeoff_kg": 14500,
-    "inertia_kgm2": [13000, 76000, 86000],
-    "inertia_xz_kgm2": 1300
+    "max_landing_kg": 9500,
+    "cg_empty_m": [0, 0, 0],
+    "inertia_kgm2": [13000, 72436, 82436],
+    "inertia_xz_kgm2": 1300,
+    "fuel_density_kgpl": 0.8,
+    "tanks": [
+      { "id": "fwd", "capacity_kg": 900, "pos_m": [1.65, 0, 0], "feed_priority": 2 },
+      { "id": "aft", "capacity_kg": 1100, "pos_m": [-1.35, 0, 0], "feed_priority": 2 },
+      { "id": "wing_l", "capacity_kg": 550, "pos_m": [0, -2.2, 0], "feed_priority": 1 },
+      { "id": "wing_r", "capacity_kg": 550, "pos_m": [0, 2.2, 0], "feed_priority": 1 }
+    ]
   },
   "geometry": {
-    "wing_area_m2": 28.0,
+    "wing_area_m2": 28,
     "span_m": 9.8,
-    "mac_m": 3.2
+    "mac_m": 3.2,
+    "ref_point_m": [0, 0, 0],
+    "bbox_m": [14.6, 9.8, 4.5]
   },
-  "engines": {
-    "count": 1,
-    "thrust_military_n": 79000,
-    "thrust_afterburner_n": 128000
-  },
+  "engines": [
+    { "ref": "core:eng/f129", "count": 1, "position_m": [-5.2, 0, 0] }
+  ],
   "aero": {
-    "cd0": 0.0235,
-    "induced_k": 0.135,
-    "cl_alpha_per_rad": 3.6,
-    "cl_max": 1.6,
-    "static_margin_mac": 0.06,
-    "sas_required": false
+    "tables_ref": "core:aero/kestrel",
+    "max_mach": 2,
+    "mmo": 2,
+    "vmo_mps": 360,
+    "service_ceiling_m": 15500,
+    "n_max": 9,
+    "n_min": -3,
+    "gear_limit_mps": 128.6,
+    "flap_limit_mps": 154.3,
+    "static_margin_mac": 0.06
   },
-  "limits": {
-    "n_max": 9.0,
-    "n_min": -3.0,
-    "mmo": 2.0,
-    "vmo_ms": 360,
-    "service_ceiling_m": 15500
+  "fcs": {
+    "sas_required": false,
+    "limiters": { "alpha_limit_deg": 26, "n_cmd_max": 9, "roll_rate_max_dps": 270 },
+    "actuators": {
+      "stab": { "range_deg": [-25, 25], "rate_dps": 60, "tau_s": 0.05 },
+      "aileron": { "range_deg": [-20, 20], "rate_dps": 80, "tau_s": 0.05 },
+      "rudder": { "range_deg": [-30, 30], "rate_dps": 120, "tau_s": 0.05 },
+      "lef": { "range_deg": [0, 25], "rate_dps": 15, "tau_s": 0.1 },
+      "tef": { "range_deg": [0, 30], "rate_dps": 20, "tau_s": 0.1 },
+      "airbrake": { "rate_per_s": 1, "tau_s": 0.3 }
+    }
+  },
+  "envelope": {
+    "points": [
+      { "id": "vmax_sl", "mass_kg": 9500, "alt_m": 0, "config": "clean_ab", "metric": "max_mach", "value": 1.22, "tol_pct": 3 },
+      { "id": "vmax_11k", "mass_kg": 9500, "alt_m": 11000, "config": "clean_ab", "metric": "max_mach", "value": 1.83, "tol_pct": 3 },
+      { "id": "vmax_dry_sl", "mass_kg": 9500, "alt_m": 0, "config": "clean_mil", "metric": "max_mach", "value": 1, "tol_pct": 3 },
+      { "id": "roc_sl", "mass_kg": 9500, "alt_m": 0, "config": "clean_ab", "metric": "roc_mps", "value": 283.1, "tol_pct": 3 },
+      { "id": "stall_clean", "mass_kg": 9500, "alt_m": 0, "config": "clean", "metric": "stall_mps", "value": 58.3, "tol_pct": 3 },
+      { "id": "nsust_sl_m07", "mass_kg": 10500, "alt_m": 0, "config": "ref_ab", "metric": "n_sust", "value": 8.45, "tol_pct": 5 },
+      { "id": "turn_sl_m05", "mass_kg": 10500, "alt_m": 0, "config": "ref_ab", "metric": "turn_dps", "value": 20.5, "tol_pct": 5 },
+      { "id": "nsust_6k_m09", "mass_kg": 10500, "alt_m": 6000, "config": "ref_ab", "metric": "n_sust", "value": 5.58, "tol_pct": 5 },
+      { "id": "ff_mil_sl", "mass_kg": 9500, "alt_m": 0, "config": "clean_mil", "metric": "ff_kgps", "value": 1.566, "tol_pct": 3 },
+      { "id": "ff_ab_sl", "mass_kg": 9500, "alt_m": 0, "config": "clean_ab", "metric": "ff_kgps", "value": 6.889, "tol_pct": 3 },
+      { "id": "to_roll", "mass_kg": 10500, "alt_m": 0, "config": "to_flaps_ab", "metric": "roll_m", "value": 195, "tol_pct": 5, "requires": "gear" },
+      { "id": "ldg_roll", "mass_kg": 8500, "alt_m": 0, "config": "ldg_brakes", "metric": "roll_m", "value": 322, "tol_pct": 5, "requires": "gear" }
+    ]
   }
 }

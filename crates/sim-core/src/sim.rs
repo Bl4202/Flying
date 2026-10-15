@@ -623,50 +623,29 @@ mod tests {
         );
     }
 
-    /// A pack with one aircraft; sim-core cannot depend on the baker, so build the bytes here.
-    fn pack(empty_kg: f32) -> Vec<u8> {
-        use content::{AircraftDef, Category, Era};
-        let def = AircraftDef {
-            name_key: "ac.test.name".into(),
-            category: Category::LightFighter,
-            era: Era::G4,
-            crew: 1,
-            engine_count: 1,
-            hardpoints: 2,
-            sas_required: false,
-            empty_kg,
-            internal_fuel_kg: 1000.0,
-            max_takeoff_kg: 6000.0,
-            wing_area_m2: 20.0,
-            span_m: 9.0,
-            mac_m: 2.5,
-            inertia_xx_kgm2: 10_000.0,
-            inertia_yy_kgm2: 50_000.0,
-            inertia_zz_kgm2: 55_000.0,
-            inertia_xz_kgm2: 0.0,
-            n_max: 9.0,
-            n_min: -3.0,
-            mmo: 2.0,
-            vmo_ms: 350.0,
-            service_ceiling_m: 15_000.0,
-            thrust_mil_n: 50_000.0,
-            thrust_ab_n: 80_000.0,
-            cd0: 0.02,
-            induced_k: 0.13,
-            cl_alpha_per_rad: 3.5,
-            cl_max: 1.5,
-            static_margin_mac: 0.05,
+    /// The real core pack, baked from `content/core` (the baker is a dev-dependency), with the
+    /// Kestrel's empty mass replaced so tests can tell two packs apart.
+    pub(crate) fn pack(empty_kg: u32) -> Vec<u8> {
+        use content_bake::bake::{Sources, bake_sources};
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content/core");
+        let read = |rel: &str| {
+            let text =
+                std::fs::read_to_string(dir.join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
+            (rel.to_owned(), text)
         };
-        let fake_hash = |body: &[u8]| {
-            let mut h = StateHasher::new();
-            h.write_bytes(body);
-            let mut out = [0_u8; 32];
-            for (i, chunk) in out.chunks_mut(8).enumerate() {
-                chunk.copy_from_slice(&(h.finish() ^ i as u64).to_le_bytes());
-            }
-            out
-        };
-        content::cpack::write(&[("test:ac/one".into(), def)], fake_hash).unwrap()
+        let mut kestrel = read("aircraft/kestrel.json");
+        kestrel.1 = kestrel
+            .1
+            .replace("\"empty_kg\": 8400", &format!("\"empty_kg\": {empty_kg}"));
+        bake_sources(&Sources {
+            pack: read("pack.json"),
+            locale: read("locales/en.json"),
+            aircraft: vec![kestrel],
+            engines: vec![read("engines/f129.json")],
+            aero: vec![read("aero/kestrel.json")],
+        })
+        .expect("the core pack bakes")
+        .cpack
     }
 
     #[test]
@@ -674,8 +653,8 @@ mod tests {
         let mut c = SimCore::new(5);
         let before = c.subsystem_hashes();
         assert!(c.services().registry.is_empty());
-        c.load_content(&pack(3000.0)).unwrap();
-        assert_eq!(c.services().registry.len(), 1);
+        c.load_content(&pack(8400)).unwrap();
+        assert_eq!(c.services().registry.len(), 3);
         let after = c.subsystem_hashes();
         assert_ne!(before.content, after.content);
         assert_ne!(before.combined, after.combined);
@@ -698,20 +677,20 @@ mod tests {
         );
         // Different content, different identity; the same content, the same.
         let mut d = SimCore::new(5);
-        d.load_content(&pack(3001.0)).unwrap();
+        d.load_content(&pack(8401)).unwrap();
         assert_ne!(d.subsystem_hashes().content, after.content);
         let mut e = SimCore::new(5);
-        e.load_content(&pack(3000.0)).unwrap();
+        e.load_content(&pack(8400)).unwrap();
         assert_eq!(e.subsystem_hashes(), after);
     }
 
     #[test]
     fn content_is_refused_once_started_and_when_invalid() {
         let mut c = SimCore::new(5);
-        c.load_content(&pack(3000.0)).unwrap();
+        c.load_content(&pack(8400)).unwrap();
         let loaded = c.subsystem_hashes();
 
-        let mut damaged = pack(3100.0);
+        let mut damaged = pack(8500);
         let last = damaged.len() - 1;
         damaged[last] ^= 1;
         assert!(matches!(
@@ -729,11 +708,8 @@ mod tests {
         );
 
         c.start();
-        assert_eq!(
-            c.load_content(&pack(3100.0)),
-            Err(LoadContentError::NotIdle)
-        );
-        assert_eq!(c.services().registry.len(), 1);
+        assert_eq!(c.load_content(&pack(8500)), Err(LoadContentError::NotIdle));
+        assert_eq!(c.services().registry.len(), 3);
     }
 
     #[test]

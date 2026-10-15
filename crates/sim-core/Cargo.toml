@@ -14,3 +14,7 @@ workspace = true
 [dependencies]
 content.workspace = true
 simmath.workspace = true
+
+[dev-dependencies]
+# Tests bake the real core pack (dev-dependencies are exempt from the layer rules).
+content-bake = { path = "../../tools/content-bake" }

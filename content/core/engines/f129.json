@@ -1,0 +1,33 @@
+{
+  "schema": "engine/1",
+  "id": "core:eng/f129",
+  "name_key": "eng.f129.name",
+  "kind": "turbofan",
+  "thrust": {
+    "sl_dry_n": 79000,
+    "sl_ab_n": 128000,
+    "density_exp": 0.75,
+    "mach_factor_dry": { "axis": "mach", "points": [[0, 1], [0.5, 0.98], [0.9, 1.02], [1.2, 1.12], [1.6, 1.2], [2, 1.08], [2.4, 0.85]] },
+    "mach_factor_ab": { "axis": "mach", "points": [[0, 1], [0.5, 0.98], [0.9, 1.02], [1.2, 1.12], [1.6, 1.2], [2, 1.08], [2.4, 0.85]] },
+    "idle_fraction": 0.06
+  },
+  "tsfc": {
+    "dry_kg_per_ns": 1.983e-5,
+    "ab_kg_per_ns": 5.382e-5
+  },
+  "dynamics": {
+    "spool_up_s": 1.8,
+    "spool_down_s": 1.2,
+    "ab_lightoff_s": 0.6,
+    "ab_cutoff_s": 0.8,
+    "ab_stages": 4
+  },
+  "inlet": {
+    "alpha_start_deg": 15,
+    "alpha_span_deg": 25
+  },
+  "limits": {
+    "compressor_stall_alpha_deg": 45,
+    "windmill_relight_mps": 120
+  }
+}
