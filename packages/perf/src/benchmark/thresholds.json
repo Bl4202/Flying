@@ -1,12 +1,12 @@
 {
   "version": 1,
   "provisional": true,
-  "basis": "Hand-set from one Mac M4 (WASM kernel about 355 000 ticks per second on one thread; the heavy GPU scene in 0.8 ms) and one software renderer (67 ms). To be tuned against the reference-machine reports (OQ-01, AC-60.6).",
+  "basis": "Hand-set from one Mac M4 (the heavy GPU scene in 0.8 ms) and one software renderer (67 ms). CPU re-based at v0.1a: the kernel now flies the 6-DOF Kestrel hands-off, crashes and respawns included, which runs at 0.41 of the v0.0b spectator kernel on the same machine (WASM single under Node on the M4: 137 000 against 333 000 ticks per second), so the three CPU thresholds were scaled by 0.41 and every machine keeps its tier. To be tuned against the reference-machine reports (OQ-01, AC-60.6).",
   "cpu": {
     "unit": "kernel ticks per second on one thread, higher is better",
-    "minimum": 100000,
-    "recommended": 180000,
-    "high": 260000
+    "minimum": 41000,
+    "recommended": 74000,
+    "high": 107000
   },
   "cores": {
     "unit": "logical processors, higher is better",

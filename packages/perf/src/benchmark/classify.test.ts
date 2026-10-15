@@ -15,10 +15,18 @@ const cpu = (ticks: number): CpuResult => ({
   speedup: 6,
 });
 
+/** CPU rates placed against the shipped thresholds, so re-basing them does not break the tests. */
+const CPU = {
+  high: THRESHOLDS.cpu.high * 1.3,
+  recommended: (THRESHOLDS.cpu.recommended + THRESHOLDS.cpu.high) / 2,
+  minimum: (THRESHOLDS.cpu.minimum + THRESHOLDS.cpu.recommended) / 2,
+  belowMinimum: THRESHOLDS.cpu.minimum / 2,
+};
+
 /** A machine comfortably in the top tier, which each test then weakens in one place. */
 function strong(over: Partial<ClassifyInput> = {}): ClassifyInput {
   return {
-    cpu: cpu(350_000),
+    cpu: cpu(CPU.high),
     gpuHeavyMs: 0.8,
     gpuBackend: 'webgpu',
     cores: 10,
@@ -73,7 +81,7 @@ describe('classify', () => {
   });
 
   it('is as good as its weakest part, and says which part that is', () => {
-    expect(classify(strong({ cpu: cpu(150_000) }))).toMatchObject({
+    expect(classify(strong({ cpu: cpu(CPU.minimum) }))).toMatchObject({
       profile: 'minimum',
       limitedBy: 'cpu',
     });
@@ -92,7 +100,7 @@ describe('classify', () => {
   });
 
   it('names the first of equally weak parts', () => {
-    const c = classify(strong({ cpu: cpu(150_000), cores: 4 }));
+    const c = classify(strong({ cpu: cpu(CPU.minimum), cores: 4 }));
     expect(c.parts.cpu).toBe('minimum');
     expect(c.parts.cores).toBe('minimum');
     expect(c.limitedBy).toBe('cpu');
@@ -143,15 +151,15 @@ describe('classify', () => {
     expect(preset(8)).toBe('medium');
     expect(preset(9)).toBe('low');
     // A fast GPU on a weak CPU: the profile caps the preset.
-    expect(preset(0.5, { cpu: cpu(150_000) })).toBe('medium');
-    expect(preset(0.5, { cpu: cpu(50_000) })).toBe('low');
-    expect(preset(0.5, { cpu: cpu(200_000) })).toBe('high');
+    expect(preset(0.5, { cpu: cpu(CPU.minimum) })).toBe('medium');
+    expect(preset(0.5, { cpu: cpu(CPU.belowMinimum) })).toBe('low');
+    expect(preset(0.5, { cpu: cpu(CPU.recommended) })).toBe('high');
   });
 
   it('carries the figures the explanation needs', () => {
     const c = classify(strong());
     expect(c.facts).toEqual({
-      cpuTicksPerSecond: 350_000,
+      cpuTicksPerSecond: CPU.high,
       speedup: 6,
       workers: 8,
       gpuHeavyMs: 0.8,
