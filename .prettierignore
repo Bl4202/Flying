@@ -3,6 +3,8 @@ target/
 wasm-out/
 content-out/
 content/schemas/
+# Written by content/core/aero/kestrel_gen.rs and compared byte for byte by its test.
+content/core/aero/kestrel.json
 node_modules/
 pnpm-lock.yaml
 Cargo.lock
