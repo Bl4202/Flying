@@ -39,7 +39,7 @@ overlay. It runs on a page of its own so nothing else competes.
 
 | Part | How |
 |---|---|
-| CPU, one thread | the simulation core stepped flat out in one worker |
+| CPU, one thread | the simulation core, with the core pack loaded so the Kestrel flies hands-off, stepped flat out in one worker |
 | CPU, scaling | the same in up to 8 workers released together (a shared flag where the page is isolated) |
 | GPU | a fixed scene at 1920 x 1080 drawn with 1, 16 and 64 copies of the terrain patch; frames are submitted back to back and the GPU is waited on once |
 | Memory | `navigator.deviceMemory`, the JS heap, `measureUserAgentSpecificMemory` where allowed |
@@ -51,6 +51,12 @@ held down by the profile. Thresholds are in `packages/perf/src/benchmark/thresho
 **provisional**: hand-set from one Mac M4 and one software renderer, to be tuned against the
 reference-machine reports. Results are stored in IndexedDB and the overlay shows the last one.
 
+*Re-based at v0.1a.* Since v0.1a the CPU kernel flies the real aircraft (crashes and respawns
+included), which ticks at 0.41 of the v0.0b spectator kernel's rate on the same machine (WASM
+single under Node on the M4: about 137 000 against 333 000 ticks per second). The three CPU
+thresholds were scaled by that ratio (100 000 / 180 000 / 260 000 became 41 000 / 74 000 / 107 000
+ticks per second), so every machine keeps the tier it had. They stay provisional.
+
 ## Native tick benchmark (PS-9 skeleton)
 
 ```text
@@ -60,7 +66,21 @@ cargo xtask bench [--strict] [--update] [--ticks N]
 Times the native core (`fg bench`, erratic pilot, core pack) and compares the median ns per tick
 with `tests/perf/baseline.json`. Informational unless `--strict`, never compared across machine
 classes, and the 5 % budget is tight for a noisy laptop. Re-record with `--update` after an intended
-change and say why in the commit.
+change and say why in the commit. The baseline was re-recorded at v0.1a, when the tick began to fly
+the 6-DOF aircraft (about 2 000 ns per tick before, about 4 200 after, on the M4).
+
+### Per-aircraft cost (T0)
+
+```text
+fg bench --aircraft N --content content-out/core.cpack [--ticks N] [--json]
+```
+
+Times N copies of the spawned aircraft through the flight model alone, in the live world
+(procedural geo, still air), and reports ns per aircraft-tick: the cost of one T0 aircraft (GDD
+60.2). The aircraft fly gentle inputs on every axis and restart from the trimmed spawn every 20 s,
+so they stay in normal flight. Recorded at v0.1a on the M4: about 1 800 ns per aircraft-tick
+natively at N = 1 and N = 64, and about 4 300 ns in WASM (single build under Node, from timing
+`flight60` with and without the aircraft), against an informational budget of 20 µs.
 
 ## Reading a report
 
