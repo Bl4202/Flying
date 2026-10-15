@@ -29,9 +29,7 @@
     "ref_point_m": [0, 0, 0],
     "bbox_m": [14.6, 9.8, 4.5]
   },
-  "engines": [
-    { "ref": "core:eng/f129", "count": 1, "position_m": [-5.2, 0, 0] }
-  ],
+  "engines": [{ "ref": "core:eng/f129", "count": 1, "position_m": [-5.2, 0, 0] }],
   "aero": {
     "tables_ref": "core:aero/kestrel",
     "max_mach": 2,
@@ -58,18 +56,119 @@
   },
   "envelope": {
     "points": [
-      { "id": "vmax_sl", "mass_kg": 9500, "alt_m": 0, "config": "clean_ab", "metric": "max_mach", "value": 1.22, "tol_pct": 3 },
-      { "id": "vmax_11k", "mass_kg": 9500, "alt_m": 11000, "config": "clean_ab", "metric": "max_mach", "value": 1.83, "tol_pct": 3 },
-      { "id": "vmax_dry_sl", "mass_kg": 9500, "alt_m": 0, "config": "clean_mil", "metric": "max_mach", "value": 1, "tol_pct": 3 },
-      { "id": "roc_sl", "mass_kg": 9500, "alt_m": 0, "config": "clean_ab", "metric": "roc_mps", "value": 283.1, "tol_pct": 3 },
-      { "id": "stall_clean", "mass_kg": 9500, "alt_m": 0, "config": "clean", "metric": "stall_mps", "value": 58.3, "tol_pct": 3 },
-      { "id": "nsust_sl_m07", "mass_kg": 10500, "alt_m": 0, "mach": 0.7, "config": "ref_ab", "metric": "n_sust", "value": 8.45, "tol_pct": 5 },
-      { "id": "turn_sl_m05", "mass_kg": 10500, "alt_m": 0, "mach": 0.5, "config": "ref_ab", "metric": "turn_dps", "value": 20.5, "tol_pct": 5 },
-      { "id": "nsust_6k_m09", "mass_kg": 10500, "alt_m": 6000, "mach": 0.9, "config": "ref_ab", "metric": "n_sust", "value": 5.58, "tol_pct": 5 },
-      { "id": "ff_mil_sl", "mass_kg": 9500, "alt_m": 0, "config": "clean_mil", "metric": "ff_kgps", "value": 1.566, "tol_pct": 3 },
-      { "id": "ff_ab_sl", "mass_kg": 9500, "alt_m": 0, "config": "clean_ab", "metric": "ff_kgps", "value": 6.889, "tol_pct": 3 },
-      { "id": "to_roll", "mass_kg": 10500, "alt_m": 0, "config": "to_flaps_ab", "metric": "roll_m", "value": 195, "tol_pct": 5, "requires": "gear" },
-      { "id": "ldg_roll", "mass_kg": 8500, "alt_m": 0, "config": "ldg_brakes", "metric": "roll_m", "value": 322, "tol_pct": 5, "requires": "gear" }
+      {
+        "id": "vmax_sl",
+        "mass_kg": 9500,
+        "alt_m": 0,
+        "config": "clean_ab",
+        "metric": "max_mach",
+        "value": 1.22,
+        "tol_pct": 3
+      },
+      {
+        "id": "vmax_11k",
+        "mass_kg": 9500,
+        "alt_m": 11000,
+        "config": "clean_ab",
+        "metric": "max_mach",
+        "value": 1.83,
+        "tol_pct": 3
+      },
+      {
+        "id": "vmax_dry_sl",
+        "mass_kg": 9500,
+        "alt_m": 0,
+        "config": "clean_mil",
+        "metric": "max_mach",
+        "value": 1,
+        "tol_pct": 3
+      },
+      {
+        "id": "roc_sl",
+        "mass_kg": 9500,
+        "alt_m": 0,
+        "config": "clean_ab",
+        "metric": "roc_mps",
+        "value": 283.1,
+        "tol_pct": 3
+      },
+      {
+        "id": "stall_clean",
+        "mass_kg": 9500,
+        "alt_m": 0,
+        "config": "clean",
+        "metric": "stall_mps",
+        "value": 58.3,
+        "tol_pct": 3
+      },
+      {
+        "id": "nsust_sl_m07",
+        "mass_kg": 10500,
+        "alt_m": 0,
+        "mach": 0.7,
+        "config": "ref_ab",
+        "metric": "n_sust",
+        "value": 8.45,
+        "tol_pct": 5
+      },
+      {
+        "id": "turn_sl_m05",
+        "mass_kg": 10500,
+        "alt_m": 0,
+        "mach": 0.5,
+        "config": "ref_ab",
+        "metric": "turn_dps",
+        "value": 20.5,
+        "tol_pct": 5
+      },
+      {
+        "id": "nsust_6k_m09",
+        "mass_kg": 10500,
+        "alt_m": 6000,
+        "mach": 0.9,
+        "config": "ref_ab",
+        "metric": "n_sust",
+        "value": 5.58,
+        "tol_pct": 5
+      },
+      {
+        "id": "ff_mil_sl",
+        "mass_kg": 9500,
+        "alt_m": 0,
+        "config": "clean_mil",
+        "metric": "ff_kgps",
+        "value": 1.566,
+        "tol_pct": 3
+      },
+      {
+        "id": "ff_ab_sl",
+        "mass_kg": 9500,
+        "alt_m": 0,
+        "config": "clean_ab",
+        "metric": "ff_kgps",
+        "value": 6.889,
+        "tol_pct": 3
+      },
+      {
+        "id": "to_roll",
+        "mass_kg": 10500,
+        "alt_m": 0,
+        "config": "to_flaps_ab",
+        "metric": "roll_m",
+        "value": 195,
+        "tol_pct": 5,
+        "requires": "gear"
+      },
+      {
+        "id": "ldg_roll",
+        "mass_kg": 8500,
+        "alt_m": 0,
+        "config": "ldg_brakes",
+        "metric": "roll_m",
+        "value": 322,
+        "tol_pct": 5,
+        "requires": "gear"
+      }
     ]
   }
 }
