@@ -1,0 +1,83 @@
+{
+  "schema": "benchmark_report/1",
+  "mode": "full",
+  "startedAt": "2026-10-18T05:31:21.879Z",
+  "durationS": 20.598669999986885,
+  "build": {
+    "id": "15d9e1a92286e6bb05c96d2454a7a49749ede8d1",
+    "abi": 2,
+    "contentHash": ""
+  },
+  "machine": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "platform": "MacIntel",
+    "hardwareConcurrency": 10,
+    "deviceMemoryGb": 8,
+    "screen": "1600x900@1",
+    "adapter": "apple metal-3",
+    "renderer": "webgl2 ANGLE (Apple, ANGLE Metal Renderer: Apple M4, Unspecified Version)"
+  },
+  "cpu": {
+    "singleTicksPerSecond": 138680.06474110676,
+    "workers": 8,
+    "multiTicksPerSecond": 598374.698048913,
+    "speedup": 4.3147852516941185
+  },
+  "gpu": {
+    "backend": "webgl2",
+    "description": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4, Unspecified Version)",
+    "width": 1920,
+    "height": 1080,
+    "levels": [
+      {
+        "patches": 1,
+        "frames": 240,
+        "msPerFrame": 0.12264583334326744
+      },
+      {
+        "patches": 16,
+        "frames": 240,
+        "msPerFrame": 0.2207291666418314
+      },
+      {
+        "patches": 64,
+        "frames": 240,
+        "msPerFrame": 0.763583333293597
+      }
+    ]
+  },
+  "memory": {
+    "deviceMemoryGb": 8,
+    "jsHeapLimitMb": 4096,
+    "jsHeapUsedMb": 4.671749114990234,
+    "measuredMb": 3.265024185180664
+  },
+  "storage": {
+    "available": true,
+    "writeMBps": 560.6866760988557,
+    "readMBps": 2047.147895350886,
+    "note": ""
+  },
+  "classification": {
+    "profile": "high",
+    "preset": "ultra",
+    "parts": {
+      "cpu": "high",
+      "gpu": "high",
+      "cores": "high",
+      "memory": "high"
+    },
+    "limitedBy": "none",
+    "facts": {
+      "cpuTicksPerSecond": 138680.06474110676,
+      "speedup": 4.3147852516941185,
+      "workers": 8,
+      "gpuHeavyMs": 0.763583333293597,
+      "gpuBackend": "webgl2",
+      "cores": 10,
+      "memoryGb": 8
+    },
+    "complete": true
+  },
+  "notes": []
+}
