@@ -5,8 +5,8 @@ Staging URL: https://bl4202.github.io/Flying/ (GitHub Pages, project site for `B
 ## How a deploy happens
 
 1. A push to `main` runs `.github/workflows/ci.yml`.
-2. `lint`, `test`, `build`, `determinism`, `determinism-arm64`, `repro`, `e2e` and `perf-smoke` must
-   all pass. (`e2e-compat`, the Firefox and WebKit boot check, runs too but does not block.)
+2. `lint`, `test`, `build`, `determinism`, `determinism-arm64`, `conformance`, `repro`, `e2e` and
+   `perf-smoke` must all pass. (`e2e-compat`, the Firefox and WebKit boot check, runs too but does not block.)
 3. `deploy-staging` downloads the `built` artifact (`dist/` from the `build` job), uploads it as the
    Pages artifact and deploys it. Nothing is rebuilt at deploy time: what was tested is what ships.
 4. `staging-smoke` loads the live URL in Chromium and checks that the deployed build id equals the
@@ -20,7 +20,8 @@ Pull requests run everything except the two deploy jobs.
 ## One-time setup
 
 Repository Settings, Pages, Source: **GitHub Actions**. (CLI: `gh api -X POST repos/Bl4202/Flying/pages -f build_type=workflow`.)
-Branch protection on `main` should require the eight check jobs above.
+Branch protection on `main` should require the nine check jobs above. (`conformance` was added on
+2026-10-18, after the first v0.1a merge: `gh api -X POST repos/Bl4202/Flying/branches/main/protection/required_status_checks/contexts --input - <<< '["conformance"]'`.)
 
 A nightly workflow (`perf-nightly.yml`) builds `main` and runs PS-0 for two minutes; the report is
 kept as an artifact. It never fails the build (ADR-28).
