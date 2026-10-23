@@ -18,9 +18,10 @@ use flight::env::FlightEnv;
 use serde_json::{Value, json};
 
 use procedures::{
-    TICK_DT_S, Trace, config_power, fuel_flow, level_accel, setup_for, stall, turn, world,
+    TICK_DT_S, Trace, config_power, fuel_flow, ground_roll, level_accel, setup_for, stall, turn,
+    world,
 };
-use report::{CrossCheck, PointResult, Report, Status};
+use report::{CrossCheck, NamedCheck, PointResult, Report, Status};
 
 /// Simulated-time cap of an acceleration run, s.
 pub const ACCEL_CAP_S: f64 = 300.0;
@@ -91,6 +92,14 @@ pub fn run(
     })
 }
 
+/// Whether the model has what a point `requires` (ADR-32): the gear needs at least one braked
+/// main leg.
+fn requirement_met(model: &AircraftModel, req: content::Requirement) -> bool {
+    match req {
+        content::Requirement::Gear => model.gear.legs().iter().any(|l| l.main && l.braked),
+    }
+}
+
 /// Key of an acceleration run that several points can share: mass, height, configuration and
 /// start Mach, by bit pattern.
 type AccelKey = (u32, u32, u8, u64);
@@ -112,11 +121,14 @@ impl Runner<'_> {
             status: Status::Pass,
             method: String::new(),
             cross_check: None,
+            extra_checks: Vec::new(),
             sim_seconds: 0.0,
             settle_stats: Value::Null,
             notes: Vec::new(),
         };
-        if let Some(req) = p.requires {
+        if let Some(req) = p.requires
+            && !requirement_met(self.model, req)
+        {
             r.status = Status::Deferred;
             r.method = "deferred".into();
             r.notes.push(format!("requires {}", req.name()));
@@ -138,11 +150,7 @@ impl Runner<'_> {
             Metric::StallMps => self.stall(p, &mut r),
             Metric::NSust | Metric::TurnDps => self.turn(p, &mut r),
             Metric::FfKgps => self.fuel_flow(p, &mut r),
-            Metric::RollM => {
-                r.status = Status::Fail;
-                r.notes
-                    .push("no procedure: ground rolls need the gear model (v0.1b)".into());
-            }
+            Metric::RollM => self.ground_roll(p, &mut r),
         }
         r.grade();
         r
@@ -320,6 +328,66 @@ impl Runner<'_> {
         r.settle_stats["static_n"] = json!(static_n);
     }
 
+    fn ground_roll(&mut self, p: &EnvelopePoint, r: &mut PointResult) {
+        let Some(kind) = ground_roll::Kind::of(p.config) else {
+            r.status = Status::Fail;
+            r.notes
+                .push("no ground-roll procedure for this configuration".into());
+            return;
+        };
+        let model = self.model;
+        let env = ground_roll::world(0.0);
+        kind.method().clone_into(&mut r.method);
+        let Some(run) = ground_roll::fly(model, p, kind, &env) else {
+            r.status = Status::NoConvergence;
+            r.notes
+                .push("the aircraft has no static pose on its gear".into());
+            return;
+        };
+        self.traces.push(run.trace.clone());
+        r.sim_seconds = run.sim_seconds;
+        r.settle_stats = run.stats();
+        if run.faults > 0 {
+            r.status = Status::NoConvergence;
+            return;
+        }
+        if let Some(why) = &run.invalid {
+            r.status = Status::NoConvergence;
+            r.notes.push(format!("invalid run: {why}"));
+            return;
+        }
+        if run.timed_out {
+            r.status = Status::Timeout;
+            return;
+        }
+        r.measured = run.distance_m;
+        match ground_roll::point_mass_m(model, p, kind, &env, &run) {
+            Some(pm) => r.cross_check = Some(CrossCheck::new(r.measured, pm, kind.band_pct())),
+            None => r
+                .notes
+                .push("the point-mass integral did not reach the end speed".into()),
+        }
+        r.extra_checks.push(NamedCheck {
+            name: "energy".into(),
+            check: CrossCheck::new(
+                run.ke_gain_j.abs(),
+                run.work_j.abs(),
+                ground_roll::ENERGY_BAND_PCT,
+            ),
+        });
+        if kind == ground_roll::Kind::Landing {
+            // Informational: the same landing on a wet runway (C.7 gives 420 m).
+            let wet = ground_roll::world(1.0);
+            if let Some(w) = ground_roll::fly(model, p, kind, &wet)
+                && w.invalid.is_none()
+                && !w.timed_out
+            {
+                r.notes
+                    .push(format!("wet runway: {:.1} m (C.7: 420 m)", w.distance_m));
+            }
+        }
+    }
+
     fn fuel_flow(&mut self, p: &EnvelopePoint, r: &mut PointResult) {
         let (engine, _) = config_power(self.model, p.config);
         let sub_dt = TICK_DT_S / f64::from(SUBSTEPS);
@@ -328,5 +396,50 @@ impl Runner<'_> {
         r.measured = fuel_flow::run(self.model, engine, sub_dt);
         let steady = fuel_flow::steady(self.model, engine);
         r.cross_check = Some(CrossCheck::new(r.measured, steady, fuel_flow::BAND_PCT));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn kestrel() -> (AircraftModel, EnvelopePoint) {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content/core");
+        let baked = content_bake::bake::bake_dir(&dir).expect("the core pack bakes");
+        let r = Registry::from_cpack(&baked.cpack).unwrap();
+        let h = r.aircraft_handles().next().unwrap();
+        let model = AircraftModel::from_registry(&r, h, TICK_DT_S).unwrap();
+        let p = r
+            .aircraft(h)
+            .unwrap()
+            .envelope
+            .iter()
+            .find(|p| p.id == "ldg_roll")
+            .unwrap()
+            .clone();
+        (model, p)
+    }
+
+    #[test]
+    fn the_gear_requirement_needs_a_braked_main_leg() {
+        let (mut model, p) = kestrel();
+        assert!(requirement_met(&model, content::Requirement::Gear));
+        let mut runner = Runner {
+            model: &model,
+            accel: Vec::new(),
+            traces: Vec::new(),
+        };
+        assert_eq!(runner.point(&p).status, Status::Pass);
+        // No gear at all: the point is deferred, as in v0.1a, and says why.
+        model.gear = flight::gear::GearModel::none();
+        assert!(!requirement_met(&model, content::Requirement::Gear));
+        let mut runner = Runner {
+            model: &model,
+            accel: Vec::new(),
+            traces: Vec::new(),
+        };
+        let r = runner.point(&p);
+        assert_eq!(r.status, Status::Deferred);
+        assert!(r.notes.iter().any(|n| n.contains("requires gear")));
     }
 }

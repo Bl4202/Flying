@@ -67,6 +67,15 @@ impl CrossCheck {
     }
 }
 
+/// A further cross-check, named: the ground rolls have two (ADR-32).
+#[derive(Clone, Debug, PartialEq)]
+pub struct NamedCheck {
+    /// What it checks.
+    pub name: String,
+    /// The comparison.
+    pub check: CrossCheck,
+}
+
 /// One envelope point's result.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PointResult {
@@ -86,6 +95,8 @@ pub struct PointResult {
     pub method: String,
     /// Static cross-check, if the procedure has one.
     pub cross_check: Option<CrossCheck>,
+    /// Further cross-checks; every one must agree.
+    pub extra_checks: Vec<NamedCheck>,
     /// Simulated time the procedure flew, s.
     pub sim_seconds: f64,
     /// Procedure-specific measurement quality figures.
@@ -123,6 +134,14 @@ impl PointResult {
             self.notes
                 .push("static cross-check outside its band".into());
         }
+        let mut agrees = agrees;
+        for e in &self.extra_checks {
+            if !e.check.ok() {
+                self.notes
+                    .push(format!("cross-check `{}` outside its band", e.name));
+                agrees = false;
+            }
+        }
         self.status = if within && agrees {
             Status::Pass
         } else {
@@ -153,6 +172,13 @@ impl PointResult {
                 "band_pct": num(c.band_pct),
                 "ok": c.ok(),
             })),
+            "extra_checks": self.extra_checks.iter().map(|e| json!({
+                "name": e.name,
+                "value": num(e.check.value),
+                "delta_pct": num(e.check.delta_pct),
+                "band_pct": num(e.check.band_pct),
+                "ok": e.check.ok(),
+            })).collect::<Vec<_>>(),
             "sim_seconds": num(self.sim_seconds),
             "settle_stats": self.settle_stats,
             "notes": self.notes,
@@ -250,7 +276,7 @@ impl Report {
             } else {
                 ("-".into(), "-".into(), "-".into())
             };
-            let cross = p.cross_check.map_or("-".into(), |c| {
+            let mut cross = p.cross_check.map_or("-".into(), |c| {
                 format!(
                     "{:.4} ({:+.2} %{})",
                     c.value,
@@ -258,6 +284,15 @@ impl Report {
                     if c.ok() { "" } else { " OUT" }
                 )
             });
+            for e in &p.extra_checks {
+                let _ = write!(
+                    cross,
+                    "; {} {:+.2} %{}",
+                    e.name,
+                    e.check.delta_pct,
+                    if e.check.ok() { "" } else { " OUT" }
+                );
+            }
             let _ = writeln!(
                 s,
                 "| {} | {} | {} | {} | {} | {} % | {} | {} | {} |",
@@ -302,6 +337,7 @@ mod tests {
             status,
             method: "test".into(),
             cross_check: Some(CrossCheck::new(measured, 1.23, 0.3)),
+            extra_checks: Vec::new(),
             sim_seconds: 1.0,
             settle_stats: json!({}),
             notes: Vec::new(),
@@ -324,6 +360,37 @@ mod tests {
         let mut none = point("d", f64::NAN, Status::Pass);
         none.grade();
         assert_eq!(none.status, Status::NoConvergence);
+    }
+
+    #[test]
+    fn every_extra_check_must_agree_too() {
+        let mut p = point("a", 1.23, Status::Pass);
+        p.extra_checks.push(NamedCheck {
+            name: "energy".into(),
+            check: CrossCheck::new(1.0, 1.0001, 1.0),
+        });
+        p.grade();
+        assert_eq!(p.status, Status::Pass);
+        let mut bad = point("b", 1.23, Status::Pass);
+        bad.extra_checks.push(NamedCheck {
+            name: "energy".into(),
+            check: CrossCheck::new(1.0, 1.05, 1.0),
+        });
+        bad.grade();
+        assert_eq!(bad.status, Status::Fail);
+        assert!(bad.notes.iter().any(|n| n.contains("`energy`")));
+        let doc = Report {
+            aircraft: "core:ac/test".into(),
+            content_hash: "00".repeat(32),
+            build: "test".into(),
+            points: vec![bad],
+        };
+        let text = doc.to_markdown(&[]);
+        assert!(text.contains("energy -4.76 % OUT"), "{text}");
+        assert_eq!(
+            doc.to_json(&[])["points"][0]["extra_checks"][0]["ok"],
+            false
+        );
     }
 
     #[test]

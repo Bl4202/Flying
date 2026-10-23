@@ -153,6 +153,9 @@ pub struct Telemetry {
     pub nz_g: f64,
     /// Every non-gravitational force, body axes, N.
     pub force_body_n: DVec3,
+    /// The part of [`Telemetry::force_body_n`] that is the ground's push on the gear and the
+    /// airframe, body axes, N. Zero in the air.
+    pub ground_force_body_n: DVec3,
     /// Total net thrust, N.
     pub thrust_n: f64,
     /// Total fuel flow, kg/s.
@@ -187,6 +190,7 @@ struct Stage {
     atmo: AtmoSample,
     height_msl_m: f64,
     force_body_n: DVec3,
+    ground_force_body_n: DVec3,
     thrust_n: f64,
     fuel_flow_kgps: f64,
 }
@@ -571,6 +575,7 @@ impl AircraftModel {
             atmo,
             height_msl_m,
             force_body_n,
+            ground_force_body_n: ground.force_body_n,
             thrust_n,
             fuel_flow_kgps,
         }
@@ -609,6 +614,7 @@ impl AircraftModel {
             height_msl_m: st.height_msl_m,
             nz_g: -st.force_body_n.z / (mass.mass_kg * G0),
             force_body_n: st.force_body_n,
+            ground_force_body_n: st.ground_force_body_n,
             thrust_n: st.thrust_n,
             fuel_flow_kgps: st.fuel_flow_kgps,
             fuel_kg: self.mass.fuel_kg(&s.fuel),

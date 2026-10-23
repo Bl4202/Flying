@@ -474,6 +474,14 @@ impl TableAero {
         self.eta.eval(deflection_rad.abs().to_degrees()) * deflection_rad
     }
 
+    /// Lift and drag coefficient increments `(dC_L, dC_D0)` of the trailing-edge flaps at a
+    /// position: the take-off values at half travel, the landing values at full travel, linear
+    /// between.
+    #[must_use]
+    pub fn flap_increments(&self, tef_rad: f64) -> (f64, f64) {
+        self.flap(tef_rad)
+    }
+
     /// Flap lift and drag increments for a trailing-edge flap position.
     fn flap(&self, tef_rad: f64) -> (f64, f64) {
         if self.tef_max_rad.is_nan() || self.tef_max_rad <= 0.0 {

@@ -147,7 +147,7 @@ and the traces. The Markdown table on stdout:
 | Status | `pass`, `fail`, `deferred` (needs a model that does not exist yet), `no_convergence` or `timeout` |
 
 The run fails on any failing point, any cross-check outside its band, or a deferred set other
-than the expected one (`to_roll`, `ldg_roll` until the v0.1b gear model). The JSON
+than the expected one (empty since v0.1b: `to_roll` and `ldg_roll` are flown on the gear model, ADR-32; a model without a braked main leg still defers them). The JSON
 (`--json PATH`) adds the procedure, the simulated seconds and `settle_stats` for each point: how
 well altitude and load factor were held, the number of valid samples, and whether the starting
 trim converged. The 10 Hz traces (`--traces DIR`, one CSV per procedure) hold time, height,
