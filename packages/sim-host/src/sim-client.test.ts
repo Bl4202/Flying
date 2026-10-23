@@ -48,6 +48,7 @@ function options(extra: Partial<SimClientOptions> = {}, wake: SharedArrayBuffer 
       contentUrl: '/core.cpack',
       seed: '1f1e5eed00000001',
       script: 1,
+      session: { spawn: 1, assist: 2, gEffects: 2 },
       snapshot: snapshot.sink,
       input: input.sink,
       terrainPort: null,

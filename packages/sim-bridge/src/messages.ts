@@ -10,6 +10,7 @@
  */
 import type { Variant } from '@flying/platform-web/wasm-loader';
 import type { InputEndpoint } from './input-channel.ts';
+import type { SessionConfig } from './sim-handle.ts';
 import type { SnapshotEndpoint } from './snapshot-channel.ts';
 
 export interface SimInit {
@@ -22,6 +23,8 @@ export interface SimInit {
   seed: string;
   /** `INPUT_SCRIPT` value. */
   script: number;
+  /** The sortie: spawn, assist level and g-effects (set on the idle core). */
+  session: SessionConfig;
   snapshot: SnapshotEndpoint;
   input: InputEndpoint;
   /** Where to send the terrain patch once, or `null` if nobody wants it. */
@@ -148,6 +151,7 @@ const COMMAND_SHAPES: Record<SimCommand['type'], Shape> = {
     contentUrl: 'string',
     seed: 'string',
     script: 'number',
+    session: 'object',
     snapshot: 'object',
     input: 'object',
     terrainPort: 'any',

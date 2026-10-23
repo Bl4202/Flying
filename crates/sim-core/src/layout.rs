@@ -29,13 +29,18 @@ macro_rules! layouts {
 layouts! {
     /// Interface version of the exported C ABI and of these layouts.
     abi {
-        VERSION = 2,
+        VERSION = 3,
         // Frames the host can hand over per `fg_push_inputs` call.
         INPUT_BATCH = 8,
-        SNAPSHOT_LAYOUT_VERSION = 2,
+        SNAPSHOT_LAYOUT_VERSION = 3,
     }
 
-    /// `InputFrame`, 96 bytes (GDD 58.2).
+    /// `InputFrame`, 96 bytes (GDD 58.2). `T_MS` is the host time of the source event (the key
+    /// press, the pointer move, the gamepad sample) on the shared clock; `T_SENT_MS` is when the
+    /// frame was written. Both are observations and never feed state or hashes (ADR-33).
+    /// `ASSIST_REQ` is an absolute assist level (`assist_level`; 0 keeps the current one),
+    /// `SPAWN_ACK` echoes the snapshot's spawn counter once the host has synchronised its
+    /// throttle lever, and `SPAWN_REQ` (`spawn_request`) is read on the RESET press.
     input_frame {
         SIZE = 96,
         SEQ = 0,
@@ -46,6 +51,10 @@ layouts! {
         BUTTONS = 64,
         HATS = 72,
         HAT_COUNT = 2,
+        ASSIST_REQ = 74,
+        SPAWN_ACK = 75,
+        SPAWN_REQ = 76,
+        T_SENT_MS = 80,
     }
 
     /// Indices into `InputFrame.axes`.
@@ -64,27 +73,155 @@ layouts! {
         CURSOR_Y = 11,
     }
 
-    /// Bit indices into `InputFrame.buttons`. `RESET` acts on the press; the trim buttons act
-    /// while held.
+    /// Bit indices into `InputFrame.buttons`. `RESET`, `GEAR`, the flap buttons, `PARKING_BRAKE`
+    /// and `TRIM_RESET` act on the press; the trim, `AIRBRAKE` and `RECOVER` buttons act while
+    /// held (the host turns a toggle binding into a held state).
     button {
         RESET = 0,
         TRIM_NOSE_UP = 1,
         TRIM_NOSE_DOWN = 2,
+        // Toggles the gear lever.
+        GEAR = 3,
+        FLAPS_DOWN = 4,
+        FLAPS_UP = 5,
+        // Held = open.
+        AIRBRAKE = 6,
+        // Toggles the parking brake.
+        PARKING_BRAKE = 7,
+        // Unusual-attitude recovery (GDD 11.11.3).
+        RECOVER = 8,
+        TRIM_RESET = 9,
+        // Up, take-off, landing, up.
+        FLAPS_CYCLE = 10,
     }
 
     /// Bits of `InputFrame.flags`.
     input_flag {
         // The host neutralised the controls (focus lost, tab hidden).
         NEUTRAL = 1,
+        // A control actually changed since the last frame (latency is measured on these only).
+        CHANGED = 2,
+        // The cursor axes carry a mouse-aim direction (azimuth, elevation).
+        MOUSE_AIM = 4,
+        // Opt-in automatic ground-collision avoidance (GDD 54.9).
+        AUTO_GCAS = 8,
     }
 
-    /// Snapshot v2: header, the ownship block (the player's aircraft, or the spectator),
+    /// `spawn` argument of `fg_configure`.
+    spawn_kind {
+        // Lined up on the runway, engine idling, brakes on (GDD 48.2 "runway hot").
+        RUNWAY = 0,
+        // Airborne, trimmed.
+        AIR = 1,
+    }
+
+    /// `InputFrame.spawn_req`, read on the RESET press.
+    spawn_request {
+        // The session's spawn.
+        SESSION = 0,
+        RUNWAY = 1,
+        AIR = 2,
+    }
+
+    /// Assist level (GDD 11.11.3): `fg_configure`, `InputFrame.assist_req` and the snapshot.
+    assist_level {
+        FULL = 1,
+        STANDARD = 2,
+        REDUCED = 3,
+        MANUAL = 4,
+    }
+
+    /// `g_effects` argument of `fg_configure` (GDD 11.14, 59.2).
+    g_effects {
+        OFF = 0,
+        REDUCED = 1,
+        FULL = 2,
+    }
+
+    /// Return value of `fg_configure`.
+    config_status {
+        OK = 0,
+        // The core has started; the session must be configured first.
+        NOT_IDLE = 1,
+        // An argument is out of range.
+        INVALID = 2,
+        // `fg_init` has not been called.
+        NO_CORE = 3,
+    }
+
+    /// Snapshot `O_FCS_MODE`: what the flight control system is doing.
+    fcs_mode {
+        FLIGHT = 0,
+        GROUND = 1,
+        // Blending between the ground and flight laws, or between two assist levels.
+        BLEND = 2,
+        RECOVER = 3,
+        // Automatic ground-collision avoidance has control.
+        GCAS = 4,
+        // The pilot is incapacitated (G-LOC).
+        GLOC = 5,
+    }
+
+    /// Bits of the snapshot's `O_FLAGS2` (a `u16`).
+    ownship_flag2 {
+        // Weight on wheels.
+        WOW = 1,
+        PARKING_BRAKE = 2,
+        ALPHA_LIMIT = 4,
+        G_LIMIT = 8,
+        OVERSPEED = 16,
+        OVERSTRESS = 32,
+        BLACKOUT = 64,
+        GLOC = 128,
+        REDOUT = 256,
+        // Latched for three seconds after a hard landing.
+        HARD_LANDING = 512,
+        GEAR_OVERSPEED = 1024,
+        FLAP_OVERSPEED = 2048,
+        DEPARTED = 4096,
+        // Low, slow, throttle back and the gear is up.
+        GEAR_WARNING = 8192,
+        MOUSE_AIM = 16384,
+        // The throttle is held at the spawn setting until the host acknowledges.
+        THROTTLE_HELD = 32768,
+    }
+
+    /// Why the aircraft was destroyed (snapshot `O_CRASH_CAUSE`).
+    crash_cause {
+        NONE = 0,
+        // Airframe contact at speed or at a steep angle (GDD 11.13.3).
+        AIRFRAME_IMPACT = 1,
+        // Sink rate above 7 m/s at gear contact.
+        SINK_RATE = 2,
+        // A gear strut bottomed out and collapsed past its stop.
+        GEAR_COLLAPSE_STOP = 3,
+        // The centre of gravity went through the ground.
+        TUNNELLING = 4,
+        NUMERICAL = 5,
+    }
+
+    /// The test airfield, so the renderer can mark the runway where the sim put it. Distances in
+    /// metres, the threshold lies `THRESHOLD_SOUTH_M` south of the battlefield anchor, the
+    /// runway heads north (heading 000) and its centreline is east = 0.
+    airfield {
+        LENGTH_M = 3000,
+        WIDTH_M = 45,
+        THRESHOLD_SOUTH_M = 6000,
+        ELEVATION_M = 40,
+    }
+
+    /// Snapshot v3: header, the ownship block (the player's aircraft, or the spectator),
     /// bodies in structure-of-arrays form. `O_POS_BF` is the aircraft's reference point, not its
     /// centre of gravity, so the camera does not move as fuel burns. `O_SURFACES` is elevator,
-    /// aileron, rudder in radians; `O_FLAGS` holds `ownship_flag` bits.
+    /// aileron, rudder in radians; `O_FLAGS` holds `ownship_flag` bits and `O_FLAGS2` the
+    /// `ownship_flag2` bits. `O_ASSIST` is an `assist_level` (0 for the spectator), `O_FCS_MODE`
+    /// an `fcs_mode`. `O_SPAWN_SEQ` counts spawns (wrapping) for the throttle hand-over.
+    /// `O_GEAR_BITS` is, per leg `i`, bit `2i` weight-on-wheels and bit `2i+1` collapsed, bit 6
+    /// gear lever down, bit 7 all gear down and locked. `O_AIM_*` echo the mouse-aim direction
+    /// the core is using.
     snapshot {
         MAGIC = 0x4E53_4746,
-        VERSION = 2,
+        VERSION = 3,
         HEADER_SIZE = 64,
         H_MAGIC = 0,
         H_VERSION = 4,
@@ -95,7 +232,7 @@ layouts! {
         H_CORE_STATE = 32,
         H_INPUT_T_MS = 40,
         OWNSHIP = 64,
-        OWNSHIP_SIZE = 128,
+        OWNSHIP_SIZE = 224,
         O_POS_BF = 64,
         O_QUAT = 88,
         O_VEL_BF = 104,
@@ -114,12 +251,35 @@ layouts! {
         O_ALTITUDE = 180,
         O_AB_STAGE = 184,
         O_FLAGS = 185,
+        O_ASSIST = 186,
+        O_FCS_MODE = 187,
+        O_FLAGS2 = 188,
+        O_SPAWN_SEQ = 190,
+        O_FLAP_DETENT = 191,
+        O_GEAR_POS = 192,
+        O_TEF = 196,
+        O_AIRBRAKE = 200,
+        O_BRAKE_L = 204,
+        O_BRAKE_R = 208,
+        O_STEER = 212,
+        O_GROUND_SPEED = 216,
+        O_VS = 220,
+        O_AGL = 224,
+        O_G_LAGGED = 228,
+        O_G_STRESS = 232,
+        O_REDOUT = 236,
+        O_N_CMD = 240,
+        O_TOUCHDOWN_VS = 244,
+        O_AIM_AZ = 248,
+        O_AIM_EL = 252,
+        O_CRASH_CAUSE = 256,
+        O_GEAR_BITS = 257,
         BODY_CAPACITY = 256,
-        B_X = 192,
-        B_Y = 2240,
-        B_Z = 4288,
-        B_QUAT = 6336,
-        SIZE = 10432,
+        B_X = 288,
+        B_Y = 2336,
+        B_Z = 4384,
+        B_QUAT = 6432,
+        SIZE = 10528,
     }
 
     /// Bits of the snapshot's `O_FLAGS`.
@@ -145,8 +305,8 @@ layouts! {
         VERSION = 1,
         HEADER_SIZE = 64,
         SLOT_COUNT = 3,
-        SLOT_BYTES = 10432,
-        SIZE = 31360,
+        SLOT_BYTES = 10528,
+        SIZE = 31648,
         H_MAGIC = 0,
         H_VERSION = 4,
         H_SLOT_BYTES = 8,
@@ -172,7 +332,7 @@ layouts! {
 
     /// Profile block written by the core when profiling is on (`f32` milliseconds).
     profile {
-        SIZE = 144,
+        SIZE = 160,
         TICKS = 0,
         TICK_MS_LAST = 8,
         TICK_MS_EWMA = 12,
@@ -180,7 +340,7 @@ layouts! {
         STAGE_MS_LAST = 16,
         STAGE_MS_EWMA = 60,
         COUNTERS = 104,
-        COUNTER_COUNT = 9,
+        COUNTER_COUNT = 13,
     }
 
     /// Tick stages in execution order (GDD 61.4.3).
@@ -211,6 +371,14 @@ layouts! {
         SNAPSHOTS = 7,
         // Spawns where the trim solver failed and a fallback attitude was used.
         TRIM_FAILURES = 8,
+        // First wheel contacts after being airborne.
+        TOUCHDOWNS = 9,
+        // Touchdowns with a sink rate of 3.0 m/s or more (GDD 11.13.3).
+        HARD_LANDINGS = 10,
+        // Times the pilot was incapacitated by sustained g.
+        GLOC_EVENTS = 11,
+        // Changes of the assist level.
+        ASSIST_CHANGES = 12,
     }
 
     /// Terrain patch handed to the renderer once.
@@ -269,6 +437,9 @@ layouts! {
         ERRATIC = 1,
         // The 60 s scripted flight of AC-11.7.
         FLIGHT60 = 2,
+        // The virtual tester: take-off, circuit and landing (ADR-33). Not available before the
+        // tester exists; `fg_set_input_script` refuses it.
+        CIRCUIT = 3,
     }
 }
 
@@ -281,7 +452,11 @@ const _: () = {
     assert!(f::AXES == f::T_MS + 8);
     assert!(f::AXES + f::AXIS_COUNT * 4 == f::BUTTONS);
     assert!(f::BUTTONS + 8 == f::HATS);
-    assert!(f::HATS + f::HAT_COUNT <= f::SIZE);
+    assert!(f::HATS + f::HAT_COUNT == f::ASSIST_REQ);
+    assert!(f::ASSIST_REQ + 1 == f::SPAWN_ACK);
+    assert!(f::SPAWN_ACK + 1 == f::SPAWN_REQ);
+    assert!(f::SPAWN_REQ < f::T_SENT_MS && f::T_SENT_MS.is_multiple_of(8));
+    assert!(f::T_SENT_MS + 8 <= f::SIZE);
 
     // Snapshot: header, ownship, then four structure-of-arrays blocks that end exactly at SIZE.
     assert!(s::H_INPUT_T_MS + 8 <= s::HEADER_SIZE);
@@ -304,7 +479,32 @@ const _: () = {
     assert!(s::O_SURFACES + 12 == s::O_ALTITUDE);
     assert!(s::O_ALTITUDE + 4 == s::O_AB_STAGE);
     assert!(s::O_AB_STAGE + 1 == s::O_FLAGS);
-    assert!(s::O_FLAGS < s::OWNSHIP + s::OWNSHIP_SIZE);
+    // The v3 additions, one after the other: four bytes, then 4-byte floats, then the bytes.
+    assert!(s::O_FLAGS + 1 == s::O_ASSIST);
+    assert!(s::O_ASSIST + 1 == s::O_FCS_MODE);
+    assert!(s::O_FCS_MODE + 1 == s::O_FLAGS2);
+    assert!(s::O_FLAGS2 + 2 == s::O_SPAWN_SEQ);
+    assert!(s::O_SPAWN_SEQ + 1 == s::O_FLAP_DETENT);
+    assert!(s::O_FLAP_DETENT + 1 == s::O_GEAR_POS);
+    assert!(s::O_GEAR_POS + 4 == s::O_TEF);
+    assert!(s::O_TEF + 4 == s::O_AIRBRAKE);
+    assert!(s::O_AIRBRAKE + 4 == s::O_BRAKE_L);
+    assert!(s::O_BRAKE_L + 4 == s::O_BRAKE_R);
+    assert!(s::O_BRAKE_R + 4 == s::O_STEER);
+    assert!(s::O_STEER + 4 == s::O_GROUND_SPEED);
+    assert!(s::O_GROUND_SPEED + 4 == s::O_VS);
+    assert!(s::O_VS + 4 == s::O_AGL);
+    assert!(s::O_AGL + 4 == s::O_G_LAGGED);
+    assert!(s::O_G_LAGGED + 4 == s::O_G_STRESS);
+    assert!(s::O_G_STRESS + 4 == s::O_REDOUT);
+    assert!(s::O_REDOUT + 4 == s::O_N_CMD);
+    assert!(s::O_N_CMD + 4 == s::O_TOUCHDOWN_VS);
+    assert!(s::O_TOUCHDOWN_VS + 4 == s::O_AIM_AZ);
+    assert!(s::O_AIM_AZ + 4 == s::O_AIM_EL);
+    assert!(s::O_AIM_EL + 4 == s::O_CRASH_CAUSE);
+    assert!(s::O_CRASH_CAUSE + 1 == s::O_GEAR_BITS);
+    assert!(s::O_FLAGS2.is_multiple_of(2) && s::O_GEAR_POS.is_multiple_of(4));
+    assert!(s::O_GEAR_BITS < s::OWNSHIP + s::OWNSHIP_SIZE);
     assert!(s::B_X == s::OWNSHIP + s::OWNSHIP_SIZE);
     assert!(s::B_Y == s::B_X + s::BODY_CAPACITY * 8);
     assert!(s::B_Z == s::B_Y + s::BODY_CAPACITY * 8);
@@ -326,7 +526,7 @@ const _: () = {
     assert!(p::STAGE_MS_EWMA + p::STAGE_COUNT * 4 == p::COUNTERS);
     assert!(p::COUNTERS + p::COUNTER_COUNT * 4 <= p::SIZE);
     assert!(stage::PUBLISH + 1 == p::STAGE_COUNT);
-    assert!(counter::TRIM_FAILURES + 1 == p::COUNTER_COUNT);
+    assert!(counter::ASSIST_CHANGES + 1 == p::COUNTER_COUNT);
 
     // Terrain patch: header, then one packed vertex per post.
     assert!(terrain::VERTEX_COUNT == terrain::POSTS * terrain::POSTS);

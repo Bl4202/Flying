@@ -4,11 +4,19 @@
  *
  * Usage: node wasm-hash.ts --variant single|threads --seed HEX --at T1,T2,... [--dir wasm-out]
  *                           [--script none|erratic|flight60] [--content PATH.cpack]
+ *                           [--spawn runway|air] [--assist full|standard|reduced|manual]
+ *                           [--g off|reduced|full]
  */
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { INPUT_SCRIPT } from '@flying/sim-bridge/layout';
-import { HASH_KIND, hex64, instantiateSim } from '@flying/sim-bridge/sim-handle';
+import { ASSIST_LEVEL, G_EFFECTS, INPUT_SCRIPT, SPAWN_KIND } from '@flying/sim-bridge/layout';
+import {
+  DEFAULT_SESSION,
+  HASH_KIND,
+  hex64,
+  instantiateSim,
+  type SessionConfig,
+} from '@flying/sim-bridge/sim-handle';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -48,11 +56,43 @@ if (script === undefined) {
 }
 const contentPath = arg('content');
 
-// Same order as `fg hash`: content first (only an idle core takes it), then the script, then start.
+// The same words as `fg hash`; absent flags give the game's defaults, as there.
+function choose(name: string, table: Record<string, number>, fallback: number): number {
+  const text = arg(name);
+  if (text === undefined) return fallback;
+  const value = table[text];
+  if (value === undefined) {
+    console.error(`--${name} ${Object.keys(table).join('|')}`);
+    process.exit(2);
+  }
+  return value;
+}
+const session: SessionConfig = {
+  spawn: choose('spawn', { runway: SPAWN_KIND.RUNWAY, air: SPAWN_KIND.AIR }, DEFAULT_SESSION.spawn),
+  assist: choose(
+    'assist',
+    {
+      full: ASSIST_LEVEL.FULL,
+      standard: ASSIST_LEVEL.STANDARD,
+      reduced: ASSIST_LEVEL.REDUCED,
+      manual: ASSIST_LEVEL.MANUAL,
+    },
+    DEFAULT_SESSION.assist,
+  ),
+  gEffects: choose(
+    'g',
+    { off: G_EFFECTS.OFF, reduced: G_EFFECTS.REDUCED, full: G_EFFECTS.FULL },
+    DEFAULT_SESSION.gEffects,
+  ),
+};
+
+// Same order as `fg hash`: content first (only an idle core takes it), then the session, then the
+// script, then start.
 sim.init(BigInt(`0x${seedText.replace(/^0x/, '')}`));
 if (contentPath !== undefined) {
   sim.loadContent(readFileSync(contentPath));
 }
+sim.configure(session);
 if (!sim.setInputScript(script) || !sim.start()) {
   console.error('the core would not start');
   process.exit(1);

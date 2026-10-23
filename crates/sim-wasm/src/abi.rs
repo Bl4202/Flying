@@ -1,4 +1,4 @@
-//! Exported C ABI, version 2. See `UNSAFE.md` for the invariants that make the global state sound
+//! Exported C ABI, version 3. See `UNSAFE.md` for the invariants that make the global state sound
 //! and for the rules about the pointers handed out here.
 //!
 //! The host (the Sim Worker) drives the core through plain functions and exchanges bytes through
@@ -23,8 +23,8 @@
 
 use core::cell::UnsafeCell;
 
-use sim_core::layout::{abi, content_status, core_state, hash_kind, input_frame};
-use sim_core::{CoreState, LoadContentError, SimCore};
+use sim_core::layout::{abi, config_status, content_status, core_state, hash_kind, input_frame};
+use sim_core::{ConfigError, CoreState, LoadContentError, SessionConfig, SimCore};
 
 /// Bumped on any incompatible change to the exports below.
 pub const ABI_VERSION: u32 = abi::VERSION as u32;
@@ -219,6 +219,23 @@ pub extern "C" fn fg_resume() -> u32 {
     with_core(|c| u32::from(c.resume())).unwrap_or(0)
 }
 
+/// Sets the session while the core is idle: `spawn` (`spawn_kind`), `assist` (`assist_level`) and
+/// `g_effects` (`g_effects`). Returns a `config_status`; a refused session changes nothing.
+#[unsafe(no_mangle)]
+pub extern "C" fn fg_configure(spawn: u32, assist: u32, g_effects: u32) -> u32 {
+    with_core(|c| {
+        let Ok(session) = SessionConfig::from_codes(spawn, assist, g_effects) else {
+            return config_status::INVALID as u32;
+        };
+        match c.configure(session) {
+            Ok(()) => config_status::OK as u32,
+            Err(ConfigError::NotIdle) => config_status::NOT_IDLE as u32,
+            Err(ConfigError::Invalid) => config_status::INVALID as u32,
+        }
+    })
+    .unwrap_or(config_status::NO_CORE as u32)
+}
+
 /// Selects the scripted pilot (`input_script`). Returns 1 if accepted, else 0.
 #[unsafe(no_mangle)]
 pub extern "C" fn fg_set_input_script(kind: u32) -> u32 {
@@ -371,7 +388,7 @@ mod tests {
     #[test]
     fn the_abi_drives_the_core_end_to_end() {
         // Before init everything is inert.
-        assert_eq!(fg_abi_version(), 2);
+        assert_eq!(fg_abi_version(), 3);
         assert_eq!(fg_core_state(), core_state::NONE as u32);
         assert_eq!(
             (
@@ -383,6 +400,7 @@ mod tests {
             (0, 0, 0, 0)
         );
         assert_eq!(fg_load_content(10), content_status::NO_CORE as u32);
+        assert_eq!(fg_configure(0, 2, 2), config_status::NO_CORE as u32);
         assert_eq!(fg_push_inputs(1), 0);
         assert_eq!(fg_terrain_fill(0.0, 0.0, 100.0), 0);
 
@@ -409,8 +427,14 @@ mod tests {
             lo(fresh.subsystem_hashes().content)
         });
 
+        // The session: refused when out of range, accepted while idle, refused once started.
+        assert_eq!(fg_configure(9, 2, 2), config_status::INVALID as u32);
+        assert_eq!(fg_configure(0, 0, 2), config_status::INVALID as u32);
+        assert_eq!(fg_configure(1, 4, 0), config_status::OK as u32);
+
         // Lifecycle through the ABI.
         assert_eq!(fg_start(), 1);
+        assert_eq!(fg_configure(0, 2, 2), config_status::NOT_IDLE as u32);
         assert_eq!(fg_start(), 0, "already running");
         assert_eq!(fg_core_state(), core_state::RUNNING as u32);
         assert_eq!(fg_load_content(1), content_status::NOT_IDLE as u32);

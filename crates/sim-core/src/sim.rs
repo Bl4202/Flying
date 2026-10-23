@@ -20,6 +20,7 @@ use crate::rng::RngStreams;
 use crate::schedule::{Schedule, TickCtx};
 use crate::seams::replay::{NullReplaySink, ReplaySink};
 use crate::services::Services;
+use crate::session::{ConfigError, SessionConfig};
 use crate::snapshot::SnapshotBuffer;
 use crate::spawn::{SPAWN, spawn_trimmed};
 use crate::systems::{default_schedule, write_snapshot};
@@ -91,6 +92,7 @@ pub struct SimCore {
     world: World,
     schedule: Schedule,
     svc: Services,
+    session: SessionConfig,
     profiler: Option<Profiler>,
     profile_block: [u8; profile::SIZE],
     terrain: Option<Box<[u8]>>,
@@ -138,6 +140,7 @@ impl SimCore {
             world,
             schedule: default_schedule(),
             svc,
+            session: SessionConfig::default(),
             profiler: None,
             profile_block: [0; profile::SIZE],
             terrain: None,
@@ -174,6 +177,27 @@ impl SimCore {
         self.svc.registry = registry;
         self.svc.aircraft = aircraft;
         Ok(())
+    }
+
+    /// Sets the session: where the aircraft starts, the assist level and the g-effects dial
+    /// (ADR-36). Only an idle core accepts one. Until the flight control system and the runway
+    /// spawn arrive (v0.1b work packages 5 and 7) the session is stored and reported but does not
+    /// yet change what the aircraft does.
+    ///
+    /// # Errors
+    /// [`ConfigError::NotIdle`] once the core has started.
+    pub fn configure(&mut self, session: SessionConfig) -> Result<(), ConfigError> {
+        if self.state != CoreState::Idle {
+            return Err(ConfigError::NotIdle);
+        }
+        self.session = session;
+        Ok(())
+    }
+
+    /// The session in force.
+    #[must_use]
+    pub fn session(&self) -> SessionConfig {
+        self.session
     }
 
     /// Replaces the replay sink, which receives the snapshot of every completed tick.
@@ -1035,5 +1059,42 @@ mod tests {
         let mut c = SimCore::new(1);
         assert!(!c.set_input_script(99));
         assert!(c.set_input_script(input_script::NONE as u32));
+        // The circuit tester has a code but no implementation until the virtual tester lands.
+        assert!(!c.set_input_script(input_script::CIRCUIT as u32));
+    }
+
+    #[test]
+    fn the_session_is_set_while_idle_and_not_after() {
+        use crate::session::{Assist, GEffects, Spawn};
+        let mut c = SimCore::new(1);
+        assert_eq!(c.session(), SessionConfig::default());
+        let wanted = SessionConfig {
+            spawn: Spawn::Air,
+            assist: Assist::Reduced,
+            g_effects: GEffects::Off,
+        };
+        assert_eq!(c.configure(wanted), Ok(()));
+        assert_eq!(c.session(), wanted);
+        assert!(c.start());
+        assert_eq!(
+            c.configure(SessionConfig::default()),
+            Err(ConfigError::NotIdle)
+        );
+        assert_eq!(c.session(), wanted, "a refused session changes nothing");
+    }
+
+    #[test]
+    fn the_session_does_not_yet_change_the_hashes() {
+        // WP1 plumbs the session without using it; the first work package that uses it adds it
+        // to the hash. Until then two cores with different sessions run identically.
+        let mut a = SimCore::new(7);
+        let mut b = SimCore::new(7);
+        b.configure(SessionConfig::from_codes(1, 4, 0).unwrap())
+            .unwrap();
+        a.start();
+        b.start();
+        a.step(300);
+        b.step(300);
+        assert_eq!(a.subsystem_hashes(), b.subsystem_hashes());
     }
 }

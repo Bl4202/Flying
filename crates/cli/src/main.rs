@@ -3,6 +3,7 @@
 //! ```text
 //! fg version
 //! fg hash  [--seed HEX] [--script none|erratic|flight60] [--content PATH]
+//!          [--spawn runway|air] [--assist full|standard|reduced|manual] [--g off|reduced|full]
 //!          (--ticks N | --at T1,T2,... | --every N --ticks N)
 //! fg bench [--seed HEX] [--script none|erratic|flight60] [--content PATH] [--ticks N] [--json]
 //! fg bench --aircraft N --content PATH [--ticks N] [--json]
@@ -24,11 +25,12 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use sim_core::layout::input_script;
-use sim_core::{DEFAULT_SEED, SimCore};
+use sim_core::{Assist, DEFAULT_SEED, GEffects, SessionConfig, SimCore, Spawn};
 
 const USAGE: &str = "usage:
   fg version
   fg hash  [--seed HEX] [--script none|erratic|flight60] [--content PATH]
+           [--spawn runway|air] [--assist full|standard|reduced|manual] [--g off|reduced|full]
            (--ticks N | --at T1,T2,... | --every N --ticks N)
   fg bench [--seed HEX] [--script none|erratic|flight60] [--content PATH] [--ticks N] [--json]
   fg bench --aircraft N --content PATH [--ticks N] [--json]
@@ -79,6 +81,8 @@ struct Setup {
     seed: u64,
     script: u32,
     content: Option<Vec<u8>>,
+    /// The session (spawn, assist, g-effects); the game's defaults unless flags say otherwise.
+    session: SessionConfig,
 }
 
 impl Setup {
@@ -89,6 +93,8 @@ impl Setup {
             core.load_content(bytes)
                 .map_err(|e| format!("cannot load content: {e}"))?;
         }
+        core.configure(self.session)
+            .map_err(|e| format!("cannot configure the session: {e}"))?;
         if !core.set_input_script(self.script) {
             return Err(format!("unknown input script {}", self.script));
         }
@@ -112,6 +118,7 @@ fn parse(args: &[String], switches: &[&str]) -> Result<Parsed, String> {
         seed: DEFAULT_SEED,
         script: input_script::NONE as u32,
         content: None,
+        session: SessionConfig::default(),
     };
     let mut rest = Vec::new();
     let mut on = Vec::new();
@@ -127,6 +134,34 @@ fn parse(args: &[String], switches: &[&str]) -> Result<Parsed, String> {
                 let hex = value.trim_start_matches("0x");
                 setup.seed =
                     u64::from_str_radix(hex, 16).map_err(|e| format!("bad --seed: {e}"))?;
+            }
+            "--spawn" => {
+                setup.session.spawn = match value.as_str() {
+                    "runway" => Spawn::Runway,
+                    "air" => Spawn::Air,
+                    other => return Err(format!("unknown --spawn {other:?} (runway or air)")),
+                };
+            }
+            "--assist" => {
+                setup.session.assist = match value.as_str() {
+                    "full" => Assist::Full,
+                    "standard" => Assist::Standard,
+                    "reduced" => Assist::Reduced,
+                    "manual" => Assist::Manual,
+                    other => {
+                        return Err(format!(
+                            "unknown --assist {other:?} (full, standard, reduced or manual)"
+                        ));
+                    }
+                };
+            }
+            "--g" => {
+                setup.session.g_effects = match value.as_str() {
+                    "off" => GEffects::Off,
+                    "reduced" => GEffects::Reduced,
+                    "full" => GEffects::Full,
+                    other => return Err(format!("unknown --g {other:?} (off, reduced or full)")),
+                };
             }
             "--script" => {
                 setup.script = match value.as_str() {

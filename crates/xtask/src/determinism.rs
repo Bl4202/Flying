@@ -80,6 +80,8 @@ struct Suite {
     golden: &'static str,
     /// The debug build is compared at this tick (debug is slow).
     debug_probe: u64,
+    /// The session the suite runs under, as `fg hash` / `wasm-hash.ts` flags (ADR-36).
+    session: [&'static str; 6],
 }
 
 /// Powers of ten, every 100 000, and the final tick.
@@ -187,12 +189,14 @@ pub fn run_command(args: &[String]) -> Result<(), String> {
             at: schedule(opts.ticks),
             golden: "tests/golden/determinism.json",
             debug_probe: 10_000.min(opts.ticks),
+            session: ["--spawn", "air", "--assist", "standard", "--g", "full"],
         },
         Suite {
             script: "flight60",
             at: every(FLIGHT60_TICKS, FLIGHT60_EVERY),
             golden: "tests/golden/flight60.json",
             debug_probe: FLIGHT60_TICKS,
+            session: ["--spawn", "air", "--assist", "manual", "--g", "off"],
         },
     ];
     for suite in &suites {
@@ -219,6 +223,12 @@ fn run_suite(
         suite.script,
         "--content",
         content,
+        suite.session[0],
+        suite.session[1],
+        suite.session[2],
+        suite.session[3],
+        suite.session[4],
+        suite.session[5],
     ];
     let at = list(&suite.at);
     let last = *suite.at.last().expect("a suite has checkpoints");
@@ -292,9 +302,11 @@ fn check_golden(
     bless: bool,
 ) -> Result<(), String> {
     let path = root.join(suite.golden);
+    let session = suite.session.join(" ");
     let current = json!({
         "seed": SEED_HEX,
         "script": suite.script,
+        "session": session,
         "ticks": ticks,
         "checkpoints": native,
     });
@@ -309,9 +321,13 @@ fn check_golden(
         &fs::read(&path).map_err(|e| format!("{}: {e} (run with --bless once)", path.display()))?,
     )
     .map_err(|e| e.to_string())?;
-    if ["seed", "script", "ticks"]
-        .iter()
-        .any(|k| stored[*k] != current[*k])
+    // A golden recorded before the session was written down (v0.1a) has no `session` key; the
+    // first bless that records one makes the comparison strict.
+    let session_differs = !stored["session"].is_null() && stored["session"] != current["session"];
+    if session_differs
+        || ["seed", "script", "ticks"]
+            .iter()
+            .any(|k| stored[*k] != current[*k])
     {
         return Err(format!(
             "{} was recorded for seed {} / script {} / {} ticks, this run is seed {} / script {} / {} ticks",

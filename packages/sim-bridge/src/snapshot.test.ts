@@ -31,11 +31,32 @@ interface Decoded {
     altitude: number;
     ab_stage: number;
     flags: number;
+    assist: number;
+    fcs_mode: number;
+    flags2: number;
+    spawn_seq: number;
+    flap_detent: number;
+    gear_pos: number;
+    tef: number;
+    airbrake: number;
+    brake: number[];
+    steer: number;
+    ground_speed: number;
+    vs: number;
+    agl: number;
+    g_lagged: number;
+    g_stress: number;
+    redout: number;
+    n_cmd: number;
+    touchdown_vs: number;
+    aim: number[];
+    crash_cause: number;
+    gear_bits: number;
   };
   bodies: { pos_bf: number[]; quat: number[] }[];
 }
 const vector = JSON.parse(
-  readFileSync(new URL('../../../tests/vectors/snapshot_v2.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../tests/vectors/snapshot_v3.json', import.meta.url), 'utf8'),
 ) as { size: number; hex: string; decoded: Decoded };
 
 const bytes = (): Uint8Array =>
@@ -110,6 +131,61 @@ describe('SnapshotReader against the Rust reference snapshot', () => {
       o.flags,
     ]);
     expect(o.tas, 'the aircraft is flying').toBeGreaterThan(50);
+  });
+
+  it('reads the v3 block: flight control, gear, wheels, g and aim', () => {
+    const r = new SnapshotReader(bytes());
+    const o = d.ownship;
+    const brakes = new Float32Array(2);
+    const aim = new Float32Array(2);
+    r.ownshipBrakes(brakes);
+    r.ownshipAim(aim);
+    expect([...brakes]).toEqual(o.brake);
+    expect([...aim]).toEqual(o.aim);
+    expect([
+      r.ownshipAssist(),
+      r.ownshipFcsMode(),
+      r.ownshipFlags2(),
+      r.ownshipSpawnSeq(),
+      r.ownshipFlapDetent(),
+      r.ownshipGearPos(),
+      r.ownshipTef(),
+      r.ownshipAirbrake(),
+      r.ownshipSteer(),
+      r.ownshipGroundSpeed(),
+      r.ownshipVs(),
+      r.ownshipAgl(),
+      r.ownshipGLagged(),
+      r.ownshipGStress(),
+      r.ownshipRedout(),
+      r.ownshipNCmd(),
+      r.ownshipTouchdownVs(),
+      r.ownshipCrashCause(),
+      r.ownshipGearBits(),
+    ]).toEqual([
+      o.assist,
+      o.fcs_mode,
+      o.flags2,
+      o.spawn_seq,
+      o.flap_detent,
+      o.gear_pos,
+      o.tef,
+      o.airbrake,
+      o.steer,
+      o.ground_speed,
+      o.vs,
+      o.agl,
+      o.g_lagged,
+      o.g_stress,
+      o.redout,
+      o.n_cmd,
+      o.touchdown_vs,
+      o.crash_cause,
+      o.gear_bits,
+    ]);
+    // Until the flight control system lands the aircraft is flown directly.
+    expect(o.assist).toBe(4);
+    expect(o.agl, 'the aircraft is above the ground').toBeGreaterThan(100);
   });
 
   it('reads bodies (the vector lists the first three and the last)', () => {

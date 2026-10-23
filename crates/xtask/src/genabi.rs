@@ -77,7 +77,7 @@ fn generate() -> Vec<Generated> {
             contents: input_frame_vectors(),
         },
         Generated {
-            path: root.join("tests/vectors/snapshot_v2.json"),
+            path: root.join("tests/vectors/snapshot_v3.json"),
             contents: snapshot_vectors(),
         },
     ]
@@ -177,6 +177,10 @@ fn frame_json(f: &InputFrame) -> Value {
         "seq": f.seq,
         "flags": f.flags,
         "t_ms": f.t_ms,
+        "t_sent_ms": f.t_sent_ms,
+        "assist_req": f.assist_req,
+        "spawn_ack": f.spawn_ack,
+        "spawn_req": f.spawn_req,
         "axes": f.axes.iter().map(|&a| f64::from(a)).collect::<Vec<_>>(),
         "buttons": f.buttons.to_string(),
         "hats": f.hats,
@@ -222,6 +226,19 @@ fn input_frame_vectors() -> String {
     ];
     rounding.buttons = 0x8000_0000_0000_0000;
     frames.push(rounding);
+
+    // A v3 frame: a changed control, an assist request, a spawn request and both host times.
+    let mut v3 = InputFrame::neutral(3);
+    v3.flags = (layout::input_flag::CHANGED | layout::input_flag::MOUSE_AIM) as u32;
+    v3.t_ms = 1_000.25;
+    v3.t_sent_ms = 1_003.75;
+    v3.axes[layout::axis::BRAKE_L] = 0.5;
+    v3.axes[layout::axis::CURSOR_X] = -0.25;
+    v3.buttons = (1 << layout::button::GEAR) | (1 << layout::button::FLAPS_CYCLE);
+    v3.assist_req = 4;
+    v3.spawn_ack = 200;
+    v3.spawn_req = 2;
+    frames.push(v3);
 
     // Frames from the scripted pilot, which is what the determinism run feeds the core.
     let mut pilot = ErraticPilot::new(RngStreams::new(DEFAULT_SEED).stream("input/erratic"));
@@ -278,6 +295,54 @@ fn snapshot_vectors() -> String {
     };
     let body_count = le_u32(b, snap::H_BODY_COUNT) as usize;
     let bodies: Vec<Value> = [0, 1, 2, body_count - 1].into_iter().map(body).collect();
+    // Built in two parts: `json!` recurses once per token and the whole object is too large.
+    let mut ownship = json!({
+        "pos_bf": [le_f64(b, snap::O_POS_BF), le_f64(b, snap::O_POS_BF + 8), le_f64(b, snap::O_POS_BF + 16)],
+        "quat": (0..4).map(|k| le_f32(b, snap::O_QUAT + 4 * k)).collect::<Vec<_>>(),
+        "vel_bf": (0..3).map(|k| le_f32(b, snap::O_VEL_BF + 4 * k)).collect::<Vec<_>>(),
+        "tas": le_f32(b, snap::O_TAS),
+        "cas": le_f32(b, snap::O_CAS),
+        "mach": le_f32(b, snap::O_MACH),
+        "alpha": le_f32(b, snap::O_ALPHA),
+        "beta": le_f32(b, snap::O_BETA),
+        "nz": le_f32(b, snap::O_NZ),
+        "throttle": le_f32(b, snap::O_THROTTLE),
+        "thrust": le_f32(b, snap::O_THRUST),
+        "fuel": le_f32(b, snap::O_FUEL),
+        "mass": le_f32(b, snap::O_MASS),
+        "omega": (0..3).map(|k| le_f32(b, snap::O_OMEGA + 4 * k)).collect::<Vec<_>>(),
+        "surfaces": (0..3).map(|k| le_f32(b, snap::O_SURFACES + 4 * k)).collect::<Vec<_>>(),
+        "altitude": le_f32(b, snap::O_ALTITUDE),
+        "ab_stage": b[snap::O_AB_STAGE],
+        "flags": b[snap::O_FLAGS]
+    });
+    let ownship_v3 = json!({
+            "assist": b[snap::O_ASSIST],
+            "fcs_mode": b[snap::O_FCS_MODE],
+            "flags2": u16::from_le_bytes([b[snap::O_FLAGS2], b[snap::O_FLAGS2 + 1]]),
+            "spawn_seq": b[snap::O_SPAWN_SEQ],
+            "flap_detent": b[snap::O_FLAP_DETENT],
+            "gear_pos": le_f32(b, snap::O_GEAR_POS),
+            "tef": le_f32(b, snap::O_TEF),
+            "airbrake": le_f32(b, snap::O_AIRBRAKE),
+            "brake": [le_f32(b, snap::O_BRAKE_L), le_f32(b, snap::O_BRAKE_R)],
+            "steer": le_f32(b, snap::O_STEER),
+            "ground_speed": le_f32(b, snap::O_GROUND_SPEED),
+            "vs": le_f32(b, snap::O_VS),
+            "agl": le_f32(b, snap::O_AGL),
+            "g_lagged": le_f32(b, snap::O_G_LAGGED),
+            "g_stress": le_f32(b, snap::O_G_STRESS),
+            "redout": le_f32(b, snap::O_REDOUT),
+            "n_cmd": le_f32(b, snap::O_N_CMD),
+            "touchdown_vs": le_f32(b, snap::O_TOUCHDOWN_VS),
+            "aim": [le_f32(b, snap::O_AIM_AZ), le_f32(b, snap::O_AIM_EL)],
+            "crash_cause": b[snap::O_CRASH_CAUSE],
+            "gear_bits": b[snap::O_GEAR_BITS],
+    });
+    ownship
+        .as_object_mut()
+        .expect("an object")
+        .extend(ownship_v3.as_object().expect("an object").clone());
     let decoded = json!({
         "magic": le_u32(b, snap::H_MAGIC),
         "version": le_u32(b, snap::H_VERSION),
@@ -287,26 +352,7 @@ fn snapshot_vectors() -> String {
         "body_count": body_count,
         "core_state": le_u32(b, snap::H_CORE_STATE),
         "input_t_ms": le_f64(b, snap::H_INPUT_T_MS),
-        "ownship": {
-            "pos_bf": [le_f64(b, snap::O_POS_BF), le_f64(b, snap::O_POS_BF + 8), le_f64(b, snap::O_POS_BF + 16)],
-            "quat": (0..4).map(|k| le_f32(b, snap::O_QUAT + 4 * k)).collect::<Vec<_>>(),
-            "vel_bf": (0..3).map(|k| le_f32(b, snap::O_VEL_BF + 4 * k)).collect::<Vec<_>>(),
-            "tas": le_f32(b, snap::O_TAS),
-            "cas": le_f32(b, snap::O_CAS),
-            "mach": le_f32(b, snap::O_MACH),
-            "alpha": le_f32(b, snap::O_ALPHA),
-            "beta": le_f32(b, snap::O_BETA),
-            "nz": le_f32(b, snap::O_NZ),
-            "throttle": le_f32(b, snap::O_THROTTLE),
-            "thrust": le_f32(b, snap::O_THRUST),
-            "fuel": le_f32(b, snap::O_FUEL),
-            "mass": le_f32(b, snap::O_MASS),
-            "omega": (0..3).map(|k| le_f32(b, snap::O_OMEGA + 4 * k)).collect::<Vec<_>>(),
-            "surfaces": (0..3).map(|k| le_f32(b, snap::O_SURFACES + 4 * k)).collect::<Vec<_>>(),
-            "altitude": le_f32(b, snap::O_ALTITUDE),
-            "ab_stage": b[snap::O_AB_STAGE],
-            "flags": b[snap::O_FLAGS],
-        },
+        "ownship": ownship,
         "bodies": bodies,
     });
     format!(

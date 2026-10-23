@@ -6,6 +6,7 @@
  */
 import { scriptUrl, type Variant } from '@flying/platform-web';
 import { INPUT_SCRIPT } from '@flying/sim-bridge/layout';
+import { SCRIPTED_SESSION } from '@flying/sim-bridge/sim-handle';
 import { SEED, SELFTEST_TICKS } from './selftest-judge.ts';
 import coreContentUrl from '../../../content-out/core.cpack?url';
 import singleUrl from '../../../wasm-out/sim.single.wasm?url';
@@ -27,6 +28,7 @@ export function selfTestRequest(variant: Variant): SelfTestRequest {
     contentUrl: coreContentUrl,
     seed: SEED,
     script: INPUT_SCRIPT.ERRATIC,
+    session: SCRIPTED_SESSION,
     ticks: SELFTEST_TICKS,
   };
 }

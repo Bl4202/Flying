@@ -31,6 +31,10 @@ export const COUNTER_NAMES = [
   'respawns',
   'snapshots',
   'trim_failures',
+  'touchdowns',
+  'hard_landings',
+  'gloc_events',
+  'assist_changes',
 ] as const;
 
 export interface Profile {

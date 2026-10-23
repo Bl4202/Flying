@@ -15,6 +15,7 @@ const init: SimInit = {
   contentUrl: '/c.cpack',
   seed: '1f',
   script: 1,
+  session: { spawn: 1, assist: 2, gEffects: 2 },
   snapshot: { kind: 'shared', sab: new SharedArrayBuffer(4) },
   input: { kind: 'shared', sab: new SharedArrayBuffer(4) },
   terrainPort: null,
@@ -50,6 +51,8 @@ describe('parseSimCommand', () => {
     expect(() => parseSimCommand({ type: 'stall', ms: '100' })).toThrow(/stall.*ms: number/);
     expect(() => parseSimCommand({ ...init, seed: 5 })).toThrow(/init.*seed: string/);
     expect(() => parseSimCommand({ ...init, input: null })).toThrow(/init.*input/);
+    expect(() => parseSimCommand({ ...init, session: null })).toThrow(/init.*session/);
+    expect(() => parseSimCommand({ ...init, session: undefined })).toThrow(/init.*session/);
     expect(() => parseSimCommand({ ...init, forceTimer: 1 })).toThrow(/forceTimer: boolean/);
   });
 
