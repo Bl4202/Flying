@@ -13,6 +13,10 @@ describe('profile block', () => {
     expect(COUNTER_NAMES[COUNTER.FDM_FAULTS]).toBe('fdm_faults');
     expect(COUNTER_NAMES[COUNTER.TRIM_FAILURES]).toBe('trim_failures');
     expect(COUNTER_NAMES[COUNTER.SNAPSHOTS]).toBe('snapshots');
+    expect(COUNTER_NAMES[COUNTER.TOUCHDOWNS]).toBe('touchdowns');
+    expect(COUNTER_NAMES[COUNTER.HARD_LANDINGS]).toBe('hard_landings');
+    expect(COUNTER_NAMES[COUNTER.GLOC_EVENTS]).toBe('gloc_events');
+    expect(COUNTER_NAMES[COUNTER.ASSIST_CHANGES]).toBe('assist_changes');
   });
 
   it('decodes every field from its offset', () => {

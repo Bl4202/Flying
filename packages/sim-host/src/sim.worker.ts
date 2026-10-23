@@ -138,9 +138,11 @@ async function init(cmd: SimInit): Promise<void> {
   }
   const pack = new Uint8Array(await response.arrayBuffer());
 
-  // Same order as `fg hash`: content first (only an idle core takes it), then the script.
+  // Same order as `fg hash`: content first (only an idle core takes it), then the session, then
+  // the script.
   handle.init(BigInt(`0x${cmd.seed}`));
   handle.loadContent(pack);
+  handle.configure(cmd.session);
   if (!handle.setInputScript(cmd.script)) {
     throw new Error(`SYS-004: unknown input script ${String(cmd.script)}`);
   }

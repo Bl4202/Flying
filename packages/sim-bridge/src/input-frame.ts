@@ -9,13 +9,24 @@ export interface InputFrame {
   seq: number;
   /** `INPUT_FLAG` bits. */
   flags: number;
-  /** When the host sampled the controls, milliseconds on the shared clock. */
+  /**
+   * When the source event happened (key press, pointer move, gamepad sample), milliseconds on the
+   * shared clock. An observation: it never feeds simulation state (ADR-33).
+   */
   tMs: number;
+  /** When the frame was written, milliseconds on the shared clock. Observation only. */
+  tSentMs: number;
   /** `AXIS`-indexed values: sticks and throttles in -1..1 or 0..1. */
   axes: Float32Array;
   /** One bit per button (`BUTTON`). */
   buttons: bigint;
   hats: [number, number];
+  /** Requested assist level (`ASSIST_LEVEL`); 0 keeps the current one. */
+  assistReq: number;
+  /** The `spawn_seq` of the snapshot the host has synchronised its throttle lever to. */
+  spawnAck: number;
+  /** Spawn for the next reset (`SPAWN_REQUEST`); 0 uses the session's. */
+  spawnReq: number;
 }
 
 export function neutralFrame(seq = 0): InputFrame {
@@ -23,9 +34,13 @@ export function neutralFrame(seq = 0): InputFrame {
     seq,
     flags: 0,
     tMs: 0,
+    tSentMs: 0,
     axes: new Float32Array(INPUT_FRAME.AXIS_COUNT),
     buttons: 0n,
     hats: [0, 0],
+    assistReq: 0,
+    spawnAck: 0,
+    spawnReq: 0,
   };
 }
 
@@ -45,6 +60,10 @@ export function encodeInputFrame(frame: InputFrame, out: Uint8Array): void {
   dv.setBigUint64(INPUT_FRAME.BUTTONS, BigInt.asUintN(64, frame.buttons), true);
   dv.setUint8(INPUT_FRAME.HATS, frame.hats[0]);
   dv.setUint8(INPUT_FRAME.HATS + 1, frame.hats[1]);
+  dv.setUint8(INPUT_FRAME.ASSIST_REQ, frame.assistReq);
+  dv.setUint8(INPUT_FRAME.SPAWN_ACK, frame.spawnAck);
+  dv.setUint8(INPUT_FRAME.SPAWN_REQ, frame.spawnReq);
+  dv.setFloat64(INPUT_FRAME.T_SENT_MS, frame.tSentMs, true);
 }
 
 export function decodeInputFrame(bytes: Uint8Array): InputFrame {
@@ -60,9 +79,13 @@ export function decodeInputFrame(bytes: Uint8Array): InputFrame {
     seq: dv.getUint32(INPUT_FRAME.SEQ, true),
     flags: dv.getUint32(INPUT_FRAME.FLAGS, true),
     tMs: dv.getFloat64(INPUT_FRAME.T_MS, true),
+    tSentMs: dv.getFloat64(INPUT_FRAME.T_SENT_MS, true),
     axes,
     buttons: dv.getBigUint64(INPUT_FRAME.BUTTONS, true),
     hats: [dv.getUint8(INPUT_FRAME.HATS), dv.getUint8(INPUT_FRAME.HATS + 1)],
+    assistReq: dv.getUint8(INPUT_FRAME.ASSIST_REQ),
+    spawnAck: dv.getUint8(INPUT_FRAME.SPAWN_ACK),
+    spawnReq: dv.getUint8(INPUT_FRAME.SPAWN_REQ),
   };
 }
 

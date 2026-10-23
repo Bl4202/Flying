@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { ABI } from '../../packages/sim-bridge/src/layout.gen.ts';
 
 /** `?selftest=1` shows the status table: what this load got and the hash after 10 000 ticks. */
 const HEADERS_URL = 'http://127.0.0.1:4173/Flying/?selftest=1';
@@ -47,7 +48,7 @@ test('host with headers: isolated on first load, threads build, golden hash', as
   await expect(cell(page, 'sab')).toHaveText('true');
   await expect(cell(page, 'mode')).toHaveText('full');
   await expect(cell(page, 'variant')).toHaveText('threads');
-  await expect(cell(page, 'abi')).toHaveText('2');
+  await expect(cell(page, 'abi')).toHaveText(String(ABI.VERSION));
   await expect(cell(page, 'ticks')).toHaveText('10000');
   await expect(cell(page, 'hash')).toHaveText(GOLDEN_10K ?? 'missing');
   await expect(cell(page, 'build-id')).not.toHaveText('');

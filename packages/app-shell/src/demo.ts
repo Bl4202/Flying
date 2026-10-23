@@ -46,6 +46,7 @@ import {
 } from '@flying/ui';
 import { coreContentUrl, runSelfTestWorker, selfTestRequest, wasmUrl } from './selftest.ts';
 import { judgeSelfTest, goldenCheckpoint, SEED } from './selftest-judge.ts';
+import { sessionFromFlags } from './session.ts';
 import { Supervisor } from './supervisor.ts';
 
 export interface DemoRoots {
@@ -148,6 +149,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
         contentUrl: coreContentUrl,
         seed: SEED,
         script: ctx.perf ? INPUT_SCRIPT.ERRATIC : INPUT_SCRIPT.NONE,
+        session: sessionFromFlags(flags, ctx.perf),
         snapshot: snapshots.sink,
         input: inputs.source,
         terrainPort: terrain.port1,

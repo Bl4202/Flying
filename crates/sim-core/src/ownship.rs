@@ -6,7 +6,7 @@ use flight::env::FlightEnv;
 
 use crate::hash::StateHasher;
 use crate::input::InputState;
-use crate::layout::ownship_flag;
+use crate::layout::{crash_cause, fcs_mode, ownship_flag};
 use crate::math::{DQuat, DVec3};
 use crate::observer::Observer;
 use crate::services::Services;
@@ -143,6 +143,48 @@ pub struct OwnshipView {
     pub ab_stage: u8,
     /// `ownship_flag` bits.
     pub flags: u8,
+    /// Assist level in force (`assist_level`; 0 for the spectator).
+    pub assist: u8,
+    /// What the flight control system is doing (`fcs_mode`).
+    pub fcs_mode: u8,
+    /// `ownship_flag2` bits.
+    pub flags2: u16,
+    /// Spawn counter, wrapping.
+    pub spawn_seq: u8,
+    /// Flap detent: 0 up, 1 take-off, 2 landing.
+    pub flap_detent: u8,
+    /// Gear position, 0 up to 1 down.
+    pub gear_pos: f64,
+    /// Trailing-edge flap, rad.
+    pub tef_rad: f64,
+    /// Airbrake, 0 to 1.
+    pub airbrake: f64,
+    /// Left and right wheel brake commands, 0 to 1.
+    pub brake: [f64; 2],
+    /// Nose-wheel steering angle, rad.
+    pub steer_rad: f64,
+    /// Speed over the ground, projected on the local horizontal, m/s.
+    pub ground_speed_mps: f64,
+    /// Vertical speed (climb positive), m/s.
+    pub vs_mps: f64,
+    /// Height of the lowest wheel (or the reference point without gear) above the ground, m.
+    pub agl_m: f64,
+    /// Lagged g felt by the pilot ("heart-level" G), g.
+    pub g_lagged: f64,
+    /// G stress `S` (0.35 greyout, 0.7 blackout, 1.0 G-LOC).
+    pub g_stress: f64,
+    /// Red-out stress `R`.
+    pub redout: f64,
+    /// Load-factor command of the flight control system, g.
+    pub n_cmd: f64,
+    /// Sink rate at the last touchdown, m/s.
+    pub touchdown_vs_mps: f64,
+    /// Mouse-aim direction in use: azimuth and elevation, rad.
+    pub aim_rad: [f64; 2],
+    /// Why the aircraft was destroyed (`crash_cause`).
+    pub crash_cause: u8,
+    /// Gear bits (see the snapshot layout).
+    pub gear_bits: u8,
 }
 
 impl Default for OwnshipView {
@@ -166,6 +208,27 @@ impl Default for OwnshipView {
             altitude_m: 0.0,
             ab_stage: 0,
             flags: 0,
+            assist: 0,
+            fcs_mode: fcs_mode::FLIGHT as u8,
+            flags2: 0,
+            spawn_seq: 0,
+            flap_detent: 0,
+            gear_pos: 0.0,
+            tef_rad: 0.0,
+            airbrake: 0.0,
+            brake: [0.0; 2],
+            steer_rad: 0.0,
+            ground_speed_mps: 0.0,
+            vs_mps: 0.0,
+            agl_m: 0.0,
+            g_lagged: 0.0,
+            g_stress: 0.0,
+            redout: 0.0,
+            n_cmd: 0.0,
+            touchdown_vs_mps: 0.0,
+            aim_rad: [0.0; 2],
+            crash_cause: crash_cause::NONE as u8,
+            gear_bits: 0,
         }
     }
 }
@@ -216,6 +279,16 @@ fn aircraft_view(
     if s.numerical_fault {
         flags |= ownship_flag::NUMERICAL_FAULT;
     }
+    let up = env.up_bf(t.ref_point_bf);
+    let vel = s.body.vel_bf;
+    let climb = vel.dot(up);
+    let cause = if s.numerical_fault {
+        crash_cause::NUMERICAL
+    } else if a.crashed {
+        crash_cause::AIRFRAME_IMPACT
+    } else {
+        crash_cause::NONE
+    };
     OwnshipView {
         pos_bf: t.ref_point_bf,
         att: s.body.att,
@@ -239,5 +312,15 @@ fn aircraft_view(
         altitude_m: env.height_msl_m(t.ref_point_bf),
         ab_stage: t.ab_stage,
         flags: flags as u8,
+        // Until the flight control system lands (WP5, WP7) the stick drives the surfaces: Manual.
+        assist: crate::session::Assist::Manual.code(),
+        gear_pos: s.surfaces.gear,
+        tef_rad: s.surfaces.tef_rad,
+        airbrake: s.surfaces.airbrake,
+        ground_speed_mps: (vel - up * climb).length(),
+        vs_mps: climb,
+        agl_m: t.height_msl_m - env.ground_height_m(t.ref_point_bf),
+        crash_cause: cause as u8,
+        ..OwnshipView::default()
     }
 }

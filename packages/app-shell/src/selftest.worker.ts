@@ -5,7 +5,7 @@
  * running game's core, so the overlay can run it mid-flight.
  */
 import type { Variant } from '@flying/platform-web/wasm-loader';
-import { HASH_KIND, hex64, loadSim } from '@flying/sim-bridge/sim-handle';
+import { HASH_KIND, hex64, loadSim, type SessionConfig } from '@flying/sim-bridge/sim-handle';
 
 export interface SelfTestRequest {
   variant: Variant;
@@ -17,6 +17,8 @@ export interface SelfTestRequest {
   seed: string;
   /** `INPUT_SCRIPT` value. */
   script: number;
+  /** The session the golden was recorded under (`SCRIPTED_SESSION`). */
+  session: SessionConfig;
   ticks: number;
 }
 
@@ -57,9 +59,11 @@ async function run(req: SelfTestRequest): Promise<SelfTestResult> {
       throw new Error(`SYS-005: ${req.contentUrl} returned ${String(response.status)}`);
     }
     const pack = new Uint8Array(await response.arrayBuffer());
-    // Same order as `fg hash`: content first (only an idle core takes it), then the script.
+    // Same order as `fg hash`: content first (only an idle core takes it), then the session, then
+    // the script.
     sim.init(BigInt(`0x${req.seed}`));
     sim.loadContent(pack);
+    sim.configure(req.session);
     if (!sim.setInputScript(req.script) || !sim.start()) {
       throw new Error('SYS-004: the core would not start');
     }
