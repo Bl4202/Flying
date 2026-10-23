@@ -261,3 +261,23 @@ fn manual_flight_under_random_inputs_stays_finite() {
         fuzz(seed, 600);
     }
 }
+
+#[test]
+fn the_flap_fraction_and_the_structure_input_come_from_the_state() {
+    let m = kestrel();
+    let world = SphereSea::open();
+    let mut s = level(&m, 3000.0, 150.0, 3.0, 2000.0);
+    assert_eq!(m.flap_fraction(&s.surfaces), 0.0);
+    s.surfaces.tef_rad = m.actuators.tef.max * 0.5;
+    s.surfaces.gear = 1.0;
+    assert!((m.flap_fraction(&s.surfaces) - 0.5).abs() < 1e-12);
+    let t = m.telemetry(&s, &world, 0.0);
+    let i = m.structure_input(&s, &t);
+    assert_eq!((i.gear_pos, i.flap_fraction), (1.0, 0.5));
+    assert_eq!((i.nz_g, i.cas_mps, i.mach), (t.nz_g, t.cas_mps, t.air.mach));
+    // The limits for that configuration are the lowest of the two.
+    assert_eq!(m.limits.n_max_for(i.gear_pos, i.flap_fraction), 4.0);
+    // Over the travel is capped.
+    s.surfaces.tef_rad = 10.0;
+    assert_eq!(m.flap_fraction(&s.surfaces), 1.0);
+}

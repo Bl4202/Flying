@@ -54,8 +54,12 @@ the aircraft can depart.
 | others | flat | flat |
 
 The dynamic directional stability parameter `C_n,beta,dyn = C_n,beta cos(a) - (I_z / I_x) C_l,beta
-sin(a)` (I_z / I_x = 6.34 for the Kestrel) is designed to turn negative near 34 deg. The linearise
-report prints it (WP4).
+sin(a)` is designed to turn negative near 34 deg. `flight::departure` computes it from these tables
+(I_z / I_x is about 6.6 at 1 600 kg of fuel) and the linearise test prints it at each C.5 trim
+point. Measured (WP4, ADR-38): **34.05 deg**. The lateral control departure parameter
+`LCDP = C_n,beta - C_l,beta C_n,da / C_l,da` is +0.134 to 15 deg and crosses zero at about 25 deg
+(-0.011 at the 26 deg limiter), so the aileron loses its authority and then reverses there; the
+FCS cuts the roll command with alpha for that reason (`p_max_alpha`).
 
 **Effect on the C.9 points.** The tables do not move any airborne point except through the
 sustained-turn points, which are flown above 15 deg of angle of attack: `turn_sl_m05` read
