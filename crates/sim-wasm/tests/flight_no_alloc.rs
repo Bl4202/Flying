@@ -18,6 +18,8 @@ use flight::engine::EngineCommand;
 use flight::env::SphereSea;
 use flight::frames::{Euler, attitude};
 use flight::gear::WheelCommands;
+use flight::physio::{GEffects, PhysioParams, PhysioState};
+use flight::structure::StructureState;
 use flight::trim::{TrimProblem, TrimSetup, guess_level, solve, state_of};
 use simmath::dmath;
 use simmath::math::DVec3;
@@ -218,4 +220,55 @@ fn the_ground_model_allocates_nothing() {
     assert!(out.events.destroyed.is_some() || out.faults > 0);
 
     assert_eq!(allocations() - before, 0, "the ground model allocated");
+}
+
+/// The pilot's physiology, the structure model, the onboard control model and the departure
+/// diagnostics are plain arithmetic on `Copy` state.
+#[test]
+fn physiology_structure_and_the_control_model_allocate_nothing() {
+    let model = kestrel();
+    let world = SphereSea::open();
+    let body = RigidState {
+        pos_bf: DVec3::new(0.0, 0.0, 5000.0),
+        vel_bf: DVec3::new(0.0, 200.0, 0.0),
+        att: attitude(DVec3::Z, Euler::default()),
+        omega_body: DVec3::ZERO,
+    };
+    let mut s = model.state(body, 2000.0, EngineCommand::from_lever(0.6, 4));
+    let mass = model.mass.props(&s.fuel);
+    let mut physio = PhysioState::REST;
+    let mut structure = StructureState::NEW;
+    let params = PhysioParams::GDD;
+
+    let before = allocations();
+    let mut flags = 0_u32;
+    for tick in 0..2000_u32 {
+        let t = model.telemetry(&s, &world, f64::from(tick) / 60.0);
+        // A long hard pull (G-LOC, recovery, G-LOC again) and some negative g.
+        let nz = if tick < 1200 { 9.0 } else { -2.0 };
+        let effects = physio.step(nz, 1.0 / 60.0, &params, GEffects::Full);
+        flags += u32::from(effects.gloc) + u32::from(effects.blackout);
+        let mut input = model.structure_input(&s, &t);
+        input.nz_g = nz;
+        let f = structure.step(&model.limits, &input, 1.0 / 60.0);
+        flags += u32::from(f.overstress) + u32::from(f.gear_overspeed);
+        let air = flight::aero::AeroInput {
+            air: t.air,
+            alpha_dot_rps: 0.0,
+            surfaces: s.surfaces,
+            height_agl_m: 5000.0,
+            cg_body_m: mass.cg_body_m,
+        };
+        let cm = model.aero.control_model(&air);
+        assert!(cm.dm_de.is_finite());
+        let row = flight::departure::row(&model.aero, &mass, f64::from(tick % 90));
+        assert!(row.cn_beta_dyn.is_finite());
+        s.surfaces.elevator_rad = 1e-3 * f64::from(tick % 7);
+    }
+    assert!(flags > 0, "the effects were exercised");
+    assert_eq!(
+        allocations() - before,
+        0,
+        "physiology or structure allocated"
+    );
 }

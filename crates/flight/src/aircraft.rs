@@ -32,6 +32,7 @@ use crate::error::ModelError;
 use crate::gear::{self, GearHeld, GearModel, GroundEvents, GroundState, WheelCommands};
 use crate::mass::{FuelLoad, MassModel, MassProps};
 use crate::physical::G0;
+use crate::structure::StructureInput;
 
 /// RK4 sub-steps per tick: 120 Hz in a 60 Hz tick. // ALGO: GDD 0.6.1, 11.10
 pub const SUBSTEPS: u32 = 2;
@@ -276,6 +277,28 @@ impl AircraftModel {
             .map(|e| e.model.ab_stages())
             .max()
             .unwrap_or(0)
+    }
+
+    /// How far the trailing-edge flaps are out, 0 (up) to 1 (full travel).
+    #[must_use]
+    pub fn flap_fraction(&self, surfaces: &Surfaces) -> f64 {
+        let travel = self.actuators.tef.max;
+        if travel.is_nan() || travel <= 0.0 {
+            return 0.0;
+        }
+        (surfaces.tef_rad / travel).clamp(0.0, 1.0)
+    }
+
+    /// What the structure model reads from a state and its telemetry.
+    #[must_use]
+    pub fn structure_input(&self, s: &AircraftState, t: &Telemetry) -> StructureInput {
+        StructureInput {
+            nz_g: t.nz_g,
+            cas_mps: t.cas_mps,
+            mach: t.air.mach,
+            gear_pos: s.surfaces.gear,
+            flap_fraction: self.flap_fraction(&s.surfaces),
+        }
     }
 
     /// The tick length, s.
