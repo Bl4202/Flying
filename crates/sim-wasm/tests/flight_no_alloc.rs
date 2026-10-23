@@ -17,6 +17,7 @@ use flight::controls::PilotControls;
 use flight::engine::EngineCommand;
 use flight::env::SphereSea;
 use flight::frames::{Euler, attitude};
+use flight::gear::WheelCommands;
 use flight::trim::{TrimProblem, TrimSetup, guess_level, solve, state_of};
 use simmath::dmath;
 use simmath::math::DVec3;
@@ -54,13 +55,18 @@ fn allocations() -> u64 {
     ALLOCATIONS.with(Cell::get)
 }
 
-#[test]
-fn a_tick_allocates_nothing() {
+/// The Kestrel, from the baked core pack.
+fn kestrel() -> AircraftModel {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content/core");
     let baked = content_bake::bake::bake_dir(&dir).expect("the core pack bakes");
     let registry = Registry::from_cpack(&baked.cpack).unwrap();
     let handle = registry.aircraft_handles().next().unwrap();
-    let model = AircraftModel::from_registry(&registry, handle, 1.0 / 60.0).unwrap();
+    AircraftModel::from_registry(&registry, handle, 1.0 / 60.0).unwrap()
+}
+
+#[test]
+fn a_tick_allocates_nothing() {
+    let model = kestrel();
     let world = SphereSea::default();
     let body = RigidState {
         pos_bf: DVec3::new(0.0, 0.0, 5000.0),
@@ -101,6 +107,7 @@ fn a_tick_allocates_nothing() {
     let calm = Commands {
         surfaces: Surfaces::NEUTRAL,
         engine: EngineCommand::IDLE,
+        wheels: WheelCommands::NONE,
     };
     assert_eq!(model.step_tick(&mut s, &calm, &world, 20.0).faults, 2);
     let setup = TrimSetup {
@@ -114,4 +121,101 @@ fn a_tick_allocates_nothing() {
     s = state_of(&model, &setup, &trim.point, &world);
     model.step_tick(&mut s, &calm, &world, 20.0);
     assert_eq!(allocations() - before, 0, "the tick allocated");
+}
+
+/// The ground model allocates nothing either: the static-pose solver, taxiing with brakes and
+/// steering, every touchdown class (normal, hard, collapse, destroyed), a belly skid and the
+/// tunnelling guard.
+#[test]
+fn the_ground_model_allocates_nothing() {
+    let model = kestrel();
+    let world = SphereSea::default();
+    let fuel_kg = 1800.0;
+
+    let before = allocations();
+
+    // The static pose, solved on the real forces.
+    let (rest, pose) = model
+        .static_state(fuel_kg, 0.0, 0.3, DVec3::ZERO, &world, EngineCommand::IDLE)
+        .expect("the Kestrel settles on its gear");
+    assert!(pose.residual_n.abs() < 1.0);
+
+    // Taxi: brakes and steering varying, the parking brake and a stop.
+    let mut s = rest;
+    s.ground.air_time_s = 0.0;
+    let thrust = EngineCommand::from_lever(0.5, 4);
+    for tick in 0..600_u32 {
+        let phase = f64::from(tick) * 0.03;
+        let wheels = WheelCommands {
+            brake: [0.5 + 0.5 * dmath::sin(phase); flight::gear::MAX_GEAR],
+            steer_rad: 0.5 * dmath::cos(phase),
+        };
+        let cmd = Commands {
+            surfaces: Surfaces {
+                gear: 1.0,
+                ..Surfaces::NEUTRAL
+            },
+            engine: thrust,
+            wheels,
+        };
+        let out = model.step_tick(&mut s, &cmd, &world, f64::from(tick) / 60.0);
+        assert_eq!(out.faults, 0);
+    }
+
+    // Touchdowns at 2, 3.5, 5 and 8 m/s: normal, hard, strut collapse, destroyed.
+    let settle = Commands {
+        surfaces: Surfaces {
+            gear: 1.0,
+            ..Surfaces::NEUTRAL
+        },
+        engine: EngineCommand::IDLE,
+        wheels: WheelCommands {
+            brake: [1.0; flight::gear::MAX_GEAR],
+            steer_rad: 0.0,
+        },
+    };
+    let mut destroyed = 0;
+    for sink in [2.0_f64, 3.5, 5.0, 8.0] {
+        let mut s = rest;
+        s.ground.air_time_s = 1.0e3;
+        s.body.pos_bf.z += 0.14;
+        s.body.vel_bf = DVec3::new(
+            0.0,
+            0.0,
+            -(sink * sink - 2.0 * 9.80665 * 0.02).max(0.0).sqrt(),
+        );
+        for tick in 0..120_u32 {
+            let out = model.step_tick(&mut s, &settle, &world, f64::from(tick) / 60.0);
+            assert_eq!(out.faults, 0);
+            if out.events.destroyed.is_some() {
+                destroyed += 1;
+                break;
+            }
+        }
+    }
+    assert_eq!(destroyed, 1, "only the 8 m/s drop is destroyed");
+
+    // A belly skid at 25 m/s with the gear up.
+    let mut s = rest;
+    s.surfaces.gear = 0.0;
+    s.ground.air_time_s = 1.0e3;
+    s.body.att = attitude(DVec3::Z, Euler::default());
+    s.body.pos_bf = DVec3::new(0.0, 0.0, 1.37);
+    s.body.vel_bf = DVec3::Y * 25.0;
+    let up = Commands {
+        surfaces: Surfaces::NEUTRAL,
+        engine: EngineCommand::IDLE,
+        wheels: WheelCommands::NONE,
+    };
+    for tick in 0..30_u32 {
+        model.step_tick(&mut s, &up, &world, f64::from(tick) / 60.0);
+    }
+
+    // The CG far below the ground: the guard, not a numerical fault.
+    let mut s = rest;
+    s.body.pos_bf.z = -9.0;
+    let out = model.step_tick(&mut s, &settle, &world, 0.0);
+    assert!(out.events.destroyed.is_some() || out.faults > 0);
+
+    assert_eq!(allocations() - before, 0, "the ground model allocated");
 }

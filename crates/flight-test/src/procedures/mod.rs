@@ -11,6 +11,7 @@ use flight::actuators::Surfaces;
 use flight::aircraft::{AircraftModel, AircraftState, Commands};
 use flight::engine::EngineCommand;
 use flight::env::SphereSea;
+use flight::gear::WheelCommands;
 use flight::trim::TrimSetup;
 use simmath::math::DVec3;
 
@@ -222,6 +223,7 @@ impl<'a> Flight<'a> {
         let cmd = Commands {
             surfaces,
             engine: self.engine,
+            wheels: WheelCommands::NONE,
         };
         let t = self.t();
         self.faults += self

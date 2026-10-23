@@ -21,9 +21,11 @@ pub mod engine;
 pub mod env;
 pub mod error;
 pub mod frames;
+pub mod gear;
 pub mod linearise;
 pub mod mass;
 pub mod physical;
+pub mod surface;
 pub mod table;
 pub mod trim;
 

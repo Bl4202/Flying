@@ -40,6 +40,9 @@ fn pilot_controls(input: &InputState) -> PilotControls {
         trim_nose_down: input.held(button::TRIM_NOSE_DOWN),
         flaps: 0.0,
         airbrake: 0.0,
+        gear: 0.0,
+        brake_l: input.axis(axis::BRAKE_L),
+        brake_r: input.axis(axis::BRAKE_R),
     }
 }
 

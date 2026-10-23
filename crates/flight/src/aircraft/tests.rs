@@ -40,6 +40,7 @@ fn hold(m: &AircraftModel) -> Commands {
     Commands {
         surfaces: Surfaces::NEUTRAL,
         engine: EngineCommand::from_lever(0.6, m.ab_stages()),
+        wheels: WheelCommands::NONE,
     }
 }
 
@@ -107,6 +108,8 @@ fn a_tick_is_two_rk4_sub_steps() {
             m.stage(st, &held, &mass, &world, t).deriv
         });
     }
+    // The ground model also counts the time in the air, once per sub-step.
+    manual.ground.air_time_s += TICK;
     assert_eq!(s, manual);
     // And a tick moves the aircraft by about V dt.
     let moved = (s.body.pos_bf - level(&m, 3000.0, 200.0, 3.0, 2000.0).body.pos_bf).length();
@@ -116,11 +119,13 @@ fn a_tick_is_two_rk4_sub_steps() {
 #[test]
 fn fuel_burns_in_feed_order_unless_mass_is_frozen() {
     let m = kestrel();
-    let world = SphereSea::default();
+    // Sea level but no ground: the bench holds the aircraft at the point, wheels in the water.
+    let world = SphereSea::open();
     let mut s = level(&m, 0.0, 0.5, 0.0, 3100.0);
     let mil = Commands {
         surfaces: Surfaces::NEUTRAL,
         engine: EngineCommand::MILITARY,
+        wheels: WheelCommands::NONE,
     };
     s.engines[0] = m.engines()[0].model.steady(EngineCommand::MILITARY);
     let before = m.mass.fuel_kg(&s.fuel);
@@ -220,6 +225,9 @@ fn fuzz(seed: u64, seconds: u32) -> u32 {
                 trim_nose_down: rng.next() < 0.1,
                 flaps: if rng.next() < 0.1 { 1.0 } else { 0.0 },
                 airbrake: if rng.next() < 0.2 { 1.0 } else { 0.0 },
+                gear: if rng.next() < 0.1 { 1.0 } else { 0.0 },
+                brake_l: rng.next(),
+                brake_r: rng.next(),
             };
         }
         let cmd = m.manual_commands(&mut s, &controls);
