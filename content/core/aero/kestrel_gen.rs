@@ -96,6 +96,68 @@ const CD90: f64 = 1.2;
 /// The negative stall is this fraction of the positive one.
 const NEGATIVE_STALL: f64 = 0.6;
 
+/// The lateral and directional derivatives, per radian, against |alpha| in degrees (ADR-38).
+///
+/// Up to 15 degrees every table equals the single value of the v0.1a model (GDD C.5), so no
+/// symmetric-flight conformance point can move. Above that the shapes are authored to make the
+/// dynamic directional stability parameter `C_n,beta,dyn = C_n,beta cos a - (I_z / I_x) C_l,beta
+/// sin a` turn negative near 34 degrees, so that a flat-spin-prone departure exists for Reduced
+/// and Manual assist, which have no angle-of-attack limiter (GDD 11.15). They are *targets*
+/// tuned against the departure suite; every change is logged in `content/core/aero/README.md`.
+const LATERAL: [(&str, &[(f64, f64)]); 12] = [
+    ("cy_beta_per_rad", &[(0.0, -0.9), (90.0, -0.9)]),
+    (
+        "cl_beta_per_rad",
+        &[
+            (0.0, -0.1),
+            (15.0, -0.1),
+            (20.0, -0.14),
+            (25.0, -0.18),
+            (30.0, -0.084),
+            (34.0, -0.0075),
+            (40.0, 0.02),
+            (90.0, 0.0),
+        ],
+    ),
+    (
+        "cn_beta_per_rad",
+        &[
+            (0.0, 0.14),
+            (15.0, 0.14),
+            (30.0, 0.0),
+            (40.0, -0.08),
+            (90.0, 0.0),
+        ],
+    ),
+    (
+        "cl_p_per_rad",
+        &[
+            (0.0, -0.3),
+            (20.0, -0.3),
+            (32.0, 0.05),
+            (40.0, 0.05),
+            (90.0, -0.2),
+        ],
+    ),
+    ("cl_r_per_rad", &[(0.0, 0.1), (90.0, 0.1)]),
+    ("cn_p_per_rad", &[(0.0, -0.03), (90.0, -0.03)]),
+    (
+        "cn_r_per_rad",
+        &[(0.0, -0.3), (25.0, -0.3), (40.0, -0.15), (90.0, -0.15)],
+    ),
+    (
+        "cl_da_per_rad",
+        &[(0.0, 0.16), (15.0, 0.16), (35.0, 0.064), (90.0, 0.064)],
+    ),
+    (
+        "cn_da_per_rad",
+        &[(0.0, -0.01), (15.0, -0.01), (30.0, -0.04), (90.0, -0.04)],
+    ),
+    ("cl_dr_per_rad", &[(0.0, 0.01), (90.0, 0.01)]),
+    ("cn_dr_per_rad", &[(0.0, -0.07), (90.0, -0.07)]),
+    ("cy_dr_per_rad", &[(0.0, 0.2), (90.0, 0.2)]),
+];
+
 fn interp(t: &[(f64, f64)], x: f64) -> f64 {
     if x <= t[0].0 {
         return t[0].1;
@@ -209,6 +271,15 @@ fn at_mach(f: impl Fn(usize) -> f64) -> Vec<(f64, f64)> {
     (0..MACH.len()).map(|j| (MACH[j], f(j))).collect()
 }
 
+/// The `"lateral"` object of `kestrel.json`: one `alpha_deg` curve per derivative.
+fn lateral_block() -> String {
+    let items: Vec<String> = LATERAL
+        .iter()
+        .map(|(name, pts)| format!("    \"{name}\": {}", curve("alpha_deg", pts, 4)))
+        .collect();
+    format!("{{\n{}\n  }}", items.join(",\n"))
+}
+
 /// The full text of `kestrel.json`.
 pub fn render() -> String {
     let rows: Vec<(f64, Vec<f64>, Vec<f64>)> = (0..MACH.len()).map(row).collect();
@@ -241,20 +312,7 @@ pub fn render() -> String {
     "cm_q_per_rad": -9,
     "cm_alpha_dot_per_rad": -3
   }},
-  "lateral": {{
-    "cy_beta_per_rad": -0.9,
-    "cl_beta_per_rad": -0.1,
-    "cn_beta_per_rad": 0.14,
-    "cl_p_per_rad": -0.3,
-    "cl_r_per_rad": 0.1,
-    "cn_p_per_rad": -0.03,
-    "cn_r_per_rad": -0.3,
-    "cl_da_per_rad": 0.16,
-    "cn_da_per_rad": -0.01,
-    "cl_dr_per_rad": 0.01,
-    "cn_dr_per_rad": -0.07,
-    "cy_dr_per_rad": 0.2
-  }},
+  "lateral": {},
   "post_stall": {{
     "blend_start_deg": {},
     "blend_end_deg": {},
@@ -283,6 +341,7 @@ pub fn render() -> String {
         curve("mach", &flat(0.135), 4),
         grid(&cm_rows, "    "),
         curve("mach", &cm_de, 4),
+        lateral_block(),
         curve("mach", &blend_start, 2),
         curve("mach", &blend_end, 2),
         num(CD90, 3),

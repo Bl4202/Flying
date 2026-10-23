@@ -142,21 +142,88 @@ pub struct Coefficients {
     pub blend: f64,
 }
 
-/// Lateral and directional derivatives, per radian.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Lateral and directional derivatives, per radian, each against `|alpha|` in degrees (ADR-38).
+#[derive(Clone, Debug, PartialEq)]
 struct Lateral {
-    cy_beta: f64,
-    cl_beta: f64,
-    cn_beta: f64,
-    cl_p: f64,
-    cl_r: f64,
-    cn_p: f64,
-    cn_r: f64,
-    cl_da: f64,
-    cn_da: f64,
-    cl_dr: f64,
-    cn_dr: f64,
-    cy_dr: f64,
+    cy_beta: Table1D,
+    cl_beta: Table1D,
+    cn_beta: Table1D,
+    cl_p: Table1D,
+    cl_r: Table1D,
+    cn_p: Table1D,
+    cn_r: Table1D,
+    cl_da: Table1D,
+    cn_da: Table1D,
+    cl_dr: Table1D,
+    cn_dr: Table1D,
+    cy_dr: Table1D,
+}
+
+/// The lateral derivatives at one angle of attack.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LateralAt {
+    /// Side force from sideslip.
+    pub cy_beta: f64,
+    /// Rolling moment from sideslip.
+    pub cl_beta: f64,
+    /// Yawing moment from sideslip.
+    pub cn_beta: f64,
+    /// Roll damping.
+    pub cl_p: f64,
+    /// Rolling moment from yaw rate.
+    pub cl_r: f64,
+    /// Yawing moment from roll rate.
+    pub cn_p: f64,
+    /// Yaw damping.
+    pub cn_r: f64,
+    /// Rolling moment per radian of aileron.
+    pub cl_da: f64,
+    /// Yawing moment per radian of aileron.
+    pub cn_da: f64,
+    /// Rolling moment per radian of rudder.
+    pub cl_dr: f64,
+    /// Yawing moment per radian of rudder.
+    pub cn_dr: f64,
+    /// Side force per radian of rudder.
+    pub cy_dr: f64,
+}
+
+impl Lateral {
+    fn from_def(t: &content::aero::Lateral) -> Result<Self, ModelError> {
+        Ok(Self {
+            cy_beta: curve("cy_beta_per_rad", &t.cy_beta_per_rad)?,
+            cl_beta: curve("cl_beta_per_rad", &t.cl_beta_per_rad)?,
+            cn_beta: curve("cn_beta_per_rad", &t.cn_beta_per_rad)?,
+            cl_p: curve("cl_p_per_rad", &t.cl_p_per_rad)?,
+            cl_r: curve("cl_r_per_rad", &t.cl_r_per_rad)?,
+            cn_p: curve("cn_p_per_rad", &t.cn_p_per_rad)?,
+            cn_r: curve("cn_r_per_rad", &t.cn_r_per_rad)?,
+            cl_da: curve("cl_da_per_rad", &t.cl_da_per_rad)?,
+            cn_da: curve("cn_da_per_rad", &t.cn_da_per_rad)?,
+            cl_dr: curve("cl_dr_per_rad", &t.cl_dr_per_rad)?,
+            cn_dr: curve("cn_dr_per_rad", &t.cn_dr_per_rad)?,
+            cy_dr: curve("cy_dr_per_rad", &t.cy_dr_per_rad)?,
+        })
+    }
+
+    /// The derivatives at `|alpha|` = `alpha_deg`.
+    fn at(&self, alpha_deg: f64) -> LateralAt {
+        let a = alpha_deg.abs();
+        LateralAt {
+            cy_beta: self.cy_beta.eval(a),
+            cl_beta: self.cl_beta.eval(a),
+            cn_beta: self.cn_beta.eval(a),
+            cl_p: self.cl_p.eval(a),
+            cl_r: self.cl_r.eval(a),
+            cn_p: self.cn_p.eval(a),
+            cn_r: self.cn_r.eval(a),
+            cl_da: self.cl_da.eval(a),
+            cn_da: self.cn_da.eval(a),
+            cl_dr: self.cl_dr.eval(a),
+            cn_dr: self.cn_dr.eval(a),
+            cy_dr: self.cy_dr.eval(a),
+        }
+    }
 }
 
 /// The table-driven aerodynamic model of one airframe, built once from content.
@@ -270,20 +337,7 @@ impl TableAero {
             cm_de: curve("cm_de_per_rad", &aero.pitch.cm_de_per_rad)?,
             cm_q: f(aero.pitch.cm_q_per_rad),
             cm_alpha_dot: f(aero.pitch.cm_alpha_dot_per_rad),
-            lateral: Lateral {
-                cy_beta: f(t.cy_beta_per_rad),
-                cl_beta: f(t.cl_beta_per_rad),
-                cn_beta: f(t.cn_beta_per_rad),
-                cl_p: f(t.cl_p_per_rad),
-                cl_r: f(t.cl_r_per_rad),
-                cn_p: f(t.cn_p_per_rad),
-                cn_r: f(t.cn_r_per_rad),
-                cl_da: f(t.cl_da_per_rad),
-                cn_da: f(t.cn_da_per_rad),
-                cl_dr: f(t.cl_dr_per_rad),
-                cn_dr: f(t.cn_dr_per_rad),
-                cy_dr: f(t.cy_dr_per_rad),
-            },
+            lateral: Lateral::from_def(t)?,
             blend_start_deg: curve("blend_start_deg", &aero.post_stall.blend_start_deg)?,
             blend_end_deg: curve("blend_end_deg", &aero.post_stall.blend_end_deg)?,
             cd90: f(aero.post_stall.cd90),
@@ -321,6 +375,13 @@ impl TableAero {
     #[must_use]
     pub fn ref_point_body_m(&self) -> DVec3 {
         self.ref_point_body_m
+    }
+
+    /// The lateral and directional derivatives at an angle of attack, degrees (read at
+    /// `|alpha|`).
+    #[must_use]
+    pub fn lateral_at(&self, alpha_deg: f64) -> LateralAt {
+        self.lateral.at(alpha_deg)
     }
 
     /// Angle of attack of the lift peak at a Mach number, degrees (interpolated between rows).
@@ -438,7 +499,7 @@ impl TableAero {
 
         // Rate terms: alpha-dot is non-dimensionalised like q.
         let alpha_dot_hat = self.alpha_dot_hat(input.alpha_dot_rps, air.tas_mps);
-        let t = &self.lateral;
+        let t = self.lateral.at(a_deg);
         Coefficients {
             cl,
             cd,

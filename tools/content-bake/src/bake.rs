@@ -8,11 +8,11 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::check::{
-    LoadedAero, LoadedEngine, baker_bug, load_aero, load_aircraft, load_engine, load_locale,
-    load_pack, reference_kg,
+    LoadedAero, LoadedEngine, LoadedFcs, baker_bug, load_aero, load_aircraft, load_engine,
+    load_fcs, load_locale, load_pack, reference_kg,
 };
 use crate::diag::{Diagnostic, pointer};
-use crate::model::{AeroFile, AircraftFile, EngineFile, PackFile};
+use crate::model::{AeroFile, AircraftFile, EngineFile, FcsGainsFile, PackFile};
 use content::{ContentId, Entry};
 
 /// Standard gravity, m/s² (thrust-to-weight).
@@ -32,6 +32,8 @@ pub struct Sources {
     pub engines: Vec<(String, String)>,
     /// `(name, text)` of each `aero/*.json`.
     pub aero: Vec<(String, String)>,
+    /// `(name, text)` of each `fcs/*.json`.
+    pub fcs: Vec<(String, String)>,
 }
 
 /// A successful bake.
@@ -47,6 +49,8 @@ pub struct Baked {
     pub engines: Vec<EngineFile>,
     /// The aero tables, sorted by id.
     pub aero: Vec<AeroFile>,
+    /// The control-law gains, sorted by id.
+    pub fcs: Vec<FcsGainsFile>,
 }
 
 /// One loaded entity, before ids are turned into handles.
@@ -58,6 +62,7 @@ enum Loaded {
     Aircraft(AircraftFile),
     Engine(LoadedEngine),
     Aero(LoadedAero),
+    Fcs(LoadedFcs),
 }
 
 /// Validates and packs `src`. Collects every diagnostic it can before giving up.
@@ -101,6 +106,11 @@ pub fn bake_sources(src: &Sources) -> Result<Baked, Vec<Diagnostic>> {
             add(name, a.file.id.clone(), Loaded::Aero(a), &mut problems);
         }
     }
+    for (name, text) in &src.fcs {
+        if let Some(f) = keep(load_fcs(name, text, &pack.id, &locale), &mut problems) {
+            add(name, f.file.id.clone(), Loaded::Fcs(f), &mut problems);
+        }
+    }
     if !problems.is_empty() {
         return Err(problems);
     }
@@ -118,7 +128,7 @@ pub fn bake_sources(src: &Sources) -> Result<Baked, Vec<Diagnostic>> {
         .collect();
     let resolve = |id: &str| handles.get(id).copied();
     let mut entries = Vec::with_capacity(by_id.len());
-    let mut baked_files = (Vec::new(), Vec::new(), Vec::new());
+    let mut baked_files = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for (id, (name, item)) in &by_id {
         let entry = match item {
             Loaded::Aircraft(a) => {
@@ -132,6 +142,10 @@ pub fn bake_sources(src: &Sources) -> Result<Baked, Vec<Diagnostic>> {
             Loaded::Aero(a) => {
                 baked_files.2.push(a.file.clone());
                 Entry::Aero(a.def.clone())
+            }
+            Loaded::Fcs(f) => {
+                baked_files.3.push(f.file.clone());
+                Entry::Fcs(f.def.clone())
             }
         };
         entries.push((id.clone(), entry));
@@ -150,6 +164,7 @@ pub fn bake_sources(src: &Sources) -> Result<Baked, Vec<Diagnostic>> {
         aircraft: baked_files.0,
         engines: baked_files.1,
         aero: baked_files.2,
+        fcs: baked_files.3,
     })
 }
 
@@ -166,6 +181,7 @@ fn check_cross_references(
         Some((_, Loaded::Aero(a))) => Some(a),
         _ => None,
     };
+    let has_fcs = |id: &str| matches!(by_id.get(id), Some((_, Loaded::Fcs(_))));
     for (name, item) in by_id.values() {
         let Loaded::Aircraft(a) = item else { continue };
         let mut thrust_ok = true;
@@ -222,6 +238,22 @@ fn check_cross_references(
             }
             Some(_) => {}
         }
+        if !has_fcs(&a.fcs.gains_ref) {
+            problems.push(Diagnostic::new(
+                name,
+                "/fcs/gains_ref",
+                format!(
+                    "there are no control gains `{}` in the pack",
+                    a.fcs.gains_ref
+                ),
+                "add the gains file under fcs/, or fix the id",
+            ));
+        }
+        if let Some(t) = aero(&a.aero.tables_ref) {
+            for p in crate::gear::lint_touchdown(a, &t.file) {
+                problems.push(Diagnostic::new(name, p.ptr, p.message, p.hint));
+            }
+        }
     }
 }
 
@@ -252,6 +284,7 @@ fn check_unused_locale_keys(
             Loaded::Aircraft(a) => Some(a.name_key.as_str()),
             Loaded::Engine(e) => Some(e.file.name_key.as_str()),
             Loaded::Aero(_) => None,
+            Loaded::Fcs(f) => Some(f.file.name_key.as_str()),
         })
         .collect();
     for key in locale.keys().filter(|k| !used.contains(&k.as_str())) {
@@ -337,7 +370,7 @@ fn read_file(dir: &Path, rel: &str) -> Result<(String, String), Vec<Diagnostic>>
 }
 
 /// Reads a pack directory (`pack.json`, `locales/en.json`, `aircraft/`, and optionally
-/// `engines/` and `aero/`) and bakes it.
+/// `engines/`, `aero/` and `fcs/`) and bakes it.
 ///
 /// # Errors
 /// Read failures and every diagnostic from [`bake_sources`].
@@ -350,6 +383,7 @@ pub fn bake_dir(dir: &Path) -> Result<Baked, Vec<Diagnostic>> {
         aircraft: read_dir_json(dir, "aircraft", true)?,
         engines: read_dir_json(dir, "engines", false)?,
         aero: read_dir_json(dir, "aero", false)?,
+        fcs: read_dir_json(dir, "fcs", false)?,
     })
 }
 
@@ -370,6 +404,7 @@ pub fn manifest(baked: &Baked, cpack_file: &str) -> Value {
                 "aircraft": baked.aircraft.len(),
                 "engines": baked.engines.len(),
                 "aero": baked.aero.len(),
+                "fcs": baked.fcs.len(),
             },
         }],
     })

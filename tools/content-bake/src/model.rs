@@ -12,11 +12,16 @@ use serde::{Deserialize, Serialize};
 
 use content::aero::{ConfigDeltas, Drag, Lateral, Lift, Pitch, PostStall};
 use content::aircraft::{
-    Actuator, AeroLimits, Airbrake, EngineInstall, EnvelopePoint, Fcs, Geometry, Mass, Tank,
+    Actuator, AeroLimits, Airbrake, ContactPoint, EngineInstall, EnvelopePoint, Fcs, GearActuator,
+    GearLeg, Geometry, Mass, NMaxByConfig, Tank,
+};
+use content::fcs::{
+    ConfigGains, FullGains, GcasGains, GroundGains, MouseAimGains, NwsGains, OverspeedGains,
+    PitchGains, RecoverGains, RollGains, YawGains,
 };
 use content::{
     AeroDef, AircraftDef, Category, ContentId, Curve, EngineDef, EngineKind, EnvelopeConfig, Era,
-    Grid, Metric, Requirement,
+    FcsDef, Grid, Metric, Requirement,
 };
 
 /// Tag of the pack manifest format.
@@ -27,9 +32,11 @@ pub const AIRCRAFT_SCHEMA: &str = "aircraft/1";
 pub const ENGINE_SCHEMA: &str = "engine/1";
 /// Tag of the aero-table format.
 pub const AERO_SCHEMA: &str = "aero/1";
+/// Tag of the flight-control gains format.
+pub const FCS_SCHEMA: &str = "fcs/1";
 
 /// Axis names a table may use (each table field expects one; the baker checks which).
-pub const AXES: &[&str] = &["mach", "alpha_deg", "deflection_deg"];
+pub const AXES: &[&str] = &["mach", "alpha_deg", "deflection_deg", "qbar_kpa", "nz_g"];
 
 /// `pack.json`: identity and compatibility of one content pack (GDD 62.4).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -267,6 +274,55 @@ pub struct GeometryFile {
     /// Bounding box: length, span, height.
     #[schemars(extend("x-unit" = "m"))]
     pub bbox_m: [f64; 3],
+    /// Landing-gear legs (GDD 11.13).
+    #[schemars(length(max = 4))]
+    pub gear: Vec<GearLegFile>,
+    /// Airframe points that can scrape the ground.
+    #[schemars(length(max = 8))]
+    pub contacts: Vec<ContactFile>,
+}
+
+/// One landing-gear leg: a massless strut with a wheel at its end.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GearLegFile {
+    /// Name within the aircraft (`nose`, `main_l`, ...).
+    #[schemars(length(min = 1))]
+    pub id: String,
+    /// Wheel contact point with the leg fully extended, in body axes.
+    #[schemars(extend("x-unit" = "m"))]
+    pub pos_m: [f64; 3],
+    /// Strut travel.
+    #[schemars(extend("x-unit" = "m"), range(min = 0.05, max = 2.0))]
+    pub stroke_m: f64,
+    /// Spring rate.
+    #[schemars(extend("x-unit" = "N/m"), range(min = 1.0e3, max = 5.0e6))]
+    pub k_npm: f64,
+    /// Damping while the strut compresses.
+    #[schemars(extend("x-unit" = "N s/m"), range(min = 0.0, max = 5.0e5))]
+    pub c_comp_nspm: f64,
+    /// Damping while the strut extends (usually the larger).
+    #[schemars(extend("x-unit" = "N s/m"), range(min = 0.0, max = 5.0e5))]
+    pub c_ext_nspm: f64,
+    /// Largest steering angle (0 if the leg does not steer).
+    #[schemars(extend("x-unit" = "deg"), range(min = 0.0, max = 90.0))]
+    pub steer_max_deg: f64,
+    /// True if the wheel has a brake.
+    pub brake: bool,
+    /// True for a main leg.
+    pub main: bool,
+}
+
+/// One airframe contact point.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ContactFile {
+    /// Name within the aircraft (`nose_tip`, `tail`, `wing_l`, ...).
+    #[schemars(length(min = 1))]
+    pub id: String,
+    /// Position in body axes.
+    #[schemars(extend("x-unit" = "m"))]
+    pub pos_m: [f64; 3],
 }
 
 /// One engine installation.
@@ -308,6 +364,8 @@ pub struct AeroLimitsFile {
     /// Structural negative load factor (below zero).
     #[schemars(extend("x-unit" = "g"), range(min = -20.0, max = -0.1))]
     pub n_min: f64,
+    /// Positive load factors with the gear or the flaps out.
+    pub n_max_by_config: NMaxByConfigFile,
     /// Gear-extended speed limit.
     #[schemars(extend("x-unit" = "m/s"), range(min = 10.0, max = 1000.0))]
     pub gear_limit_mps: f64,
@@ -319,12 +377,26 @@ pub struct AeroLimitsFile {
     pub static_margin_mac: f64,
 }
 
-/// Flight-control data (GDD 11.11; the control laws arrive in v0.1b).
+/// Load-factor limits that depend on the configuration.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NMaxByConfigFile {
+    /// Positive limit with the gear extended.
+    #[schemars(extend("x-unit" = "g"), range(min = 1.0, max = 20.0))]
+    pub gear: f64,
+    /// Positive limit with the flaps out.
+    #[schemars(extend("x-unit" = "g"), range(min = 1.0, max = 20.0))]
+    pub flaps: f64,
+}
+
+/// Flight-control data (GDD 11.11): limits and actuators, and the gains by reference.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FcsFile {
     /// True if the airframe cannot be flown without stability augmentation.
     pub sas_required: bool,
+    /// Id of the control-law gains (`namespace:fcs/name`).
+    pub gains_ref: String,
     /// Limiter settings.
     pub limiters: LimitersFile,
     /// Control-surface actuators (GDD 11.7).
@@ -362,6 +434,17 @@ pub struct ActuatorsFile {
     pub tef: ActuatorFile,
     /// Airbrake.
     pub airbrake: AirbrakeFile,
+    /// Landing gear.
+    pub gear: GearActuatorFile,
+}
+
+/// The landing-gear actuator.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GearActuatorFile {
+    /// Time for the gear to travel from up to down (or back).
+    #[schemars(extend("x-unit" = "s"), range(min = 0.5, max = 60.0))]
+    pub transit_s: f64,
 }
 
 /// One surface actuator.
@@ -490,6 +573,93 @@ fn actuator_file(a: &Actuator) -> ActuatorFile {
     }
 }
 
+impl EnvelopePointFile {
+    fn to_point(&self) -> Option<EnvelopePoint> {
+        Some(EnvelopePoint {
+            id: self.id.clone(),
+            mass_kg: self.mass_kg as f32,
+            alt_m: self.alt_m as f32,
+            mach: self.mach.map(|m| m as f32),
+            config: EnvelopeConfig::from_name(&self.config)?,
+            metric: Metric::from_name(&self.metric)?,
+            value: self.value as f32,
+            tol_pct: self.tol_pct as f32,
+            requires: match &self.requires {
+                None => None,
+                Some(r) => Some(Requirement::from_name(r)?),
+            },
+        })
+    }
+}
+
+impl GeometryFile {
+    fn to_geometry(&self) -> Geometry {
+        Geometry {
+            wing_area_m2: self.wing_area_m2 as f32,
+            span_m: self.span_m as f32,
+            mac_m: self.mac_m as f32,
+            ref_point_m: s3(self.ref_point_m),
+            bbox_m: s3(self.bbox_m),
+            gear: self
+                .gear
+                .iter()
+                .map(|l| GearLeg {
+                    id: l.id.clone(),
+                    pos_m: s3(l.pos_m),
+                    stroke_m: l.stroke_m as f32,
+                    k_npm: l.k_npm as f32,
+                    c_comp_nspm: l.c_comp_nspm as f32,
+                    c_ext_nspm: l.c_ext_nspm as f32,
+                    steer_max_deg: l.steer_max_deg as f32,
+                    brake: l.brake,
+                    main: l.main,
+                })
+                .collect(),
+            contacts: self
+                .contacts
+                .iter()
+                .map(|p| ContactPoint {
+                    id: p.id.clone(),
+                    pos_m: s3(p.pos_m),
+                })
+                .collect(),
+        }
+    }
+
+    fn from_geometry(g: &Geometry) -> Self {
+        Self {
+            wing_area_m2: f(g.wing_area_m2),
+            span_m: f(g.span_m),
+            mac_m: f(g.mac_m),
+            ref_point_m: f3(g.ref_point_m),
+            bbox_m: f3(g.bbox_m),
+            gear: g
+                .gear
+                .iter()
+                .map(|l| GearLegFile {
+                    id: l.id.clone(),
+                    pos_m: f3(l.pos_m),
+                    stroke_m: f(l.stroke_m),
+                    k_npm: f(l.k_npm),
+                    c_comp_nspm: f(l.c_comp_nspm),
+                    c_ext_nspm: f(l.c_ext_nspm),
+                    steer_max_deg: f(l.steer_max_deg),
+                    brake: l.brake,
+                    main: l.main,
+                })
+                .collect(),
+            contacts: g
+                .contacts
+                .iter()
+                .map(|p| ContactFile {
+                    id: p.id.clone(),
+                    pos_m: f3(p.pos_m),
+                })
+                .collect(),
+        }
+    }
+}
+
 impl AircraftFile {
     /// The runtime definition. `resolve` maps an entity id to its handle. `None` if a name or a
     /// reference does not resolve; [`crate::check`] and [`crate::bake`] report those with a
@@ -515,22 +685,7 @@ impl AircraftFile {
             .envelope
             .points
             .iter()
-            .map(|p| {
-                Some(EnvelopePoint {
-                    id: p.id.clone(),
-                    mass_kg: p.mass_kg as f32,
-                    alt_m: p.alt_m as f32,
-                    mach: p.mach.map(|m| m as f32),
-                    config: EnvelopeConfig::from_name(&p.config)?,
-                    metric: Metric::from_name(&p.metric)?,
-                    value: p.value as f32,
-                    tol_pct: p.tol_pct as f32,
-                    requires: match &p.requires {
-                        None => None,
-                        Some(r) => Some(Requirement::from_name(r)?),
-                    },
-                })
-            })
+            .map(EnvelopePointFile::to_point)
             .collect::<Option<Vec<_>>>()?;
         Some(AircraftDef {
             name_key: self.name_key.clone(),
@@ -558,13 +713,7 @@ impl AircraftFile {
                     })
                     .collect(),
             },
-            geometry: Geometry {
-                wing_area_m2: g.wing_area_m2 as f32,
-                span_m: g.span_m as f32,
-                mac_m: g.mac_m as f32,
-                ref_point_m: s3(g.ref_point_m),
-                bbox_m: s3(g.bbox_m),
-            },
+            geometry: g.to_geometry(),
             engines,
             aero: AeroLimits {
                 tables: resolve(&a.tables_ref)?,
@@ -574,6 +723,10 @@ impl AircraftFile {
                 service_ceiling_m: a.service_ceiling_m as f32,
                 n_max: a.n_max as f32,
                 n_min: a.n_min as f32,
+                n_max_by_config: NMaxByConfig {
+                    gear: a.n_max_by_config.gear as f32,
+                    flaps: a.n_max_by_config.flaps as f32,
+                },
                 gear_limit_mps: a.gear_limit_mps as f32,
                 flap_limit_mps: a.flap_limit_mps as f32,
                 static_margin_mac: a.static_margin_mac as f32,
@@ -592,6 +745,10 @@ impl AircraftFile {
                     rate_per_s: c.actuators.airbrake.rate_per_s as f32,
                     tau_s: c.actuators.airbrake.tau_s as f32,
                 },
+                gear: GearActuator {
+                    transit_s: c.actuators.gear.transit_s as f32,
+                },
+                gains: resolve(&c.gains_ref)?,
             },
             envelope,
         })
@@ -632,13 +789,7 @@ impl AircraftFile {
                     })
                     .collect(),
             },
-            geometry: GeometryFile {
-                wing_area_m2: f(g.wing_area_m2),
-                span_m: f(g.span_m),
-                mac_m: f(g.mac_m),
-                ref_point_m: f3(g.ref_point_m),
-                bbox_m: f3(g.bbox_m),
-            },
+            geometry: GeometryFile::from_geometry(g),
             engines: d
                 .engines
                 .iter()
@@ -656,12 +807,17 @@ impl AircraftFile {
                 service_ceiling_m: f(a.service_ceiling_m),
                 n_max: f(a.n_max),
                 n_min: f(a.n_min),
+                n_max_by_config: NMaxByConfigFile {
+                    gear: f(a.n_max_by_config.gear),
+                    flaps: f(a.n_max_by_config.flaps),
+                },
                 gear_limit_mps: f(a.gear_limit_mps),
                 flap_limit_mps: f(a.flap_limit_mps),
                 static_margin_mac: f(a.static_margin_mac),
             },
             fcs: FcsFile {
                 sas_required: c.sas_required,
+                gains_ref: name_of(c.gains),
                 limiters: LimitersFile {
                     alpha_limit_deg: f(c.alpha_limit_deg),
                     n_cmd_max: f(c.n_cmd_max),
@@ -676,6 +832,9 @@ impl AircraftFile {
                     airbrake: AirbrakeFile {
                         rate_per_s: f(c.airbrake.rate_per_s),
                         tau_s: f(c.airbrake.tau_s),
+                    },
+                    gear: GearActuatorFile {
+                        transit_s: f(c.gear.transit_s),
                     },
                 },
             },
@@ -960,46 +1119,34 @@ pub struct PitchFile {
     pub cm_alpha_dot_per_rad: f64,
 }
 
-/// Lateral and directional derivatives (GDD C.5).
+/// Lateral and directional derivatives (GDD C.5), each against `|alpha_deg|` (ADR-38).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LateralFile {
     /// Side force from sideslip.
-    #[schemars(range(min = -10.0, max = 10.0))]
-    pub cy_beta_per_rad: f64,
+    pub cy_beta_per_rad: CurveFile,
     /// Rolling moment from sideslip.
-    #[schemars(range(min = -10.0, max = 10.0))]
-    pub cl_beta_per_rad: f64,
+    pub cl_beta_per_rad: CurveFile,
     /// Yawing moment from sideslip.
-    #[schemars(range(min = -10.0, max = 10.0))]
-    pub cn_beta_per_rad: f64,
+    pub cn_beta_per_rad: CurveFile,
     /// Roll damping.
-    #[schemars(range(min = -10.0, max = 0.0))]
-    pub cl_p_per_rad: f64,
+    pub cl_p_per_rad: CurveFile,
     /// Rolling moment from yaw rate.
-    #[schemars(range(min = -10.0, max = 10.0))]
-    pub cl_r_per_rad: f64,
+    pub cl_r_per_rad: CurveFile,
     /// Yawing moment from roll rate.
-    #[schemars(range(min = -10.0, max = 10.0))]
-    pub cn_p_per_rad: f64,
+    pub cn_p_per_rad: CurveFile,
     /// Yaw damping.
-    #[schemars(range(min = -10.0, max = 0.0))]
-    pub cn_r_per_rad: f64,
+    pub cn_r_per_rad: CurveFile,
     /// Rolling moment per radian of aileron.
-    #[schemars(range(min = -10.0, max = 10.0))]
-    pub cl_da_per_rad: f64,
+    pub cl_da_per_rad: CurveFile,
     /// Yawing moment per radian of aileron.
-    #[schemars(range(min = -10.0, max = 10.0))]
-    pub cn_da_per_rad: f64,
+    pub cn_da_per_rad: CurveFile,
     /// Rolling moment per radian of rudder.
-    #[schemars(range(min = -10.0, max = 10.0))]
-    pub cl_dr_per_rad: f64,
+    pub cl_dr_per_rad: CurveFile,
     /// Yawing moment per radian of rudder.
-    #[schemars(range(min = -10.0, max = 10.0))]
-    pub cn_dr_per_rad: f64,
+    pub cn_dr_per_rad: CurveFile,
     /// Side force per radian of rudder.
-    #[schemars(range(min = -10.0, max = 10.0))]
-    pub cy_dr_per_rad: f64,
+    pub cy_dr_per_rad: CurveFile,
 }
 
 /// The flat-plate blend beyond the tables.
@@ -1054,6 +1201,18 @@ pub const AERO_AXES: &[(&str, &[&str])] = &[
     ("/drag/k_induced", &["mach"]),
     ("/pitch/cm_0", &["alpha_deg", "mach"]),
     ("/pitch/cm_de_per_rad", &["mach"]),
+    ("/lateral/cy_beta_per_rad", &["alpha_deg"]),
+    ("/lateral/cl_beta_per_rad", &["alpha_deg"]),
+    ("/lateral/cn_beta_per_rad", &["alpha_deg"]),
+    ("/lateral/cl_p_per_rad", &["alpha_deg"]),
+    ("/lateral/cl_r_per_rad", &["alpha_deg"]),
+    ("/lateral/cn_p_per_rad", &["alpha_deg"]),
+    ("/lateral/cn_r_per_rad", &["alpha_deg"]),
+    ("/lateral/cl_da_per_rad", &["alpha_deg"]),
+    ("/lateral/cn_da_per_rad", &["alpha_deg"]),
+    ("/lateral/cl_dr_per_rad", &["alpha_deg"]),
+    ("/lateral/cn_dr_per_rad", &["alpha_deg"]),
+    ("/lateral/cy_dr_per_rad", &["alpha_deg"]),
     ("/post_stall/blend_start_deg", &["mach"]),
     ("/post_stall/blend_end_deg", &["mach"]),
     ("/control_effectiveness", &["deflection_deg"]),
@@ -1095,18 +1254,18 @@ impl AeroFile {
                 cm_alpha_dot_per_rad: p.cm_alpha_dot_per_rad as f32,
             },
             lateral: Lateral {
-                cy_beta_per_rad: t.cy_beta_per_rad as f32,
-                cl_beta_per_rad: t.cl_beta_per_rad as f32,
-                cn_beta_per_rad: t.cn_beta_per_rad as f32,
-                cl_p_per_rad: t.cl_p_per_rad as f32,
-                cl_r_per_rad: t.cl_r_per_rad as f32,
-                cn_p_per_rad: t.cn_p_per_rad as f32,
-                cn_r_per_rad: t.cn_r_per_rad as f32,
-                cl_da_per_rad: t.cl_da_per_rad as f32,
-                cn_da_per_rad: t.cn_da_per_rad as f32,
-                cl_dr_per_rad: t.cl_dr_per_rad as f32,
-                cn_dr_per_rad: t.cn_dr_per_rad as f32,
-                cy_dr_per_rad: t.cy_dr_per_rad as f32,
+                cy_beta_per_rad: t.cy_beta_per_rad.to_curve(),
+                cl_beta_per_rad: t.cl_beta_per_rad.to_curve(),
+                cn_beta_per_rad: t.cn_beta_per_rad.to_curve(),
+                cl_p_per_rad: t.cl_p_per_rad.to_curve(),
+                cl_r_per_rad: t.cl_r_per_rad.to_curve(),
+                cn_p_per_rad: t.cn_p_per_rad.to_curve(),
+                cn_r_per_rad: t.cn_r_per_rad.to_curve(),
+                cl_da_per_rad: t.cl_da_per_rad.to_curve(),
+                cn_da_per_rad: t.cn_da_per_rad.to_curve(),
+                cl_dr_per_rad: t.cl_dr_per_rad.to_curve(),
+                cn_dr_per_rad: t.cn_dr_per_rad.to_curve(),
+                cy_dr_per_rad: t.cy_dr_per_rad.to_curve(),
             },
             post_stall: PostStall {
                 blend_start_deg: s.blend_start_deg.to_curve(),
@@ -1160,18 +1319,18 @@ impl AeroFile {
                 cm_alpha_dot_per_rad: f(p.cm_alpha_dot_per_rad),
             },
             lateral: LateralFile {
-                cy_beta_per_rad: f(t.cy_beta_per_rad),
-                cl_beta_per_rad: f(t.cl_beta_per_rad),
-                cn_beta_per_rad: f(t.cn_beta_per_rad),
-                cl_p_per_rad: f(t.cl_p_per_rad),
-                cl_r_per_rad: f(t.cl_r_per_rad),
-                cn_p_per_rad: f(t.cn_p_per_rad),
-                cn_r_per_rad: f(t.cn_r_per_rad),
-                cl_da_per_rad: f(t.cl_da_per_rad),
-                cn_da_per_rad: f(t.cn_da_per_rad),
-                cl_dr_per_rad: f(t.cl_dr_per_rad),
-                cn_dr_per_rad: f(t.cn_dr_per_rad),
-                cy_dr_per_rad: f(t.cy_dr_per_rad),
+                cy_beta_per_rad: CurveFile::from_curve("alpha_deg", &t.cy_beta_per_rad),
+                cl_beta_per_rad: CurveFile::from_curve("alpha_deg", &t.cl_beta_per_rad),
+                cn_beta_per_rad: CurveFile::from_curve("alpha_deg", &t.cn_beta_per_rad),
+                cl_p_per_rad: CurveFile::from_curve("alpha_deg", &t.cl_p_per_rad),
+                cl_r_per_rad: CurveFile::from_curve("alpha_deg", &t.cl_r_per_rad),
+                cn_p_per_rad: CurveFile::from_curve("alpha_deg", &t.cn_p_per_rad),
+                cn_r_per_rad: CurveFile::from_curve("alpha_deg", &t.cn_r_per_rad),
+                cl_da_per_rad: CurveFile::from_curve("alpha_deg", &t.cl_da_per_rad),
+                cn_da_per_rad: CurveFile::from_curve("alpha_deg", &t.cn_da_per_rad),
+                cl_dr_per_rad: CurveFile::from_curve("alpha_deg", &t.cl_dr_per_rad),
+                cn_dr_per_rad: CurveFile::from_curve("alpha_deg", &t.cn_dr_per_rad),
+                cy_dr_per_rad: CurveFile::from_curve("alpha_deg", &t.cy_dr_per_rad),
             },
             post_stall: PostStallFile {
                 blend_start_deg: CurveFile::from_curve("mach", &s.blend_start_deg),
@@ -1193,6 +1352,412 @@ impl AeroFile {
             },
             x_ref_mac: f(a.x_ref_mac),
             ground_effect_k: f(a.ground_effect_k),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// fcs/1
+
+/// The control-law gains of one airframe (GDD 11.11, A.2, ADR-34).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FcsGainsFile {
+    /// Format tag, always `fcs/1`.
+    #[schemars(extend("const" = "fcs/1"))]
+    pub schema: String,
+    /// `namespace:fcs/name`.
+    pub id: String,
+    /// Key of the display name in the locale table.
+    pub name_key: String,
+    /// Pitch axis and the angle-of-attack limiter.
+    pub pitch: PitchGainsFile,
+    /// Roll axis.
+    pub roll: RollGainsFile,
+    /// Yaw axis.
+    pub yaw: YawGainsFile,
+    /// The Full law.
+    pub full: FullGainsFile,
+    /// The overspeed soft wall.
+    pub overspeed: OverspeedGainsFile,
+    /// Configuration limits.
+    pub config: ConfigGainsFile,
+    /// Ground mode.
+    pub ground: GroundGainsFile,
+    /// Time over which an assist switch blends the surface command.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.0, max = 5.0))]
+    pub assist_blend_s: f64,
+    /// Mouse-aim controller.
+    pub mouse_aim: MouseAimGainsFile,
+    /// The recovery button.
+    pub recover: RecoverGainsFile,
+    /// Automatic ground-collision avoidance.
+    pub gcas: GcasGainsFile,
+}
+
+/// Pitch axis gains.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PitchGainsFile {
+    /// Pitch-rate damping gain of the inner loop.
+    #[schemars(extend("x-unit" = "1/s"), range(min = 0.0, max = 50.0))]
+    pub k_q_per_s: f64,
+    /// Proportional gain on the load-factor error.
+    #[schemars(extend("x-unit" = "per g"), range(min = 0.0, max = 20.0))]
+    pub k_n: f64,
+    /// Integral gain on the load-factor error.
+    #[schemars(extend("x-unit" = "1/s"), range(min = 0.0, max = 20.0))]
+    pub k_ni_per_s: f64,
+    /// Time constant of the command prefilter.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.0, max = 2.0))]
+    pub tau_cmd_s: f64,
+    /// Width of the angle-of-attack limiter band below the limit.
+    #[schemars(extend("x-unit" = "deg"), range(min = 0.5, max = 20.0))]
+    pub alpha_band_deg: f64,
+    /// Angle-of-attack feedback gain inside the band.
+    #[schemars(extend("x-unit" = "1/s"), range(min = 0.0, max = 50.0))]
+    pub k_alpha_per_s: f64,
+    /// Most negative angle of attack the limiter allows.
+    #[schemars(extend("x-unit" = "deg"), range(min = -60.0, max = 0.0))]
+    pub alpha_min_deg: f64,
+    /// Largest commanded pitch rate of the Reduced law against dynamic pressure.
+    pub q_max_dps: CurveFile,
+}
+
+/// Roll axis gains.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RollGainsFile {
+    /// Roll-rate damping gain.
+    #[schemars(extend("x-unit" = "1/s"), range(min = 0.0, max = 50.0))]
+    pub k_p_per_s: f64,
+    /// Integral gain on the roll-rate error.
+    #[schemars(extend("x-unit" = "1/s"), range(min = 0.0, max = 20.0))]
+    pub k_pi_per_s: f64,
+    /// Time constant of the command prefilter.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.0, max = 2.0))]
+    pub tau_cmd_s: f64,
+    /// Fraction of the maximum roll rate available against dynamic pressure.
+    pub p_max_qbar: CurveFile,
+    /// Fraction of the maximum roll rate available against angle of attack.
+    pub p_max_alpha: CurveFile,
+    /// Fraction of the maximum roll rate available against load factor.
+    pub p_max_nz: CurveFile,
+}
+
+/// Yaw axis gains.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct YawGainsFile {
+    /// Sideslip feedback gain.
+    #[schemars(extend("x-unit" = "1/s"), range(min = 0.0, max = 50.0))]
+    pub k_beta_per_s: f64,
+    /// Yaw-rate feedback gain.
+    #[schemars(extend("x-unit" = "1/s"), range(min = 0.0, max = 50.0))]
+    pub k_r_per_s: f64,
+    /// Largest sideslip the pedals command, against dynamic pressure.
+    pub beta_max_deg: CurveFile,
+    /// Time constant of the Reduced-law yaw damper.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.01, max = 10.0))]
+    pub yaw_damper_s: f64,
+    /// Washout time constant of the yaw damper.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.01, max = 20.0))]
+    pub washout_s: f64,
+}
+
+/// The Full law.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FullGainsFile {
+    /// Largest commanded flight-path rate.
+    #[schemars(extend("x-unit" = "deg/s"), range(min = 1.0, max = 60.0))]
+    pub gamma_rate_max_dps: f64,
+    /// Flight-path hold gain.
+    #[schemars(extend("x-unit" = "1/s"), range(min = 0.0, max = 20.0))]
+    pub k_gamma_per_s: f64,
+    /// Largest commanded bank angle.
+    #[schemars(extend("x-unit" = "deg"), range(min = 10.0, max = 90.0))]
+    pub bank_max_deg: f64,
+    /// Bank-angle gain.
+    #[schemars(extend("x-unit" = "1/s"), range(min = 0.0, max = 20.0))]
+    pub k_bank_per_s: f64,
+    /// How much tighter than the Standard limit the angle-of-attack limit is.
+    #[schemars(extend("x-unit" = "deg"), range(min = 0.0, max = 10.0))]
+    pub alpha_margin_deg: f64,
+}
+
+/// The overspeed soft wall.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct OverspeedGainsFile {
+    /// Fraction of `vmo` and `mmo` where the wall begins.
+    #[schemars(range(min = 0.5, max = 1.0))]
+    pub onset: f64,
+    /// Pull-up command added per unit of speed ratio past the onset.
+    #[schemars(extend("x-unit" = "g per unit ratio"), range(min = 0.0, max = 500.0))]
+    pub k_pull: f64,
+}
+
+/// Configuration limits.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ConfigGainsFile {
+    /// Negative load limit with the gear or the flaps out.
+    #[schemars(extend("x-unit" = "g"), range(min = -20.0, max = 0.0))]
+    pub n_min_config: f64,
+}
+
+/// Nose-wheel steering schedule.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NwsGainsFile {
+    /// Below this ground speed the full range is available.
+    #[schemars(extend("x-unit" = "m/s"), range(min = 0.0, max = 200.0))]
+    pub low_speed_mps: f64,
+    /// Above this ground speed only the small range is available.
+    #[schemars(extend("x-unit" = "m/s"), range(min = 0.0, max = 200.0))]
+    pub high_speed_mps: f64,
+    /// Full range.
+    #[schemars(extend("x-unit" = "deg"), range(min = 0.0, max = 90.0))]
+    pub low_deg: f64,
+    /// Small range.
+    #[schemars(extend("x-unit" = "deg"), range(min = 0.0, max = 90.0))]
+    pub high_deg: f64,
+}
+
+/// Ground mode gains.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GroundGainsFile {
+    /// Weight-on-wheels debounce.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.0, max = 2.0))]
+    pub wow_debounce_s: f64,
+    /// Blend from the ground law to the flight law after lift-off.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.0, max = 10.0))]
+    pub liftoff_blend_s: f64,
+    /// Blend from the flight law to the ground law after touchdown.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.0, max = 10.0))]
+    pub touchdown_blend_s: f64,
+    /// Pitch-rate damping of the ground law.
+    #[schemars(extend("x-unit" = "1/s"), range(min = 0.0, max = 5.0))]
+    pub k_q_ground_s: f64,
+    /// Nose-wheel steering schedule.
+    pub nws: NwsGainsFile,
+}
+
+/// Mouse-aim gains (GDD 58.4).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MouseAimGainsFile {
+    /// Bank command per unit of heading error.
+    #[schemars(range(min = 0.0, max = 10.0))]
+    pub k_bank: f64,
+    /// Pitch command per radian of elevation error.
+    #[schemars(extend("x-unit" = "1/rad"), range(min = 0.0, max = 20.0))]
+    pub k_pitch_per_rad: f64,
+    /// Aim error below which no input is given.
+    #[schemars(extend("x-unit" = "deg"), range(min = 0.0, max = 10.0))]
+    pub deadzone_deg: f64,
+    /// Stick ramp, full scale per second.
+    #[schemars(extend("x-unit" = "1/s"), range(min = 0.1, max = 50.0))]
+    pub ramp_per_s: f64,
+}
+
+/// The recovery button.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RecoverGainsFile {
+    /// Load factor of the recovery pull-up.
+    #[schemars(extend("x-unit" = "g"), range(min = 1.0, max = 12.0))]
+    pub n_pull: f64,
+    /// Flight-path angle the recovery aims for.
+    #[schemars(extend("x-unit" = "deg"), range(min = 0.0, max = 45.0))]
+    pub gamma_deg: f64,
+}
+
+/// Automatic ground-collision avoidance.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GcasGainsFile {
+    /// Load factor of the avoidance pull-up.
+    #[schemars(extend("x-unit" = "g"), range(min = 1.0, max = 12.0))]
+    pub n_pull: f64,
+    /// Terrain clearance below which it triggers.
+    #[schemars(extend("x-unit" = "m"), range(min = 0.0, max = 1000.0))]
+    pub buffer_m: f64,
+    /// Look-ahead.
+    #[schemars(extend("x-unit" = "s"), range(min = 1.0, max = 30.0))]
+    pub horizon_s: f64,
+    /// Look-ahead step.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.01, max = 1.0))]
+    pub step_s: f64,
+}
+
+/// The axis each fcs table field must use: `(JSON pointer, axes)`.
+pub const FCS_AXES: &[(&str, &[&str])] = &[
+    ("/pitch/q_max_dps", &["qbar_kpa"]),
+    ("/roll/p_max_qbar", &["qbar_kpa"]),
+    ("/roll/p_max_alpha", &["alpha_deg"]),
+    ("/roll/p_max_nz", &["nz_g"]),
+    ("/yaw/beta_max_deg", &["qbar_kpa"]),
+];
+
+impl FcsGainsFile {
+    /// The runtime definition.
+    #[must_use]
+    pub fn to_def(&self) -> FcsDef {
+        let (p, r, y, fu) = (&self.pitch, &self.roll, &self.yaw, &self.full);
+        let (g, m) = (&self.ground, &self.mouse_aim);
+        FcsDef {
+            name_key: self.name_key.clone(),
+            pitch: PitchGains {
+                k_q_per_s: p.k_q_per_s as f32,
+                k_n: p.k_n as f32,
+                k_ni_per_s: p.k_ni_per_s as f32,
+                tau_cmd_s: p.tau_cmd_s as f32,
+                alpha_band_deg: p.alpha_band_deg as f32,
+                k_alpha_per_s: p.k_alpha_per_s as f32,
+                alpha_min_deg: p.alpha_min_deg as f32,
+                q_max_dps: p.q_max_dps.to_curve(),
+            },
+            roll: RollGains {
+                k_p_per_s: r.k_p_per_s as f32,
+                k_pi_per_s: r.k_pi_per_s as f32,
+                tau_cmd_s: r.tau_cmd_s as f32,
+                p_max_qbar: r.p_max_qbar.to_curve(),
+                p_max_alpha: r.p_max_alpha.to_curve(),
+                p_max_nz: r.p_max_nz.to_curve(),
+            },
+            yaw: YawGains {
+                k_beta_per_s: y.k_beta_per_s as f32,
+                k_r_per_s: y.k_r_per_s as f32,
+                yaw_damper_s: y.yaw_damper_s as f32,
+                washout_s: y.washout_s as f32,
+                beta_max_deg: y.beta_max_deg.to_curve(),
+            },
+            full: FullGains {
+                gamma_rate_max_dps: fu.gamma_rate_max_dps as f32,
+                k_gamma_per_s: fu.k_gamma_per_s as f32,
+                bank_max_deg: fu.bank_max_deg as f32,
+                k_bank_per_s: fu.k_bank_per_s as f32,
+                alpha_margin_deg: fu.alpha_margin_deg as f32,
+            },
+            overspeed: OverspeedGains {
+                onset: self.overspeed.onset as f32,
+                k_pull: self.overspeed.k_pull as f32,
+            },
+            config: ConfigGains {
+                n_min_config: self.config.n_min_config as f32,
+            },
+            ground: GroundGains {
+                wow_debounce_s: g.wow_debounce_s as f32,
+                liftoff_blend_s: g.liftoff_blend_s as f32,
+                touchdown_blend_s: g.touchdown_blend_s as f32,
+                k_q_ground_s: g.k_q_ground_s as f32,
+                nws: NwsGains {
+                    low_speed_mps: g.nws.low_speed_mps as f32,
+                    high_speed_mps: g.nws.high_speed_mps as f32,
+                    low_deg: g.nws.low_deg as f32,
+                    high_deg: g.nws.high_deg as f32,
+                },
+            },
+            assist_blend_s: self.assist_blend_s as f32,
+            mouse_aim: MouseAimGains {
+                k_bank: m.k_bank as f32,
+                k_pitch_per_rad: m.k_pitch_per_rad as f32,
+                deadzone_deg: m.deadzone_deg as f32,
+                ramp_per_s: m.ramp_per_s as f32,
+            },
+            recover: RecoverGains {
+                n_pull: self.recover.n_pull as f32,
+                gamma_deg: self.recover.gamma_deg as f32,
+            },
+            gcas: GcasGains {
+                n_pull: self.gcas.n_pull as f32,
+                buffer_m: self.gcas.buffer_m as f32,
+                horizon_s: self.gcas.horizon_s as f32,
+                step_s: self.gcas.step_s as f32,
+            },
+        }
+    }
+
+    /// The authoring form of a baked definition.
+    #[must_use]
+    pub fn from_def(id: &str, d: &FcsDef) -> Self {
+        let (p, r, y, fu) = (&d.pitch, &d.roll, &d.yaw, &d.full);
+        let (g, m) = (&d.ground, &d.mouse_aim);
+        Self {
+            schema: FCS_SCHEMA.to_owned(),
+            id: id.to_owned(),
+            name_key: d.name_key.clone(),
+            pitch: PitchGainsFile {
+                k_q_per_s: f(p.k_q_per_s),
+                k_n: f(p.k_n),
+                k_ni_per_s: f(p.k_ni_per_s),
+                tau_cmd_s: f(p.tau_cmd_s),
+                alpha_band_deg: f(p.alpha_band_deg),
+                k_alpha_per_s: f(p.k_alpha_per_s),
+                alpha_min_deg: f(p.alpha_min_deg),
+                q_max_dps: CurveFile::from_curve("qbar_kpa", &p.q_max_dps),
+            },
+            roll: RollGainsFile {
+                k_p_per_s: f(r.k_p_per_s),
+                k_pi_per_s: f(r.k_pi_per_s),
+                tau_cmd_s: f(r.tau_cmd_s),
+                p_max_qbar: CurveFile::from_curve("qbar_kpa", &r.p_max_qbar),
+                p_max_alpha: CurveFile::from_curve("alpha_deg", &r.p_max_alpha),
+                p_max_nz: CurveFile::from_curve("nz_g", &r.p_max_nz),
+            },
+            yaw: YawGainsFile {
+                k_beta_per_s: f(y.k_beta_per_s),
+                k_r_per_s: f(y.k_r_per_s),
+                beta_max_deg: CurveFile::from_curve("qbar_kpa", &y.beta_max_deg),
+                yaw_damper_s: f(y.yaw_damper_s),
+                washout_s: f(y.washout_s),
+            },
+            full: FullGainsFile {
+                gamma_rate_max_dps: f(fu.gamma_rate_max_dps),
+                k_gamma_per_s: f(fu.k_gamma_per_s),
+                bank_max_deg: f(fu.bank_max_deg),
+                k_bank_per_s: f(fu.k_bank_per_s),
+                alpha_margin_deg: f(fu.alpha_margin_deg),
+            },
+            overspeed: OverspeedGainsFile {
+                onset: f(d.overspeed.onset),
+                k_pull: f(d.overspeed.k_pull),
+            },
+            config: ConfigGainsFile {
+                n_min_config: f(d.config.n_min_config),
+            },
+            ground: GroundGainsFile {
+                wow_debounce_s: f(g.wow_debounce_s),
+                liftoff_blend_s: f(g.liftoff_blend_s),
+                touchdown_blend_s: f(g.touchdown_blend_s),
+                k_q_ground_s: f(g.k_q_ground_s),
+                nws: NwsGainsFile {
+                    low_speed_mps: f(g.nws.low_speed_mps),
+                    high_speed_mps: f(g.nws.high_speed_mps),
+                    low_deg: f(g.nws.low_deg),
+                    high_deg: f(g.nws.high_deg),
+                },
+            },
+            assist_blend_s: f(d.assist_blend_s),
+            mouse_aim: MouseAimGainsFile {
+                k_bank: f(m.k_bank),
+                k_pitch_per_rad: f(m.k_pitch_per_rad),
+                deadzone_deg: f(m.deadzone_deg),
+                ramp_per_s: f(m.ramp_per_s),
+            },
+            recover: RecoverGainsFile {
+                n_pull: f(d.recover.n_pull),
+                gamma_deg: f(d.recover.gamma_deg),
+            },
+            gcas: GcasGainsFile {
+                n_pull: f(d.gcas.n_pull),
+                buffer_m: f(d.gcas.buffer_m),
+                horizon_s: f(d.gcas.horizon_s),
+                step_s: f(d.gcas.step_s),
+            },
         }
     }
 }

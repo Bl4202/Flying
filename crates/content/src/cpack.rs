@@ -1,7 +1,7 @@
-//! The `.cpack` v2 container (GDD 62.2, ADR-30).
+//! The `.cpack` v3 container (GDD 62.2, ADR-30, ADR-34).
 //!
 //! ```text
-//! 0    80 B   header   magic "FGCP", version 2, flags, entry count, section offsets, total length,
+//! 0    80 B   header   magic "FGCP", version 3, flags, entry count, section offsets, total length,
 //!                      checksum (FNV-1a 64 of the whole file with the checksum field zeroed),
 //!                      content hash (SHA-256 of every byte after the header)
 //! 80   24 B   x n      table of contents, sorted by id; the index is the handle
@@ -13,7 +13,7 @@
 //! ```
 //!
 //! Records are variable-length and their layout depends on the kind (aircraft 1, engine 2,
-//! aero 3); tables are stored inline with their sizes. References between entries are handles,
+//! aero 3, fcs 4); tables are stored inline with their sizes. References between entries are handles,
 //! and the reader checks that each points at an entry of the right kind.
 //!
 //! The encoding is canonical: one set of entries has exactly one byte string, and the reader
@@ -32,12 +32,13 @@ use crate::aero::AeroDef;
 use crate::aircraft::AircraftDef;
 use crate::codec::{Reader, Strings, Writer};
 use crate::engine::EngineDef;
+use crate::fcs::FcsDef;
 use crate::registry::ContentId;
 
 /// File magic.
 pub const MAGIC: [u8; 4] = *b"FGCP";
 /// The format version this crate reads and writes.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 /// Header size, bytes.
 pub const HEADER_BYTES: usize = 80;
 /// Table-of-contents entry size, bytes.
@@ -48,6 +49,8 @@ pub const KIND_AIRCRAFT: u32 = 1;
 pub const KIND_ENGINE: u32 = 2;
 /// `kind` of an aero entry.
 pub const KIND_AERO: u32 = 3;
+/// `kind` of a flight-control gains entry.
+pub const KIND_FCS: u32 = 4;
 
 /// Header field offsets.
 pub mod header {
@@ -55,7 +58,7 @@ pub mod header {
     pub const MAGIC: usize = 0;
     /// `u32` format version.
     pub const VERSION: usize = 4;
-    /// `u32` flags, zero in version 2.
+    /// `u32` flags, zero in version 3.
     pub const FLAGS: usize = 8;
     /// `u32` number of entries.
     pub const ENTRY_COUNT: usize = 12;
@@ -155,6 +158,8 @@ pub enum Entry {
     Engine(EngineDef),
     /// An airframe's aerodynamic tables.
     Aero(AeroDef),
+    /// An airframe's flight-control gains.
+    Fcs(FcsDef),
 }
 
 impl Entry {
@@ -165,6 +170,7 @@ impl Entry {
             Self::Aircraft(_) => KIND_AIRCRAFT,
             Self::Engine(_) => KIND_ENGINE,
             Self::Aero(_) => KIND_AERO,
+            Self::Fcs(_) => KIND_FCS,
         }
     }
 
@@ -173,6 +179,7 @@ impl Entry {
             Self::Aircraft(d) => d.encode(w),
             Self::Engine(d) => d.encode(w),
             Self::Aero(d) => d.encode(w),
+            Self::Fcs(d) => d.encode(w),
         }
     }
 
@@ -181,6 +188,7 @@ impl Entry {
             KIND_AIRCRAFT => Ok(Self::Aircraft(AircraftDef::decode(r)?)),
             KIND_ENGINE => Ok(Self::Engine(EngineDef::decode(r)?)),
             KIND_AERO => Ok(Self::Aero(AeroDef::decode(r)?)),
+            KIND_FCS => Ok(Self::Fcs(FcsDef::decode(r)?)),
             other => Err(CpackError::UnknownKind(other)),
         }
     }
@@ -204,6 +212,11 @@ fn check_references(entries: &[Entry]) -> Result<(), CpackError> {
             if kind_of(a.aero.tables) != Some(KIND_AERO) {
                 return Err(CpackError::Reference(
                     "an aircraft's aero tables are not an aero entry",
+                ));
+            }
+            if kind_of(a.fcs.gains) != Some(KIND_FCS) {
+                return Err(CpackError::Reference(
+                    "an aircraft's control gains are not an fcs entry",
                 ));
             }
         }
@@ -354,7 +367,7 @@ pub(crate) fn parse(data: &[u8]) -> Result<Parsed, CpackError> {
                 "a reserved table-of-contents field is not zero",
             ));
         }
-        if !matches!(kind, KIND_AIRCRAFT | KIND_ENGINE | KIND_AERO) {
+        if !matches!(kind, KIND_AIRCRAFT | KIND_ENGINE | KIND_AERO | KIND_FCS) {
             return Err(CpackError::UnknownKind(kind));
         }
         if record_off != next_record || !record_len.is_multiple_of(8) || record_len == 0 {
@@ -499,18 +512,19 @@ pub(crate) mod tests {
         out
     }
 
-    /// Two aircraft sharing one engine and one aero set, in id order:
-    /// 0 `core:ac/alpha`, 1 `core:ac/zulu`, 2 `core:aero/one`, 3 `core:eng/one`.
+    /// Two aircraft sharing one engine, one aero set and one set of gains, in id order:
+    /// 0 `core:ac/alpha`, 1 `core:ac/zulu`, 2 `core:aero/one`, 3 `core:eng/one`,
+    /// 4 `core:fcs/one`.
     pub(crate) fn entries() -> Vec<(String, Entry)> {
-        let (engine, aero) = (ContentId(3), ContentId(2));
-        let mut second = crate::aircraft::tests::sample(engine, aero);
+        let (engine, aero, gains) = (ContentId(3), ContentId(2), ContentId(4));
+        let mut second = crate::aircraft::tests::sample(engine, aero, gains);
         second.name_key = "ac.sparrow.name".into();
         second.category = crate::Category::Uav;
         vec![
             ("core:ac/alpha".into(), Entry::Aircraft(second)),
             (
                 "core:ac/zulu".into(),
-                Entry::Aircraft(crate::aircraft::tests::sample(engine, aero)),
+                Entry::Aircraft(crate::aircraft::tests::sample(engine, aero, gains)),
             ),
             (
                 "core:aero/one".into(),
@@ -519,6 +533,10 @@ pub(crate) mod tests {
             (
                 "core:eng/one".into(),
                 Entry::Engine(crate::engine::tests::sample()),
+            ),
+            (
+                "core:fcs/one".into(),
+                Entry::Fcs(crate::fcs::tests::sample()),
             ),
         ]
     }
@@ -544,7 +562,8 @@ pub(crate) mod tests {
                 "core:ac/alpha",
                 "core:ac/zulu",
                 "core:aero/one",
-                "core:eng/one"
+                "core:eng/one",
+                "core:fcs/one"
             ]
         );
         let originals: Vec<Entry> = entries().into_iter().map(|e| e.1).collect();
@@ -595,6 +614,14 @@ pub(crate) mod tests {
             Err(CpackError::Reference(_))
         ));
         let mut bad = entries();
+        if let Entry::Aircraft(a) = &mut bad[0].1 {
+            a.fcs.gains = ContentId(2); // the aero entry
+        }
+        assert!(matches!(
+            write(&bad, fake_sha),
+            Err(CpackError::Reference(_))
+        ));
+        let mut bad = entries();
         if let Entry::Aircraft(a) = &mut bad[1].1 {
             a.engines.clear();
         }
@@ -608,26 +635,30 @@ pub(crate) mod tests {
     fn identical_strings_are_stored_once() {
         let b = pack();
         let strings_len = u32_at(&b, header::STRINGS_LEN) as usize;
-        let ids = "core:ac/alphacore:ac/zulucore:aero/onecore:eng/one".len();
-        let keys = "ac.sparrow.name".len() + "ac.kestrel.name".len() + "eng.f129.name".len();
+        let ids = "core:ac/alphacore:ac/zulucore:aero/onecore:eng/onecore:fcs/one".len();
+        let keys = "ac.sparrow.name".len()
+            + "ac.kestrel.name".len()
+            + "eng.f129.name".len()
+            + "fcs.sparrow.name".len();
         let tanks = "fwd".len() + "wing_l".len();
+        let gear = "nose".len() + "main_l".len() + "tail".len();
         let points = "vmax_sl".len() + "to_roll".len();
-        assert_eq!(strings_len, ids + keys + tanks + points);
+        assert_eq!(strings_len, ids + keys + tanks + gear + points);
     }
 
     #[test]
     fn the_layout_is_what_the_comment_says() {
         let b = pack();
         assert_eq!(&b[..4], b"FGCP");
-        assert_eq!(u32_at(&b, header::VERSION), 2);
-        assert_eq!(u32_at(&b, header::ENTRY_COUNT), 4);
+        assert_eq!(u32_at(&b, header::VERSION), 3);
+        assert_eq!(u32_at(&b, header::ENTRY_COUNT), 5);
         assert_eq!(u32_at(&b, header::TOC_OFF), 80);
-        assert_eq!(u32_at(&b, header::STRINGS_OFF), 80 + 4 * 24);
+        assert_eq!(u32_at(&b, header::STRINGS_OFF), 80 + 5 * 24);
         assert_eq!(u32_at(&b, header::RECORDS_OFF) % 8, 0);
         assert_eq!(u32_at(&b, header::TOTAL_LEN) as usize, b.len());
         // Record lengths are multiples of 8 and tile the record section.
         let mut next = 0;
-        for i in 0..4 {
+        for i in 0..5 {
             let e = HEADER_BYTES + i * TOC_ENTRY_BYTES;
             assert_eq!(u32_at(&b, e + 12), next);
             assert_eq!(u32_at(&b, e + 16) % 8, 0);

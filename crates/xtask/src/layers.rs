@@ -28,6 +28,7 @@ const RULES: &[(&str, &[&str])] = &[
             "serde_json",
             "serde_path_to_error",
             "sha2",
+            "simmath",
         ],
     ),
     ("sim-wasm", &["sim-core"]),

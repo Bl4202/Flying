@@ -3,7 +3,7 @@
 use serde_json::{Value, json};
 
 use crate::bake::hex;
-use crate::model::{AeroFile, AircraftFile, EngineFile};
+use crate::model::{AeroFile, AircraftFile, EngineFile, FcsGainsFile};
 use content::{CpackError, Entry, Registry};
 
 /// What a pack contains, in authoring form.
@@ -17,6 +17,8 @@ pub struct Exported {
     pub engines: Vec<EngineFile>,
     /// The aero tables, in handle order.
     pub aero: Vec<AeroFile>,
+    /// The control-law gains, in handle order.
+    pub fcs: Vec<FcsGainsFile>,
 }
 
 /// Decodes a pack.
@@ -31,12 +33,14 @@ pub fn export(bytes: &[u8]) -> Result<Exported, CpackError> {
         aircraft: Vec::new(),
         engines: Vec::new(),
         aero: Vec::new(),
+        fcs: Vec::new(),
     };
     for (_, id, entry) in reg.iter() {
         match entry {
             Entry::Aircraft(d) => out.aircraft.push(AircraftFile::from_def(id, d, &name_of)),
             Entry::Engine(d) => out.engines.push(EngineFile::from_def(id, d)),
             Entry::Aero(d) => out.aero.push(AeroFile::from_def(id, d)),
+            Entry::Fcs(d) => out.fcs.push(FcsGainsFile::from_def(id, d)),
         }
     }
     Ok(out)
@@ -47,11 +51,12 @@ impl Exported {
     #[must_use]
     pub fn to_json(&self) -> Value {
         json!({
-            "schema": "cpack-export/2",
+            "schema": "cpack-export/3",
             "content_hash": self.content_hash,
             "aircraft": self.aircraft,
             "engines": self.engines,
             "aero": self.aero,
+            "fcs": self.fcs,
         })
     }
 }

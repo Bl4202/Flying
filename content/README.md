@@ -1,8 +1,8 @@
 # content
 
 Authoring data (JSON) and the schemas that describe it (GDD §62). Nothing here is read at
-runtime: `content-bake` validates it and packs it into `content-out/core.cpack` (format v2,
-ADR-30), which is what the sim loads.
+runtime: `content-bake` validates it and packs it into `content-out/core.cpack` (format v3,
+ADR-30, ADR-34), which is what the sim loads.
 
 | Path | What |
 |---|---|
@@ -10,13 +10,15 @@ ADR-30), which is what the sim loads.
 | `core/aircraft/*.json` | One aircraft per file (`aircraft/1`): mass and tanks, geometry, engine installations, limits, FCS data, the performance envelope. `kestrel.json` is Appendix C of the GDD |
 | `core/engines/*.json` | One engine type per file (`engine/1`): thrust deck, TSFC, spool and afterburner dynamics. Derivations in its `README.md` |
 | `core/aero/*.json` | One airframe's aerodynamic tables per file (`aero/1`). `kestrel.json` is **generated** by `kestrel_gen.rs` next to it (see its `README.md`) |
+| `core/fcs/*.json` | One airframe's flight-control gains per file (`fcs/1`): pitch, roll and yaw loops, the Full law, limiter and ground-mode settings, mouse-aim. Derivations and the tuning log in its `README.md` |
 | `core/locales/en.json` | Display strings by key. Every key must be used, every used key must exist |
 | `schemas/*.schema.json` | **Generated** from the Rust types in `tools/content-bake/src/model.rs`; do not edit |
 
 Add an aircraft by adding files; no code changes (the steps are in
 `docs/architecture/flight.md`). Ids look like `core:ac/kestrel`, `core:eng/f129`,
-`core:aero/kestrel`; an aircraft names its engines (`engines[].ref`) and its tables
-(`aero.tables_ref`) by id, and the baker checks that they exist and are of the right kind. Until
+`core:aero/kestrel`, `core:fcs/kestrel`; an aircraft names its engines (`engines[].ref`), its
+tables (`aero.tables_ref`) and its control gains (`fcs.gains_ref`) by id, and the baker checks that
+they exist and are of the right kind. Until
 aircraft selection exists, the game flies the aircraft whose id sorts first, so a new aircraft
 that sorts before `core:ac/kestrel` changes the player's aircraft and the determinism goldens.
 
@@ -28,12 +30,27 @@ Positions are metres in body axes: x forward, y right, z down, from the referenc
 **Precision.** Every number must be exactly representable in single precision, because that is
 how it is stored; the baker says which value to write instead.
 
+**Landing gear** (`geometry.gear`, `geometry.contacts`, GDD 11.13, ADR-35). A leg is a massless
+strut: `pos_m` is the wheel contact with the strut fully extended, `stroke_m` its travel, `k_npm`
+the spring rate of the progressive spring `N = k x (1 + (x / stroke)^2)`, `c_comp_nspm` and
+`c_ext_nspm` the damping while it compresses and extends, `steer_max_deg` the nose-wheel
+steering (one leg at most), `brake` whether the wheel brakes, `main` whether it carries the
+weight on landing. `contacts` are airframe points that can scrape (nose tip, tail, wingtips,
+belly). The baker rejects geometry that cannot work: a nose load outside 5 to 20 % over the CG
+range, a strut compressing outside 20 to 60 % of its stroke at landing and take-off mass, a bounce
+above 15 rad/s (the step cannot resolve it), a compression damping ratio outside 0.15 to 1, a CG
+outside the legs, no brakes, a tail that touches the ground at the touchdown attitude (1.15 times
+the landing stall speed). `aero.n_max_by_config` holds the load limits with the gear or flaps out;
+`fcs.actuators.gear.transit_s` is the time the gear takes to move.
+
 **Tables** follow GDD Appendix A. A curve is `{ "axis": "mach", "points": [[x, y], ...] }`; a grid
 is `{ "axes": ["alpha_deg", "mach"], "x": [...], "y": [...], "z": [[row for y0], ...] }`, row-major
 `z[y][x]`. Grids are strictly increasing, interpolation is linear and clamped at the ends. Each
 table field has a fixed axis and the baker checks the name. The two-dimensional aero tables must
 cover alpha −30 to 90 deg and Mach 0 to 3; a value that sticks out of its row is reported as a
-spike.
+spike. The lateral derivatives are curves against |alpha| from 0 to 90 deg, and the control-gain
+schedules are curves against dynamic pressure (`qbar_kpa`), angle of attack or load factor
+(`nz_g`).
 
 ```sh
 cargo xtask content             # validate and bake core/ into content-out/
