@@ -80,6 +80,8 @@ Total to the Campaign Build is about 33 months (M0–M6), plus about 6 months fo
 
 **Exit:** a tester can take off, fly a pattern and land under every assist level; input-to-control latency ≤ 25 ms p95; the take-off and landing ground-roll conformance points deferred from v0.1a pass (`AC-3.2` complete).
 
+**Note (2026-10-22):** the gates are fixed before the work in [ADR-32](adr/0032-ground-roll-conformance-method.md) (ground-roll method; the landing-roll target is kept and the data retuned) and [ADR-33](adr/0033-v0-1b-gates.md) (virtual-tester circuit under every assist, FCS handling and departure suites, latency definition, mouse-aim criterion scaled to the aircraft's turn rate). "A tester" is a scripted virtual tester run headless in CI; the owner's manual circuits on staging are recorded and do not block the tag. The scope is larger than the 4-week slot (about 13 engineer-weeks): expect the slot to slip. Work is on branch `v0.1b`.
+
 ### v0.1c: Presentation (about 4 weeks)
 - Cockpit and chase cameras (§54.11); core HUD symbology and collimation (§54.2, §54.3).
 - Procedural test arenas plus basic terrain (low-resolution global + local patch) (§44, basic).
