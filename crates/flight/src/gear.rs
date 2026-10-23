@@ -47,7 +47,7 @@ const V_S_LAT: f64 = 0.5;
 /// Skid regularisation speed, m/s. // ALGO: as the sideways one
 const V_S_SKID: f64 = 0.5;
 /// Brake scale with anti-skid on. // DATA: GDD 11.13.2
-const ANTI_SKID_FACTOR: f64 = 0.9;
+pub const ANTI_SKID_FACTOR: f64 = 0.9;
 /// Brake scale when the wheels lock up (anti-skid off, hard braking, fast). // DATA: GDD 11.13.2
 const LOCK_UP_FACTOR: f64 = 0.6;
 /// Brake command above which a wheel locks up without anti-skid. // DATA: GDD 11.13.2

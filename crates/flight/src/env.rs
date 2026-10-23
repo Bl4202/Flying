@@ -59,6 +59,8 @@ pub struct SphereSea {
     pub ground_m: f64,
     /// What the surface is.
     pub kind: SurfaceKind,
+    /// How wet it is, 0 (dry) to 1.
+    pub wetness: f64,
 }
 
 impl Default for SphereSea {
@@ -67,6 +69,7 @@ impl Default for SphereSea {
             radius_m: EARTH_RADIUS_M,
             ground_m: 0.0,
             kind: SurfaceKind::Paved,
+            wetness: 0.0,
         }
     }
 }
@@ -111,7 +114,7 @@ impl FlightEnv for SphereSea {
             height_msl_m: self.ground_m,
             normal_bf: self.up_bf(pos_bf),
             kind: self.kind,
-            wetness: 0.0,
+            wetness: self.wetness,
         }
     }
 }

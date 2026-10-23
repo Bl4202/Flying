@@ -1,4 +1,5 @@
-//! The core pack's aircraft passes its Performance Conformance Test, deterministically.
+//! The core pack's aircraft passes its Performance Conformance Test, deterministically: twelve
+//! points, the ten airborne ones (ADR-31) and the two ground rolls (ADR-32).
 
 use std::path::Path;
 
@@ -17,7 +18,8 @@ fn the_kestrel_passes_and_the_run_is_deterministic() {
     let r = registry();
     let h = r.aircraft_handles().next().unwrap();
     let a = run(&r, h, "test", &Options::default()).unwrap();
-    let expected = vec!["to_roll".to_owned(), "ldg_roll".to_owned()];
+    // Nothing is deferred: the ground rolls are flown now (ADR-32), so AC-3.2 is complete.
+    let expected: Vec<String> = Vec::new();
     let failures = a.report.gate_failures(&expected);
     assert!(
         failures.is_empty(),
@@ -30,7 +32,26 @@ fn the_kestrel_passes_and_the_run_is_deterministic() {
         .iter()
         .filter(|p| p.status == Status::Pass)
         .count();
-    assert_eq!(passed, 10, "ten airborne points (ADR-31)");
+    assert_eq!(
+        passed, 12,
+        "ten airborne points (ADR-31) and two ground rolls (ADR-32)"
+    );
+    for id in ["to_roll", "ldg_roll"] {
+        let p = a.report.points.iter().find(|p| p.id == id).unwrap();
+        assert!(
+            p.tol_used_pct() < 60.0,
+            "{id} uses {:.0} % of its tolerance",
+            p.tol_used_pct()
+        );
+        assert!(
+            p.cross_check.is_some_and(|c| c.ok()),
+            "{id}: point-mass cross-check"
+        );
+        assert!(
+            p.extra_checks.iter().all(|e| e.check.ok()),
+            "{id}: energy closure"
+        );
+    }
     // (Compared as JSON: deferred points measure NaN, which is never equal to itself.)
     let b = run(&r, h, "test", &Options::default()).unwrap();
     assert_eq!(a.report.to_json(&expected), b.report.to_json(&expected));
