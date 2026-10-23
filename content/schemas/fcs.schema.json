@@ -1,0 +1,611 @@
+{
+  "$defs": {
+    "ConfigGainsFile": {
+      "additionalProperties": false,
+      "description": "Configuration limits.",
+      "properties": {
+        "n_min_config": {
+          "description": "Negative load limit with the gear or the flaps out.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -20.0,
+          "type": "number",
+          "x-unit": "g"
+        }
+      },
+      "required": [
+        "n_min_config"
+      ],
+      "type": "object"
+    },
+    "CurveFile": {
+      "additionalProperties": false,
+      "description": "`y(x)` as `(x, y)` pairs with a strictly increasing `x` (Appendix A `Table1D`).",
+      "properties": {
+        "axis": {
+          "description": "Name and unit of `x`.",
+          "enum": [
+            "mach",
+            "alpha_deg",
+            "deflection_deg",
+            "qbar_kpa",
+            "nz_g"
+          ],
+          "type": "string"
+        },
+        "points": {
+          "description": "`(x, y)` pairs.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "axis",
+        "points"
+      ],
+      "type": "object"
+    },
+    "FullGainsFile": {
+      "additionalProperties": false,
+      "description": "The Full law.",
+      "properties": {
+        "alpha_margin_deg": {
+          "description": "How much tighter than the Standard limit the angle-of-attack limit is.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "bank_max_deg": {
+          "description": "Largest commanded bank angle.",
+          "format": "double",
+          "maximum": 90.0,
+          "minimum": 10.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "gamma_rate_max_dps": {
+          "description": "Largest commanded flight-path rate.",
+          "format": "double",
+          "maximum": 60.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "deg/s"
+        },
+        "k_bank_per_s": {
+          "description": "Bank-angle gain.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "1/s"
+        },
+        "k_gamma_per_s": {
+          "description": "Flight-path hold gain.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "1/s"
+        }
+      },
+      "required": [
+        "gamma_rate_max_dps",
+        "k_gamma_per_s",
+        "bank_max_deg",
+        "k_bank_per_s",
+        "alpha_margin_deg"
+      ],
+      "type": "object"
+    },
+    "GcasGainsFile": {
+      "additionalProperties": false,
+      "description": "Automatic ground-collision avoidance.",
+      "properties": {
+        "buffer_m": {
+          "description": "Terrain clearance below which it triggers.",
+          "format": "double",
+          "maximum": 1000.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "horizon_s": {
+          "description": "Look-ahead.",
+          "format": "double",
+          "maximum": 30.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "n_pull": {
+          "description": "Load factor of the avoidance pull-up.",
+          "format": "double",
+          "maximum": 12.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "g"
+        },
+        "step_s": {
+          "description": "Look-ahead step.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.01,
+          "type": "number",
+          "x-unit": "s"
+        }
+      },
+      "required": [
+        "n_pull",
+        "buffer_m",
+        "horizon_s",
+        "step_s"
+      ],
+      "type": "object"
+    },
+    "GroundGainsFile": {
+      "additionalProperties": false,
+      "description": "Ground mode gains.",
+      "properties": {
+        "k_q_ground_s": {
+          "description": "Pitch-rate damping of the ground law.",
+          "format": "double",
+          "maximum": 5.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "1/s"
+        },
+        "liftoff_blend_s": {
+          "description": "Blend from the ground law to the flight law after lift-off.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "nws": {
+          "$ref": "#/$defs/NwsGainsFile",
+          "description": "Nose-wheel steering schedule."
+        },
+        "touchdown_blend_s": {
+          "description": "Blend from the flight law to the ground law after touchdown.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "wow_debounce_s": {
+          "description": "Weight-on-wheels debounce.",
+          "format": "double",
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        }
+      },
+      "required": [
+        "wow_debounce_s",
+        "liftoff_blend_s",
+        "touchdown_blend_s",
+        "k_q_ground_s",
+        "nws"
+      ],
+      "type": "object"
+    },
+    "MouseAimGainsFile": {
+      "additionalProperties": false,
+      "description": "Mouse-aim gains (GDD 58.4).",
+      "properties": {
+        "deadzone_deg": {
+          "description": "Aim error below which no input is given.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "k_bank": {
+          "description": "Bank command per unit of heading error.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "k_pitch_per_rad": {
+          "description": "Pitch command per radian of elevation error.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "1/rad"
+        },
+        "ramp_per_s": {
+          "description": "Stick ramp, full scale per second.",
+          "format": "double",
+          "maximum": 50.0,
+          "minimum": 0.1,
+          "type": "number",
+          "x-unit": "1/s"
+        }
+      },
+      "required": [
+        "k_bank",
+        "k_pitch_per_rad",
+        "deadzone_deg",
+        "ramp_per_s"
+      ],
+      "type": "object"
+    },
+    "NwsGainsFile": {
+      "additionalProperties": false,
+      "description": "Nose-wheel steering schedule.",
+      "properties": {
+        "high_deg": {
+          "description": "Small range.",
+          "format": "double",
+          "maximum": 90.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "high_speed_mps": {
+          "description": "Above this ground speed only the small range is available.",
+          "format": "double",
+          "maximum": 200.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m/s"
+        },
+        "low_deg": {
+          "description": "Full range.",
+          "format": "double",
+          "maximum": 90.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "low_speed_mps": {
+          "description": "Below this ground speed the full range is available.",
+          "format": "double",
+          "maximum": 200.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m/s"
+        }
+      },
+      "required": [
+        "low_speed_mps",
+        "high_speed_mps",
+        "low_deg",
+        "high_deg"
+      ],
+      "type": "object"
+    },
+    "OverspeedGainsFile": {
+      "additionalProperties": false,
+      "description": "The overspeed soft wall.",
+      "properties": {
+        "k_pull": {
+          "description": "Pull-up command added per unit of speed ratio past the onset.",
+          "format": "double",
+          "maximum": 500.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "g per unit ratio"
+        },
+        "onset": {
+          "description": "Fraction of `vmo` and `mmo` where the wall begins.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.5,
+          "type": "number"
+        }
+      },
+      "required": [
+        "onset",
+        "k_pull"
+      ],
+      "type": "object"
+    },
+    "PitchGainsFile": {
+      "additionalProperties": false,
+      "description": "Pitch axis gains.",
+      "properties": {
+        "alpha_band_deg": {
+          "description": "Width of the angle-of-attack limiter band below the limit.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.5,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "alpha_min_deg": {
+          "description": "Most negative angle of attack the limiter allows.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -60.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "k_alpha_per_s": {
+          "description": "Angle-of-attack feedback gain inside the band.",
+          "format": "double",
+          "maximum": 50.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "1/s"
+        },
+        "k_n": {
+          "description": "Proportional gain on the load-factor error.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "per g"
+        },
+        "k_ni_per_s": {
+          "description": "Integral gain on the load-factor error.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "1/s"
+        },
+        "k_q_per_s": {
+          "description": "Pitch-rate damping gain of the inner loop.",
+          "format": "double",
+          "maximum": 50.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "1/s"
+        },
+        "q_max_dps": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Largest commanded pitch rate of the Reduced law against dynamic pressure."
+        },
+        "tau_cmd_s": {
+          "description": "Time constant of the command prefilter.",
+          "format": "double",
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        }
+      },
+      "required": [
+        "k_q_per_s",
+        "k_n",
+        "k_ni_per_s",
+        "tau_cmd_s",
+        "alpha_band_deg",
+        "k_alpha_per_s",
+        "alpha_min_deg",
+        "q_max_dps"
+      ],
+      "type": "object"
+    },
+    "RecoverGainsFile": {
+      "additionalProperties": false,
+      "description": "The recovery button.",
+      "properties": {
+        "gamma_deg": {
+          "description": "Flight-path angle the recovery aims for.",
+          "format": "double",
+          "maximum": 45.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "n_pull": {
+          "description": "Load factor of the recovery pull-up.",
+          "format": "double",
+          "maximum": 12.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "g"
+        }
+      },
+      "required": [
+        "n_pull",
+        "gamma_deg"
+      ],
+      "type": "object"
+    },
+    "RollGainsFile": {
+      "additionalProperties": false,
+      "description": "Roll axis gains.",
+      "properties": {
+        "k_p_per_s": {
+          "description": "Roll-rate damping gain.",
+          "format": "double",
+          "maximum": 50.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "1/s"
+        },
+        "k_pi_per_s": {
+          "description": "Integral gain on the roll-rate error.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "1/s"
+        },
+        "p_max_alpha": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Fraction of the maximum roll rate available against angle of attack."
+        },
+        "p_max_nz": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Fraction of the maximum roll rate available against load factor."
+        },
+        "p_max_qbar": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Fraction of the maximum roll rate available against dynamic pressure."
+        },
+        "tau_cmd_s": {
+          "description": "Time constant of the command prefilter.",
+          "format": "double",
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        }
+      },
+      "required": [
+        "k_p_per_s",
+        "k_pi_per_s",
+        "tau_cmd_s",
+        "p_max_qbar",
+        "p_max_alpha",
+        "p_max_nz"
+      ],
+      "type": "object"
+    },
+    "YawGainsFile": {
+      "additionalProperties": false,
+      "description": "Yaw axis gains.",
+      "properties": {
+        "beta_max_deg": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Largest sideslip the pedals command, against dynamic pressure."
+        },
+        "k_beta_per_s": {
+          "description": "Sideslip feedback gain.",
+          "format": "double",
+          "maximum": 50.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "1/s"
+        },
+        "k_r_per_s": {
+          "description": "Yaw-rate feedback gain.",
+          "format": "double",
+          "maximum": 50.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "1/s"
+        },
+        "washout_s": {
+          "description": "Washout time constant of the yaw damper.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.01,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "yaw_damper_s": {
+          "description": "Time constant of the Reduced-law yaw damper.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.01,
+          "type": "number",
+          "x-unit": "s"
+        }
+      },
+      "required": [
+        "k_beta_per_s",
+        "k_r_per_s",
+        "beta_max_deg",
+        "yaw_damper_s",
+        "washout_s"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The control-law gains of one airframe (GDD 11.11, A.2, ADR-34).",
+  "properties": {
+    "assist_blend_s": {
+      "description": "Time over which an assist switch blends the surface command.",
+      "format": "double",
+      "maximum": 5.0,
+      "minimum": 0.0,
+      "type": "number",
+      "x-unit": "s"
+    },
+    "config": {
+      "$ref": "#/$defs/ConfigGainsFile",
+      "description": "Configuration limits."
+    },
+    "full": {
+      "$ref": "#/$defs/FullGainsFile",
+      "description": "The Full law."
+    },
+    "gcas": {
+      "$ref": "#/$defs/GcasGainsFile",
+      "description": "Automatic ground-collision avoidance."
+    },
+    "ground": {
+      "$ref": "#/$defs/GroundGainsFile",
+      "description": "Ground mode."
+    },
+    "id": {
+      "description": "`namespace:fcs/name`.",
+      "type": "string"
+    },
+    "mouse_aim": {
+      "$ref": "#/$defs/MouseAimGainsFile",
+      "description": "Mouse-aim controller."
+    },
+    "name_key": {
+      "description": "Key of the display name in the locale table.",
+      "type": "string"
+    },
+    "overspeed": {
+      "$ref": "#/$defs/OverspeedGainsFile",
+      "description": "The overspeed soft wall."
+    },
+    "pitch": {
+      "$ref": "#/$defs/PitchGainsFile",
+      "description": "Pitch axis and the angle-of-attack limiter."
+    },
+    "recover": {
+      "$ref": "#/$defs/RecoverGainsFile",
+      "description": "The recovery button."
+    },
+    "roll": {
+      "$ref": "#/$defs/RollGainsFile",
+      "description": "Roll axis."
+    },
+    "schema": {
+      "const": "fcs/1",
+      "description": "Format tag, always `fcs/1`.",
+      "type": "string"
+    },
+    "yaw": {
+      "$ref": "#/$defs/YawGainsFile",
+      "description": "Yaw axis."
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "name_key",
+    "pitch",
+    "roll",
+    "yaw",
+    "full",
+    "overspeed",
+    "config",
+    "ground",
+    "assist_blend_s",
+    "mouse_aim",
+    "recover",
+    "gcas"
+  ],
+  "title": "FcsGainsFile",
+  "type": "object"
+}

@@ -7,7 +7,7 @@ use content::{CpackError, EngineKind, Metric, Registry, Requirement};
 use content_bake::bake::{self, Baked, Sources, bake_dir, bake_sources, sha256};
 use content_bake::diag::Diagnostic;
 use content_bake::export::export;
-use content_bake::model::{AeroFile, AircraftFile, EngineFile};
+use content_bake::model::{AeroFile, AircraftFile, EngineFile, FcsGainsFile};
 use content_bake::schema;
 use serde_json::{Value, json};
 
@@ -30,12 +30,14 @@ fn json_of(rel: &str) -> Value {
 const KESTREL: &str = "aircraft/kestrel.json";
 const F129: &str = "engines/f129.json";
 const AERO: &str = "aero/kestrel.json";
+const FCS: &str = "fcs/kestrel.json";
 
 /// Bakes the real pack with the given files in place of its entity files.
 fn bake_files(
     aircraft: &[(&str, String)],
     engines: &[(&str, String)],
     aero: &[(&str, String)],
+    fcs: &[(&str, String)],
 ) -> Result<Baked, Vec<Diagnostic>> {
     let own = |v: &[(&str, String)]| -> Vec<(String, String)> {
         v.iter()
@@ -48,6 +50,7 @@ fn bake_files(
         aircraft: own(aircraft),
         engines: own(engines),
         aero: own(aero),
+        fcs: own(fcs),
     })
 }
 
@@ -64,6 +67,7 @@ fn bake_replacing(which: &str, name: &str, text: &str) -> Result<Baked, Vec<Diag
         &[pick(KESTREL, which, name, text)],
         &[pick(F129, which, name, text)],
         &[pick(AERO, which, name, text)],
+        &[pick(FCS, which, name, text)],
     )
 }
 
@@ -71,7 +75,7 @@ fn bake_replacing(which: &str, name: &str, text: &str) -> Result<Baked, Vec<Diag
 fn the_core_pack_bakes_and_holds_the_kestrel() {
     let baked = bake_dir(&core()).expect("the core pack is valid");
     let reg = Registry::from_cpack(&baked.cpack).unwrap();
-    assert_eq!(reg.counts(), (1, 1, 1));
+    assert_eq!(reg.counts(), (1, 1, 1, 1));
     let h = reg.find("core:ac/kestrel").expect("kestrel is in the pack");
     let k = reg.aircraft(h).unwrap();
 
@@ -100,6 +104,34 @@ fn the_core_pack_bakes_and_holds_the_kestrel() {
     );
     assert!(!k.fcs.sas_required);
     assert_eq!(k.fcs.stab.range_deg, [-25.0, 25.0]);
+    assert_eq!(k.fcs.gear.transit_s, 6.0);
+    assert_eq!(reg.id(k.fcs.gains), Some("core:fcs/kestrel"));
+    let gains = reg.fcs(k.fcs.gains).expect("the gains reference resolves");
+    assert_eq!(gains.pitch.k_q_per_s, 6.0);
+    assert_eq!(gains.ground.nws.low_deg, 60.0);
+
+    // The landing gear: a steerable braked nose leg and two braked mains (ADR-35).
+    let legs: Vec<(&str, bool, bool)> = k
+        .geometry
+        .gear
+        .iter()
+        .map(|l| (l.id.as_str(), l.main, l.steer_max_deg > 0.0))
+        .collect();
+    assert_eq!(
+        legs,
+        [
+            ("nose", false, true),
+            ("main_l", true, false),
+            ("main_r", true, false)
+        ]
+    );
+    assert!(k.geometry.gear.iter().all(|l| l.brake));
+    let contacts: Vec<&str> = k.geometry.contacts.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(contacts, ["nose_tip", "tail", "wing_l", "wing_r", "belly"]);
+    assert_eq!(
+        (k.aero.n_max_by_config.gear, k.aero.n_max_by_config.flaps),
+        (4.0, 4.0)
+    );
 
     // C.9: twelve points, the two ground rolls need the gear model (ADR-31).
     assert_eq!(k.envelope.len(), 12);
@@ -136,6 +168,16 @@ fn the_core_pack_bakes_and_holds_the_kestrel() {
     assert_eq!(a.lift.cl_base.xs.len(), 31);
     assert_eq!(a.lift.cl_base.ys.len(), 12);
     assert_eq!(a.drag.cd_wave.xs.len(), 9);
+
+    // C.5 values hold up to 15 degrees; the lateral tables then depart from them (ADR-38).
+    let at = |c: &content::Curve, x: f32| {
+        let i = c.xs.partition_point(|&v| v <= x).saturating_sub(1);
+        (c.xs[i], c.ys[i])
+    };
+    assert_eq!(at(&a.lateral.cn_beta_per_rad, 10.0), (0.0, 0.14));
+    assert_eq!(at(&a.lateral.cl_beta_per_rad, 10.0), (0.0, -0.1));
+    assert_eq!(a.lateral.cy_beta_per_rad.ys, [-0.9, -0.9]);
+    assert!(a.lateral.cn_beta_per_rad.ys.contains(&-0.08));
 }
 
 #[test]
@@ -147,8 +189,10 @@ fn export_gives_back_the_normalised_input() {
     let engine: EngineFile = serde_json::from_str(&read(F129)).unwrap();
     let aero: AeroFile = serde_json::from_str(&read(AERO)).unwrap();
     assert_eq!(exported.aircraft, vec![aircraft]);
+    let fcs: FcsGainsFile = serde_json::from_str(&read(FCS)).unwrap();
     assert_eq!(exported.engines, vec![engine]);
     assert_eq!(exported.aero, vec![aero]);
+    assert_eq!(exported.fcs, vec![fcs]);
     assert_eq!(exported.aircraft, baked.aircraft);
     assert!(exported.content_hash.starts_with("sha256:"));
 }
@@ -168,6 +212,7 @@ fn the_output_is_byte_stable() {
         &[(KESTREL, compact(KESTREL))],
         &[(F129, compact(F129))],
         &[(AERO, compact(AERO))],
+        &[(FCS, compact(FCS))],
     )
     .unwrap();
     assert_eq!(a.cpack, c.cpack);
@@ -208,7 +253,7 @@ fn the_baked_pack_is_what_the_manifest_says() {
     assert_eq!(m["packs"][0]["id"], "core");
     assert_eq!(
         m["packs"][0]["entities"],
-        json!({ "aircraft": 1, "engines": 1, "aero": 1 })
+        json!({ "aircraft": 1, "engines": 1, "aero": 1, "fcs": 1 })
     );
 }
 
@@ -489,6 +534,142 @@ fn malformed_aircraft_are_rejected_at_the_right_pointer() {
                 "/geometry/span_m",
                 "more precision",
             ),
+            (
+                "an unknown key on a gear leg",
+                insert("/geometry/gear/0", "wheel_dia_m", json!(0.5)),
+                "/geometry/gear/0/wheel_dia_m",
+                "unknown key",
+            ),
+            (
+                "a gear leg without its brake flag",
+                remove("/geometry/gear/0", "brake"),
+                "/geometry/gear/0/brake",
+                "missing",
+            ),
+            (
+                "a spring rate below the range",
+                set("/geometry/gear/1/k_npm", json!(500.0)),
+                "/geometry/gear/1/k_npm",
+                "outside the allowed range",
+            ),
+            (
+                "a negative strut travel",
+                set("/geometry/gear/2/stroke_m", json!(-0.3)),
+                "/geometry/gear/2/stroke_m",
+                "outside the allowed range",
+            ),
+            (
+                "a flaps-out load limit above the clean limit",
+                set("/aero/n_max_by_config/flaps", json!(12.0)),
+                "/aero/n_max_by_config/flaps",
+                "above the clean limit",
+            ),
+            (
+                "a control-gains reference of the wrong type",
+                set("/fcs/gains_ref", json!("core:aero/kestrel")),
+                "/fcs/gains_ref",
+                "not a valid control-gains id",
+            ),
+            (
+                "a gear that takes no time",
+                set("/fcs/actuators/gear/transit_s", json!(0.0)),
+                "/fcs/actuators/gear/transit_s",
+                "outside the allowed range",
+            ),
+        ],
+    );
+}
+
+#[test]
+fn malformed_fcs_gains_are_rejected_at_the_right_pointer() {
+    expect_cases(
+        FCS,
+        "",
+        vec![
+            (
+                "id of another type",
+                set("/id", json!("core:ac/kestrel")),
+                "/id",
+                "not a valid control-gains id",
+            ),
+            (
+                "wrong format tag",
+                set("/schema", json!("fcs/2")),
+                "/schema",
+                "not a control-gains file",
+            ),
+            (
+                "unknown locale key",
+                set("/name_key", json!("fcs.nobody.name")),
+                "/name_key",
+                "not in the default locale",
+            ),
+            (
+                "unknown key",
+                insert("/pitch", "k_x", json!(1.0)),
+                "/pitch/k_x",
+                "unknown key",
+            ),
+            (
+                "missing key",
+                remove("/roll", "k_p_per_s"),
+                "/roll/k_p_per_s",
+                "missing",
+            ),
+            (
+                "a gain above its range",
+                set("/pitch/k_q_per_s", json!(99.0)),
+                "/pitch/k_q_per_s",
+                "outside the allowed range",
+            ),
+            (
+                "wrong axis",
+                set("/pitch/q_max_dps/axis", json!("mach")),
+                "/pitch/q_max_dps/axis",
+                "this table is against",
+            ),
+            (
+                "schedule not increasing",
+                set("/roll/p_max_qbar/points/2/0", json!(2.0)),
+                "/roll/p_max_qbar/points/2",
+                "not strictly increasing",
+            ),
+            (
+                "a sideslip limit of zero",
+                set("/yaw/beta_max_deg/points/2/1", json!(0.0)),
+                "/yaw/beta_max_deg/points/2",
+                "not positive",
+            ),
+            (
+                "a roll authority fraction above 1.5",
+                set("/roll/p_max_alpha/points/0/1", json!(2.0)),
+                "/roll/p_max_alpha/points/0",
+                "at most 1.5",
+            ),
+            (
+                "steering speeds reversed",
+                set("/ground/nws/low_speed_mps", json!(40.0)),
+                "/ground/nws/high_speed_mps",
+                "not an interval",
+            ),
+            (
+                "steering range growing with speed",
+                set("/ground/nws/low_deg", json!(3.0)),
+                "/ground/nws/high_deg",
+                "grows with speed",
+            ),
+            (
+                "a look-ahead of too many steps",
+                set("/gcas/step_s", json!(0.01)),
+                "/gcas/step_s",
+                "more than 200 steps",
+            ),
+            (
+                "more precision than stored",
+                set("/assist_blend_s", json!(0.500_000_000_1)),
+                "/assist_blend_s",
+                "more precision",
+            ),
         ],
     );
 }
@@ -570,6 +751,10 @@ fn malformed_engines_are_rejected_at_the_right_pointer() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a table of cases; splitting it would hide the table"
+)]
 fn malformed_aero_tables_are_rejected_at_the_right_pointer() {
     let drop_last_of_row: Edit = Box::new(|v| {
         v.pointer_mut("/lift/cl_base/z/3")
@@ -625,6 +810,34 @@ fn malformed_aero_tables_are_rejected_at_the_right_pointer() {
                 "within 5 deg",
             ),
             (
+                "a lateral table against the wrong axis",
+                set("/lateral/cn_beta_per_rad/axis", json!("mach")),
+                "/lateral/cn_beta_per_rad/axis",
+                "this table is against",
+            ),
+            (
+                "a lateral table that stops short of 90 degrees",
+                set("/lateral/cl_p_per_rad/points/4/0", json!(80.0)),
+                "/lateral/cl_p_per_rad/points",
+                "covers",
+            ),
+            (
+                "yaw damping that is not negative at zero alpha",
+                Box::new(|v| {
+                    for i in [0, 1] {
+                        v["lateral"]["cn_r_per_rad"]["points"][i][1] = json!(0.1);
+                    }
+                }),
+                "/lateral/cn_r_per_rad/points/0",
+                "not negative",
+            ),
+            (
+                "a lateral value beyond the bound",
+                set("/lateral/cy_beta_per_rad/points/1/1", json!(12.0)),
+                "/lateral/cy_beta_per_rad/points/1",
+                "outside the allowed range",
+            ),
+            (
                 "negative zero-lift drag",
                 set("/drag/cd0/points/0/1", json!(-0.01)),
                 "/drag/cd0/points/0",
@@ -665,6 +878,18 @@ fn cross_file_problems_are_reported_against_the_aircraft() {
                 "no aero tables",
             ),
             (
+                "missing control gains",
+                set("/fcs/gains_ref", json!("core:fcs/nope")),
+                "/fcs/gains_ref",
+                "no control gains",
+            ),
+            (
+                "a tail that scrapes at the touchdown attitude",
+                set("/geometry/contacts/1/pos_m", json!([-6.0, 0.0, 1.0])),
+                "/geometry/contacts/1/pos_m",
+                "touches the ground",
+            ),
+            (
                 "far too much thrust",
                 set("/engines/0/count", json!(8)),
                 "/engines",
@@ -679,6 +904,7 @@ fn cross_file_problems_are_reported_against_the_aircraft() {
         &[(KESTREL, read(KESTREL))],
         &[(F129, read(F129))],
         &[(AERO, serde_json::to_string(&aero).unwrap())],
+        &[(FCS, read(FCS))],
     )
     .unwrap_err();
     let found: Vec<(&str, &str)> = problems
@@ -724,6 +950,7 @@ fn problems_in_several_files_are_all_reported() {
         &[("aircraft/a.json", a.to_string())],
         &[("engines/b.json", e.to_string())],
         &[(AERO, read(AERO))],
+        &[(FCS, read(FCS))],
     )
     .unwrap_err();
     let found: Vec<(&str, &str)> = problems
@@ -743,6 +970,7 @@ fn duplicate_ids_across_files_are_refused() {
         &[("aircraft/a.json", k.clone()), ("aircraft/b.json", k)],
         &[(F129, read(F129))],
         &[(AERO, read(AERO))],
+        &[(FCS, read(FCS))],
     )
     .unwrap_err();
     assert_eq!(problems.len(), 1);
@@ -757,12 +985,13 @@ fn unused_locale_keys_are_refused() {
         pack: ("pack.json".into(), read("pack.json")),
         locale: (
             "locales/en.json".into(),
-            r#"{ "ac.kestrel.name": "Kestrel", "eng.f129.name": "F129", "ac.ghost.name": "Ghost" }"#
+            r#"{ "ac.kestrel.name": "Kestrel", "eng.f129.name": "F129", "fcs.kestrel.name": "FCS", "ac.ghost.name": "Ghost" }"#
                 .into(),
         ),
         aircraft: vec![(KESTREL.into(), read(KESTREL))],
         engines: vec![(F129.into(), read(F129))],
         aero: vec![(AERO.into(), read(AERO))],
+        fcs: vec![(FCS.into(), read(FCS))],
     })
     .unwrap_err();
     assert_eq!(problems.len(), 1);
@@ -778,6 +1007,7 @@ fn a_pack_with_no_entities_and_no_locale_keys_is_valid_and_empty() {
         aircraft: vec![],
         engines: vec![],
         aero: vec![],
+        fcs: vec![],
     })
     .unwrap();
     assert!(Registry::from_cpack(&baked.cpack).unwrap().is_empty());
@@ -792,6 +1022,7 @@ fn bad_pack_manifests_and_locales_are_refused() {
             aircraft: vec![(KESTREL.into(), read(KESTREL))],
             engines: vec![(F129.into(), read(F129))],
             aero: vec![(AERO.into(), read(AERO))],
+            fcs: vec![(FCS.into(), read(FCS))],
         })
         .unwrap_err()
     };
@@ -824,11 +1055,13 @@ fn bad_pack_manifests_and_locales_are_refused() {
         pack: ("pack.json".into(), read("pack.json")),
         locale: (
             "locales/en.json".into(),
-            r#"{ "ac.kestrel.name": "  ", "eng.f129.name": "F129" }"#.into(),
+            r#"{ "ac.kestrel.name": "  ", "eng.f129.name": "F129", "fcs.kestrel.name": "FCS" }"#
+                .into(),
         ),
         aircraft: vec![(KESTREL.into(), read(KESTREL))],
         engines: vec![(F129.into(), read(F129))],
         aero: vec![(AERO.into(), read(AERO))],
+        fcs: vec![(FCS.into(), read(FCS))],
     })
     .unwrap_err();
     assert_eq!(problems[0].pointer, "/ac.kestrel.name");

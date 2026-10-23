@@ -1,0 +1,89 @@
+{
+  "schema": "fcs/1",
+  "id": "core:fcs/kestrel",
+  "name_key": "fcs.kestrel.name",
+  "pitch": {
+    "k_q_per_s": 6,
+    "k_n": 1.5,
+    "k_ni_per_s": 1,
+    "tau_cmd_s": 0.1,
+    "alpha_band_deg": 3,
+    "k_alpha_per_s": 3,
+    "alpha_min_deg": -10,
+    "q_max_dps": {
+      "axis": "qbar_kpa",
+      "points": [
+        [0, 10],
+        [5, 20],
+        [20, 30],
+        [60, 30]
+      ]
+    }
+  },
+  "roll": {
+    "k_p_per_s": 6,
+    "k_pi_per_s": 0.5,
+    "tau_cmd_s": 0.08,
+    "p_max_qbar": {
+      "axis": "qbar_kpa",
+      "points": [
+        [0, 0.25],
+        [3, 0.5],
+        [10, 1],
+        [30, 1],
+        [100, 0.8]
+      ]
+    },
+    "p_max_alpha": {
+      "axis": "alpha_deg",
+      "points": [
+        [0, 1],
+        [15, 1],
+        [26, 0.5],
+        [35, 0.3]
+      ]
+    },
+    "p_max_nz": {
+      "axis": "nz_g",
+      "points": [
+        [1, 1],
+        [5, 0.8],
+        [9, 0.5]
+      ]
+    }
+  },
+  "yaw": {
+    "k_beta_per_s": 2,
+    "k_r_per_s": 4,
+    "beta_max_deg": {
+      "axis": "qbar_kpa",
+      "points": [
+        [0, 10],
+        [10, 6],
+        [40, 3]
+      ]
+    },
+    "yaw_damper_s": 0.5,
+    "washout_s": 1
+  },
+  "full": {
+    "gamma_rate_max_dps": 10,
+    "k_gamma_per_s": 0.8,
+    "bank_max_deg": 60,
+    "k_bank_per_s": 2,
+    "alpha_margin_deg": 2
+  },
+  "overspeed": { "onset": 0.97, "k_pull": 30 },
+  "config": { "n_min_config": -1 },
+  "ground": {
+    "wow_debounce_s": 0.1,
+    "liftoff_blend_s": 2,
+    "touchdown_blend_s": 0.5,
+    "k_q_ground_s": 0.25,
+    "nws": { "low_speed_mps": 15, "high_speed_mps": 30, "low_deg": 60, "high_deg": 5 }
+  },
+  "assist_blend_s": 0.5,
+  "mouse_aim": { "k_bank": 1.6, "k_pitch_per_rad": 3, "deadzone_deg": 1, "ramp_per_s": 3 },
+  "recover": { "n_pull": 4, "gamma_deg": 5 },
+  "gcas": { "n_pull": 5, "buffer_m": 50, "horizon_s": 10, "step_s": 0.1 }
+}

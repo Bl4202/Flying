@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use schemars::schema_for;
 use serde_json::Value;
 
-use crate::model::{AeroFile, AircraftFile, EngineFile, PackFile};
+use crate::model::{AeroFile, AircraftFile, EngineFile, FcsGainsFile, PackFile};
 
 /// Key suffixes that say what a number is measured in (GDD 62.5, Appendix A).
 pub const UNIT_SUFFIXES: &[&str] = &[
@@ -25,6 +25,10 @@ pub const UNIT_SUFFIXES: &[&str] = &[
     "_pct",
     "_kgpl",
     "_kg_per_ns",
+    "_npm",
+    "_nspm",
+    "_per_s",
+    "_per_g",
 ];
 
 /// Numeric keys that have no unit. Table grids (`x`, `y`) name their units in `axes`; an envelope
@@ -39,6 +43,14 @@ pub const DIMENSIONLESS: &[&str] = &[
     "n_max",
     "n_min",
     "n_cmd_max",
+    "gear",
+    "flaps",
+    "n_min_config",
+    "n_pull",
+    "k_n",
+    "k_bank",
+    "k_pull",
+    "onset",
     "value",
     "density_exp",
     "idle_fraction",
@@ -90,6 +102,16 @@ pub fn aero_schema() -> Value {
     CACHE.get_or_init(render_schema::<AeroFile>).clone()
 }
 
+/// The schema of `fcs/*.json`.
+///
+/// # Panics
+/// Never in practice.
+#[must_use]
+pub fn fcs_schema() -> Value {
+    static CACHE: OnceLock<Value> = OnceLock::new();
+    CACHE.get_or_init(render_schema::<FcsGainsFile>).clone()
+}
+
 /// The schema of `pack.json`.
 ///
 /// # Panics
@@ -106,6 +128,7 @@ pub fn all() -> Vec<(&'static str, Value)> {
         ("aero.schema.json", aero_schema()),
         ("aircraft.schema.json", aircraft_schema()),
         ("engine.schema.json", engine_schema()),
+        ("fcs.schema.json", fcs_schema()),
         ("pack.schema.json", pack_schema()),
     ]
 }

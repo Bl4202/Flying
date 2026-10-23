@@ -722,6 +722,7 @@ mod tests {
             aircraft: vec![kestrel],
             engines: vec![read("engines/f129.json")],
             aero: vec![read("aero/kestrel.json")],
+            fcs: vec![read("fcs/kestrel.json")],
         })
         .expect("the core pack bakes")
         .cpack
@@ -733,7 +734,7 @@ mod tests {
         let before = c.subsystem_hashes();
         assert!(c.services().registry.is_empty());
         c.load_content(&pack(8400)).unwrap();
-        assert_eq!(c.services().registry.len(), 3);
+        assert_eq!(c.services().registry.len(), 4);
         let after = c.subsystem_hashes();
         assert_ne!(before.content, after.content);
         assert_ne!(before.combined, after.combined);
@@ -788,7 +789,7 @@ mod tests {
 
         c.start();
         assert_eq!(c.load_content(&pack(8500)), Err(LoadContentError::NotIdle));
-        assert_eq!(c.services().registry.len(), 3);
+        assert_eq!(c.services().registry.len(), 4);
     }
 
     #[test]

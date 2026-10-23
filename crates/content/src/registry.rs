@@ -4,6 +4,7 @@ use crate::aero::AeroDef;
 use crate::aircraft::AircraftDef;
 use crate::cpack::{self, CpackError, Entry};
 use crate::engine::EngineDef;
+use crate::fcs::FcsDef;
 
 /// Handle of a baked content entry: its index in the pack's table of contents, which is sorted
 /// by id. Handles are stable for a given pack and meaningless across packs.
@@ -93,6 +94,15 @@ impl Registry {
         }
     }
 
+    /// The control-law gains behind a handle, if it is one.
+    #[must_use]
+    pub fn fcs(&self, handle: ContentId) -> Option<&FcsDef> {
+        match self.entry(handle)? {
+            Entry::Fcs(d) => Some(d),
+            _ => None,
+        }
+    }
+
     /// The id behind a handle.
     #[must_use]
     pub fn id(&self, handle: ContentId) -> Option<&str> {
@@ -122,15 +132,16 @@ impl Registry {
             .map(|(h, _, _)| h)
     }
 
-    /// Number of entries of each kind: (aircraft, engines, aero sets).
+    /// Number of entries of each kind: (aircraft, engines, aero sets, control gains).
     #[must_use]
-    pub fn counts(&self) -> (usize, usize, usize) {
+    pub fn counts(&self) -> (usize, usize, usize, usize) {
         self.entries
             .iter()
-            .fold((0, 0, 0), |(a, e, r), entry| match entry {
-                Entry::Aircraft(_) => (a + 1, e, r),
-                Entry::Engine(_) => (a, e + 1, r),
-                Entry::Aero(_) => (a, e, r + 1),
+            .fold((0, 0, 0, 0), |(a, e, r, f), entry| match entry {
+                Entry::Aircraft(_) => (a + 1, e, r, f),
+                Entry::Engine(_) => (a, e + 1, r, f),
+                Entry::Aero(_) => (a, e, r + 1, f),
+                Entry::Fcs(_) => (a, e, r, f + 1),
             })
     }
 
@@ -149,12 +160,13 @@ mod tests {
     #[test]
     fn handles_are_indices_in_sorted_id_order() {
         let r = Registry::from_cpack(&pack()).unwrap();
-        assert_eq!(r.len(), 4);
+        assert_eq!(r.len(), 5);
         for (i, id) in [
             "core:ac/alpha",
             "core:ac/zulu",
             "core:aero/one",
             "core:eng/one",
+            "core:fcs/one",
         ]
         .iter()
         .enumerate()
@@ -170,10 +182,11 @@ mod tests {
                 "core:ac/alpha",
                 "core:ac/zulu",
                 "core:aero/one",
-                "core:eng/one"
+                "core:eng/one",
+                "core:fcs/one"
             ]
         );
-        assert_eq!(r.counts(), (2, 1, 1));
+        assert_eq!(r.counts(), (2, 1, 1, 1));
     }
 
     #[test]
@@ -184,9 +197,11 @@ mod tests {
         let a = r.aircraft(ac[0]).unwrap();
         assert!(r.engine(a.engines[0].engine).is_some());
         assert!(r.aero(a.aero.tables).is_some());
+        assert!(r.fcs(a.fcs.gains).is_some());
         assert!(r.aircraft(ContentId(2)).is_none());
         assert!(r.engine(ContentId(0)).is_none());
         assert!(r.aero(ContentId(3)).is_none());
+        assert!(r.fcs(ContentId(0)).is_none());
     }
 
     #[test]
@@ -194,7 +209,7 @@ mod tests {
         let r = Registry::from_cpack(&pack()).unwrap();
         assert_eq!(r.find("core:ac/nope"), None);
         assert_eq!(r.find(""), None);
-        assert!(r.entry(ContentId(4)).is_none());
+        assert!(r.entry(ContentId(5)).is_none());
         assert!(r.id(ContentId(u32::MAX)).is_none());
     }
 

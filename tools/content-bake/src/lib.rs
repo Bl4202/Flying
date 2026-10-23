@@ -9,5 +9,6 @@ pub mod bake;
 pub mod check;
 pub mod diag;
 pub mod export;
+pub mod gear;
 pub mod model;
 pub mod schema;

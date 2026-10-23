@@ -27,7 +27,49 @@
     "span_m": 9.8,
     "mac_m": 3.2,
     "ref_point_m": [0, 0, 0],
-    "bbox_m": [14.6, 9.8, 4.5]
+    "bbox_m": [14.6, 9.8, 4.5],
+    "gear": [
+      {
+        "id": "nose",
+        "pos_m": [4.58, 0, 2.29],
+        "stroke_m": 0.3,
+        "k_npm": 130000,
+        "c_comp_nspm": 9000,
+        "c_ext_nspm": 18000,
+        "steer_max_deg": 60,
+        "brake": true,
+        "main": false
+      },
+      {
+        "id": "main_l",
+        "pos_m": [-0.62, -1.45, 2.05],
+        "stroke_m": 0.3,
+        "k_npm": 325000,
+        "c_comp_nspm": 30000,
+        "c_ext_nspm": 60000,
+        "steer_max_deg": 0,
+        "brake": true,
+        "main": true
+      },
+      {
+        "id": "main_r",
+        "pos_m": [-0.62, 1.45, 2.05],
+        "stroke_m": 0.3,
+        "k_npm": 325000,
+        "c_comp_nspm": 30000,
+        "c_ext_nspm": 60000,
+        "steer_max_deg": 0,
+        "brake": true,
+        "main": true
+      }
+    ],
+    "contacts": [
+      { "id": "nose_tip", "pos_m": [7, 0, 0.6] },
+      { "id": "tail", "pos_m": [-6, 0, 0.35] },
+      { "id": "wing_l", "pos_m": [-1.5, -4.9, 0.4] },
+      { "id": "wing_r", "pos_m": [-1.5, 4.9, 0.4] },
+      { "id": "belly", "pos_m": [0, 0, 1.4] }
+    ]
   },
   "engines": [{ "ref": "core:eng/f129", "count": 1, "position_m": [-5.2, 0, 0] }],
   "aero": {
@@ -38,12 +80,14 @@
     "service_ceiling_m": 15500,
     "n_max": 9,
     "n_min": -3,
+    "n_max_by_config": { "gear": 4, "flaps": 4 },
     "gear_limit_mps": 128.6,
     "flap_limit_mps": 154.3,
     "static_margin_mac": 0.06
   },
   "fcs": {
     "sas_required": false,
+    "gains_ref": "core:fcs/kestrel",
     "limiters": { "alpha_limit_deg": 26, "n_cmd_max": 9, "roll_rate_max_dps": 270 },
     "actuators": {
       "stab": { "range_deg": [-25, 25], "rate_dps": 60, "tau_s": 0.05 },
@@ -51,7 +95,8 @@
       "rudder": { "range_deg": [-30, 30], "rate_dps": 120, "tau_s": 0.05 },
       "lef": { "range_deg": [0, 25], "rate_dps": 15, "tau_s": 0.1 },
       "tef": { "range_deg": [0, 30], "rate_dps": 20, "tau_s": 0.1 },
-      "airbrake": { "rate_per_s": 1, "tau_s": 0.3 }
+      "airbrake": { "rate_per_s": 1, "tau_s": 0.3 },
+      "gear": { "transit_s": 6 }
     }
   },
   "envelope": {

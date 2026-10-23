@@ -46,6 +46,38 @@ pub struct Mass {
     pub tanks: Vec<Tank>,
 }
 
+/// One landing-gear leg: a massless strut with a wheel at its end (GDD 11.13, A.2).
+#[derive(Clone, Debug, PartialEq)]
+pub struct GearLeg {
+    /// Name within the aircraft (`nose`, `main_l`, ...).
+    pub id: String,
+    /// Wheel contact point with the leg fully extended, m (body axes).
+    pub pos_m: [f32; 3],
+    /// Strut travel, m.
+    pub stroke_m: f32,
+    /// Spring rate, N/m.
+    pub k_npm: f32,
+    /// Damping while compressing, N s/m.
+    pub c_comp_nspm: f32,
+    /// Damping while extending, N s/m.
+    pub c_ext_nspm: f32,
+    /// Largest nose-wheel steering angle, degrees (0 if the leg does not steer).
+    pub steer_max_deg: f32,
+    /// True if the wheel has a brake.
+    pub brake: bool,
+    /// True for a main leg (the ones that carry the weight on landing).
+    pub main: bool,
+}
+
+/// A point of the airframe that can scrape the ground: nose, tail, wingtips, belly.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ContactPoint {
+    /// Name within the aircraft.
+    pub id: String,
+    /// Position, m (body axes).
+    pub pos_m: [f32; 3],
+}
+
 /// Reference geometry.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Geometry {
@@ -59,6 +91,10 @@ pub struct Geometry {
     pub ref_point_m: [f32; 3],
     /// Bounding box (length, span, height), m.
     pub bbox_m: [f32; 3],
+    /// Landing-gear legs.
+    pub gear: Vec<GearLeg>,
+    /// Airframe contact points.
+    pub contacts: Vec<ContactPoint>,
 }
 
 /// One engine installation.
@@ -70,6 +106,15 @@ pub struct EngineInstall {
     pub count: u8,
     /// Thrust point, m.
     pub position_m: [f32; 3],
+}
+
+/// Structural load limits that depend on the configuration.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NMaxByConfig {
+    /// Positive load limit with the gear extended, g.
+    pub gear: f32,
+    /// Positive load limit with the flaps out, g.
+    pub flaps: f32,
 }
 
 /// Aerodynamic references and operating limits.
@@ -89,6 +134,8 @@ pub struct AeroLimits {
     pub n_max: f32,
     /// Structural negative load limit, g (negative).
     pub n_min: f32,
+    /// Positive load limits with the gear or the flaps out.
+    pub n_max_by_config: NMaxByConfig,
     /// Gear-extended speed limit, m/s.
     pub gear_limit_mps: f32,
     /// Flap-extended speed limit, m/s.
@@ -117,7 +164,14 @@ pub struct Airbrake {
     pub tau_s: f32,
 }
 
-/// Flight-control data (GDD 11.11; the control laws arrive in v0.1b).
+/// The landing-gear actuator: the gear travels from up to down in a fixed time.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GearActuator {
+    /// Time to travel the whole way, s.
+    pub transit_s: f32,
+}
+
+/// Flight-control data (GDD 11.11): limits and actuators, and the handle of the gains.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Fcs {
     /// True if the airframe needs stability augmentation to be flyable.
@@ -140,6 +194,10 @@ pub struct Fcs {
     pub tef: Actuator,
     /// Airbrake.
     pub airbrake: Airbrake,
+    /// Landing gear.
+    pub gear: GearActuator,
+    /// The control-law gains (an `fcs` entry).
+    pub gains: ContentId,
 }
 
 /// One authored performance target (GDD 11.19, C.9).
@@ -225,10 +283,7 @@ impl AircraftDef {
             w.u8(t.feed_priority);
         }
 
-        let g = &self.geometry;
-        w.f32s(&[g.wing_area_m2, g.span_m, g.mac_m]);
-        w.f32s(&g.ref_point_m);
-        w.f32s(&g.bbox_m);
+        self.geometry.encode(w)?;
 
         w.count(self.engines.len())?;
         for e in &self.engines {
@@ -246,6 +301,8 @@ impl AircraftDef {
             a.service_ceiling_m,
             a.n_max,
             a.n_min,
+            a.n_max_by_config.gear,
+            a.n_max_by_config.flaps,
             a.gear_limit_mps,
             a.flap_limit_mps,
             a.static_margin_mac,
@@ -261,6 +318,8 @@ impl AircraftDef {
         }
         w.f32(f.airbrake.rate_per_s);
         w.f32(f.airbrake.tau_s);
+        w.f32(f.gear.transit_s);
+        w.handle(f.gains);
 
         w.count(self.envelope.len())?;
         for p in &self.envelope {
@@ -286,13 +345,7 @@ impl AircraftDef {
         let crew = r.u8()?;
         let hardpoints = r.u8()?;
         let mass = Mass::decode(r)?;
-        let geometry = Geometry {
-            wing_area_m2: r.f32()?,
-            span_m: r.f32()?,
-            mac_m: r.f32()?,
-            ref_point_m: r.vec3()?,
-            bbox_m: r.vec3()?,
-        };
+        let geometry = Geometry::decode(r)?;
         let engines = (0..r.u8()?)
             .map(|_| {
                 Ok(EngineInstall {
@@ -310,6 +363,10 @@ impl AircraftDef {
             service_ceiling_m: r.f32()?,
             n_max: r.f32()?,
             n_min: r.f32()?,
+            n_max_by_config: NMaxByConfig {
+                gear: r.f32()?,
+                flaps: r.f32()?,
+            },
             gear_limit_mps: r.f32()?,
             flap_limit_mps: r.f32()?,
             static_margin_mac: r.f32()?,
@@ -330,6 +387,71 @@ impl AircraftDef {
             aero,
             fcs,
             envelope,
+        })
+    }
+}
+
+impl Geometry {
+    fn encode(&self, w: &mut Writer<'_>) -> Result<(), CpackError> {
+        w.f32s(&[self.wing_area_m2, self.span_m, self.mac_m]);
+        w.f32s(&self.ref_point_m);
+        w.f32s(&self.bbox_m);
+        w.count(self.gear.len())?;
+        for leg in &self.gear {
+            w.str(&leg.id)?;
+            w.f32s(&leg.pos_m);
+            w.f32s(&[
+                leg.stroke_m,
+                leg.k_npm,
+                leg.c_comp_nspm,
+                leg.c_ext_nspm,
+                leg.steer_max_deg,
+            ]);
+            w.bool(leg.brake);
+            w.bool(leg.main);
+        }
+        w.count(self.contacts.len())?;
+        for p in &self.contacts {
+            w.str(&p.id)?;
+            w.f32s(&p.pos_m);
+        }
+        Ok(())
+    }
+
+    fn decode(r: &mut Reader<'_>) -> Result<Self, CpackError> {
+        let (wing_area_m2, span_m, mac_m) = (r.f32()?, r.f32()?, r.f32()?);
+        let (ref_point_m, bbox_m) = (r.vec3()?, r.vec3()?);
+        let gear = (0..r.u8()?)
+            .map(|_| {
+                Ok(GearLeg {
+                    id: r.str()?,
+                    pos_m: r.vec3()?,
+                    stroke_m: r.f32()?,
+                    k_npm: r.f32()?,
+                    c_comp_nspm: r.f32()?,
+                    c_ext_nspm: r.f32()?,
+                    steer_max_deg: r.f32()?,
+                    brake: r.bool()?,
+                    main: r.bool()?,
+                })
+            })
+            .collect::<Result<Vec<_>, CpackError>>()?;
+        let contacts = (0..r.u8()?)
+            .map(|_| {
+                Ok(ContactPoint {
+                    id: r.str()?,
+                    pos_m: r.vec3()?,
+                })
+            })
+            .collect::<Result<Vec<_>, CpackError>>()?;
+        Ok(Self {
+            wing_area_m2,
+            span_m,
+            mac_m,
+            ref_point_m,
+            bbox_m,
+            gear,
+            contacts,
         })
     }
 }
@@ -382,6 +504,10 @@ impl Fcs {
             rate_per_s: r.f32()?,
             tau_s: r.f32()?,
         };
+        let gear = GearActuator {
+            transit_s: r.f32()?,
+        };
+        let gains = r.handle()?;
         Ok(Self {
             sas_required,
             alpha_limit_deg,
@@ -393,6 +519,8 @@ impl Fcs {
             lef,
             tef,
             airbrake,
+            gear,
+            gains,
         })
     }
 }
@@ -446,9 +574,13 @@ pub(crate) mod tests {
         }
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "a fixture: one long literal that is clearer whole"
+    )]
     /// A valid definition with the Kestrel's headline numbers, referring to an engine at handle
-    /// `engine` and an aero set at handle `aero`.
-    pub(crate) fn sample(engine: ContentId, aero: ContentId) -> AircraftDef {
+    /// `engine`, an aero set at handle `aero` and control gains at handle `gains`.
+    pub(crate) fn sample(engine: ContentId, aero: ContentId, gains: ContentId) -> AircraftDef {
         AircraftDef {
             name_key: "ac.kestrel.name".into(),
             category: Category::LightFighter,
@@ -485,6 +617,34 @@ pub(crate) mod tests {
                 mac_m: 3.2,
                 ref_point_m: [0.0; 3],
                 bbox_m: [14.6, 9.8, 4.5],
+                gear: vec![
+                    GearLeg {
+                        id: "nose".into(),
+                        pos_m: [4.58, 0.0, 2.29],
+                        stroke_m: 0.3,
+                        k_npm: 130_000.0,
+                        c_comp_nspm: 9000.0,
+                        c_ext_nspm: 18_000.0,
+                        steer_max_deg: 60.0,
+                        brake: true,
+                        main: false,
+                    },
+                    GearLeg {
+                        id: "main_l".into(),
+                        pos_m: [-0.62, -1.45, 2.05],
+                        stroke_m: 0.3,
+                        k_npm: 325_000.0,
+                        c_comp_nspm: 30_000.0,
+                        c_ext_nspm: 60_000.0,
+                        steer_max_deg: 0.0,
+                        brake: true,
+                        main: true,
+                    },
+                ],
+                contacts: vec![ContactPoint {
+                    id: "tail".into(),
+                    pos_m: [-6.0, 0.0, 0.35],
+                }],
             },
             engines: vec![EngineInstall {
                 engine,
@@ -499,6 +659,10 @@ pub(crate) mod tests {
                 service_ceiling_m: 15500.0,
                 n_max: 9.0,
                 n_min: -3.0,
+                n_max_by_config: NMaxByConfig {
+                    gear: 4.0,
+                    flaps: 4.0,
+                },
                 gear_limit_mps: 128.6,
                 flap_limit_mps: 154.3,
                 static_margin_mac: 0.06,
@@ -517,6 +681,8 @@ pub(crate) mod tests {
                     rate_per_s: 1.0,
                     tau_s: 0.3,
                 },
+                gear: GearActuator { transit_s: 6.0 },
+                gains,
             },
             envelope: vec![
                 EnvelopePoint {
@@ -559,14 +725,14 @@ pub(crate) mod tests {
 
     #[test]
     fn a_record_round_trips() {
-        let def = sample(ContentId(0), ContentId(1));
+        let def = sample(ContentId(0), ContentId(1), ContentId(2));
         assert_eq!(round_trip(&def).unwrap(), def);
         assert_eq!(def.engine_count(), 1);
     }
 
     #[test]
     fn bad_codes_are_refused() {
-        let def = sample(ContentId(0), ContentId(1));
+        let def = sample(ContentId(0), ContentId(1), ContentId(2));
         let mut strings = Strings::default();
         let mut w = Writer::new(&mut strings);
         def.encode(&mut w).unwrap();
