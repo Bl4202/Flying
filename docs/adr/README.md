@@ -38,6 +38,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-31](0031-performance-conformance-test-method.md) | Performance Conformance Test method and gates | Accepted |
 | [ADR-32](0032-ground-roll-conformance-method.md) | Ground-roll conformance method and the landing-roll finding | Accepted |
 | [ADR-33](0033-v0-1b-gates.md) | v0.1b gates: circuit, FCS handling, departure, mouse-aim and latency | Accepted |
+| [ADR-35](0035-ground-model-and-test-airfield.md) | Ground model, touchdown criteria and the test airfield | Proposed |
 
 ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist before any tuning
 (AC-66.4).

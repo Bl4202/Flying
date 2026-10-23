@@ -20,6 +20,7 @@ use crate::body::RigidState;
 use crate::engine::{EngineCommand, EngineModel, EngineState, MAX_ENGINES};
 use crate::env::FlightEnv;
 use crate::frames::{Euler, attitude};
+use crate::gear::{GroundState, WheelCommands};
 use crate::mass::FuelLoad;
 
 /// Most variables (and residuals) in a problem.
@@ -398,6 +399,8 @@ pub fn state_of<E: FlightEnv>(
         engines: engine_states(model, p.throttle),
         fuel: setup.fuel,
         trim_pitch_rad: p.elevator_rad,
+        wheels: WheelCommands::NONE,
+        ground: GroundState::AIRBORNE,
         mass_frozen: false,
         numerical_fault: false,
     }
@@ -414,6 +417,7 @@ pub fn commands_of(model: &AircraftModel, setup: &TrimSetup, p: &TrimPoint) -> C
             ..setup.config
         },
         engine: engine_command(model, p.throttle),
+        wheels: WheelCommands::NONE,
     }
 }
 
