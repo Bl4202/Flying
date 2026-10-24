@@ -1402,10 +1402,10 @@ pub struct PitchGainsFile {
     /// Pitch-rate damping gain of the inner loop.
     #[schemars(extend("x-unit" = "1/s"), range(min = 0.0, max = 50.0))]
     pub k_q_per_s: f64,
-    /// Proportional gain on the load-factor error.
-    #[schemars(extend("x-unit" = "per g"), range(min = 0.0, max = 20.0))]
-    pub k_n: f64,
-    /// Integral gain on the load-factor error.
+    /// Bandwidth of the load-factor loop.
+    #[schemars(extend("x-unit" = "1/s"), range(min = 0.0, max = 20.0))]
+    pub k_n_per_s: f64,
+    /// Integral gain on the load-factor error, relative to the bandwidth.
     #[schemars(extend("x-unit" = "1/s"), range(min = 0.0, max = 20.0))]
     pub k_ni_per_s: f64,
     /// Time constant of the command prefilter.
@@ -1561,6 +1561,21 @@ pub struct MouseAimGainsFile {
     /// Stick ramp, full scale per second.
     #[schemars(extend("x-unit" = "1/s"), range(min = 0.1, max = 50.0))]
     pub ramp_per_s: f64,
+    /// Bank command per unit of bank error when the aim is far (the near value is `k_bank`).
+    #[schemars(range(min = 0.0, max = 10.0))]
+    pub k_bank_far: f64,
+    /// How far ahead along the rate it closes at the nose is looked at.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.0, max = 1.0))]
+    pub lead_s: f64,
+    /// The largest turn rate toward the aim asked for.
+    #[schemars(extend("x-unit" = "deg/s"), range(min = 1.0, max = 90.0))]
+    pub rate_cap_dps: f64,
+    /// The largest pull the aim asks for, as a fraction of the pitch stick.
+    #[schemars(range(min = 0.1, max = 1.0))]
+    pub pitch_stick_max: f64,
+    /// Roll command taken off per unit of roll rate, as a fraction of the largest roll rate.
+    #[schemars(range(min = 0.0, max = 5.0))]
+    pub k_roll_rate: f64,
 }
 
 /// The recovery button.
@@ -1612,7 +1627,7 @@ impl FcsGainsFile {
             name_key: self.name_key.clone(),
             pitch: PitchGains {
                 k_q_per_s: p.k_q_per_s as f32,
-                k_n: p.k_n as f32,
+                k_n_per_s: p.k_n_per_s as f32,
                 k_ni_per_s: p.k_ni_per_s as f32,
                 tau_cmd_s: p.tau_cmd_s as f32,
                 alpha_band_deg: p.alpha_band_deg as f32,
@@ -1667,6 +1682,11 @@ impl FcsGainsFile {
                 k_pitch_per_rad: m.k_pitch_per_rad as f32,
                 deadzone_deg: m.deadzone_deg as f32,
                 ramp_per_s: m.ramp_per_s as f32,
+                k_bank_far: m.k_bank_far as f32,
+                lead_s: m.lead_s as f32,
+                rate_cap_dps: m.rate_cap_dps as f32,
+                pitch_stick_max: m.pitch_stick_max as f32,
+                k_roll_rate: m.k_roll_rate as f32,
             },
             recover: RecoverGains {
                 n_pull: self.recover.n_pull as f32,
@@ -1692,7 +1712,7 @@ impl FcsGainsFile {
             name_key: d.name_key.clone(),
             pitch: PitchGainsFile {
                 k_q_per_s: f(p.k_q_per_s),
-                k_n: f(p.k_n),
+                k_n_per_s: f(p.k_n_per_s),
                 k_ni_per_s: f(p.k_ni_per_s),
                 tau_cmd_s: f(p.tau_cmd_s),
                 alpha_band_deg: f(p.alpha_band_deg),
@@ -1747,6 +1767,11 @@ impl FcsGainsFile {
                 k_pitch_per_rad: f(m.k_pitch_per_rad),
                 deadzone_deg: f(m.deadzone_deg),
                 ramp_per_s: f(m.ramp_per_s),
+                k_bank_far: f(m.k_bank_far),
+                lead_s: f(m.lead_s),
+                rate_cap_dps: f(m.rate_cap_dps),
+                pitch_stick_max: f(m.pitch_stick_max),
+                k_roll_rate: f(m.k_roll_rate),
             },
             recover: RecoverGainsFile {
                 n_pull: f(d.recover.n_pull),

@@ -12,6 +12,7 @@ use serde_json::Value;
 const RULES: &[(&str, &[&str])] = &[
     ("simmath", &["libm"]),
     ("flight", &["simmath", "content"]),
+    ("fcs", &["content", "flight", "simmath"]),
     (
         "flight-test",
         &["content", "flight", "serde_json", "simmath"],
@@ -131,6 +132,7 @@ mod tests {
         map(&[
             ("simmath", &["libm"]),
             ("flight", &["content", "simmath"]),
+            ("fcs", &["content", "flight", "simmath"]),
             (
                 "flight-test",
                 &["content", "flight", "serde_json", "simmath"],
@@ -157,6 +159,18 @@ mod tests {
         g.get_mut("sim-core").unwrap().push("protocol".into());
         let err = violations(&g).unwrap_err();
         assert!(err.contains("`sim-core` depends on `protocol`"), "{err}");
+    }
+
+    #[test]
+    fn the_control_system_sits_above_the_flight_model_and_below_its_users() {
+        let mut g = good();
+        g.get_mut("fcs").unwrap().push("sim-core".into());
+        let err = violations(&g).unwrap_err();
+        assert!(err.contains("`fcs` depends on `sim-core`"), "{err}");
+        let mut g = good();
+        g.get_mut("flight").unwrap().push("fcs".into());
+        let err = violations(&g).unwrap_err();
+        assert!(err.contains("`flight` depends on `fcs`"), "{err}");
     }
 
     #[test]

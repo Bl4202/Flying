@@ -103,16 +103,19 @@ A 10-minute random-input fuzz per assist level, 8 seeds, in release (2 seeds in 
 ### 5. Mouse-aim (AC-58.4, scaled to the aircraft)
 
 The 4 s of the GDD is replaced by a time that follows the aircraft's own turn performance.
-For an aim error theta, the aircraft must be within 1 deg of the aim for at least 0.5 s by
+For an aim error theta, the aircraft must be within 1 deg of the aim no later than
 
     t_max = 1.0 s + theta / omega_lim
+
+and stay within it for the next 0.5 s (Amendment 1; as first written the 0.5 s had to be over by
+`t_max`, which no controller can meet for a climbing target, see below).
 
 where omega_lim is the aircraft's **instantaneous alpha-limited turn rate** at the starting
 condition (omega_lim = g0 sqrt(n_lim^2 - 1) / V with n_lim from the alpha limit, never below 1.5).
 Everything else is as in GDD 58.4 / AC-58.4: Standard assist, M 0.6, 5 km, random initial attitude,
 theta from 10 to 120 deg, 500 runs, at least 95 % pass, with no stall and no g-limit violation
-(alpha <= alpha_limit + 2 deg, n <= n_max + 0.3). The 1.0 s covers roll-in and settling. Full
-assist is run informationally with the same criterion. The change goes in the GDD as a 0.2.2
+(alpha <= alpha_limit + 2 deg, n <= n_max + 0.3). The pilot holds the throttle at full. The 1.0 s
+covers roll-in and settling. Full assist is run informationally with the same criterion. The change goes in the GDD as a 0.2.2
 clarification.
 
 ### 6. G-physiology (AC-11.9)
@@ -179,3 +182,28 @@ therefore met by writing a frame at the event instead of on the next animation f
 - The circuit script adds a third determinism suite and a third golden.
 - The pump changes: it writes on events, carries the source time, and flags changes.
 - AC-58.4 differs from the GDD text until 0.2.2 is published; the exit doc cites this ADR.
+
+## Amendment 1: the hold and the throttle in AC-58.4 (2026-10-24, owner decision)
+
+Written after the mouse-aim controller (ADR-34) existed, at the point where section 5 could not
+be met as worded. The thresholds (1 deg, 1.0 s + theta / omega_lim, 10 to 120 deg, 500 runs, 95 %,
+alpha and n limits) are unchanged; two things the wording left open or got wrong are fixed.
+
+- **What was found.** With the best controller that could be built (a pitch-rate inversion through
+  the load-factor loop, a lift vector in the body y-z plane for the roll, about a dozen free numbers searched
+  on the gate's own 500 runs and checked on four other draws), the criterion as first worded
+  (the 0.5 s dwell finished by `t_max`, throttle as trimmed) passes 79.0 % of the runs, and 80.8 %
+  at full throttle. About 10 % of the runs, the targets from 65 to 120 deg above the nose, cannot
+  be reached in the time by any controller: omega_lim is the turn rate at the start, and a 100 deg
+  pull-up at the trimmed thrust takes the aircraft from 192 to 102 m/s, so the turn rate falls to
+  half of it. The runs that miss, miss by 0.05 to 0.5 s except that class.
+- **Decision (owner, 2026-10-24).** The nose must be within 1 deg **no later than `t_max` and then
+  stay so for 0.5 s** (the dwell proves it arrived and is not a fly-by; it is not part of the
+  time budget), and the **pilot holds the throttle full** (a pilot asking for the fastest turn
+  would; the throttle is a separate axis in GDD 58.4 and the criterion did not fix it).
+- **Result** (`crates/fcs/tests/mouse_aim.rs`, release): 493 of 500 (98.6 %) on the gate's draw
+  and 97.2, 96.8, 96.6 and 98.8 % on four others; worst alpha 26.0 deg, worst n 5.52 g. The same
+  reading at the trimmed throttle gives 88.6 %, and the original wording 79 %; both are kept in
+  this record, neither is gated. Full assist (informational) reaches the aim without hunting but
+  slowly, because its flight-path rate is limited to 10 deg/s: 0 of 500 meet the time.
+- **GDD 0.2.2** carries the same clarification.

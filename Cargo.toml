@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/simmath",
     "crates/flight",
+    "crates/fcs",
     "crates/flight-test",
     "crates/sim-core",
     "crates/sim-wasm",
@@ -16,6 +17,7 @@ members = [
 default-members = [
     "crates/simmath",
     "crates/flight",
+    "crates/fcs",
     "crates/flight-test",
     "crates/sim-core",
     "crates/protocol",
@@ -40,6 +42,7 @@ repository = "https://github.com/Bl4202/Flying"
 libm = { version = "=0.2.16", default-features = false }
 simmath = { path = "crates/simmath" }
 flight = { path = "crates/flight" }
+fcs = { path = "crates/fcs" }
 flight-test = { path = "crates/flight-test" }
 sim-core = { path = "crates/sim-core" }
 protocol = { path = "crates/protocol" }

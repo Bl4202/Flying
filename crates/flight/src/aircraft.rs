@@ -19,7 +19,7 @@ use content::{ContentId, Registry};
 use simmath::math::{DQuat, DVec3};
 
 use crate::actuators::{Actuators, Surfaces};
-use crate::aero::{AeroInput, TableAero};
+use crate::aero::{AeroInput, ControlModel, TableAero};
 use crate::airdata::{AirData, cas_mps};
 use crate::atmosphere::{AtmoSample, Atmosphere};
 use crate::body::{RigidDeriv, RigidState, derivative, step_rk4};
@@ -182,6 +182,21 @@ pub struct Telemetry {
     pub vs_mps: f64,
 }
 
+/// What the control laws read in a tick (see [`AircraftModel::sense`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Sense {
+    /// Display and measurement quantities.
+    pub tel: Telemetry,
+    /// Body angular acceleration at this instant without the ground's share of it, rad/s^2: what
+    /// the aerodynamics, the engines and the gyroscopic terms give. The control laws invert this;
+    /// the push of the wheels is not theirs to cancel.
+    pub omega_dot_rps2: DVec3,
+    /// Mass, CG and inertia.
+    pub mass: MassProps,
+    /// The primary controls linearised about the flight condition.
+    pub controls: ControlModel,
+}
+
 /// Results of one evaluation of the forces at a stage.
 #[derive(Clone, Copy, Debug)]
 struct Stage {
@@ -191,6 +206,7 @@ struct Stage {
     height_msl_m: f64,
     force_body_n: DVec3,
     ground_force_body_n: DVec3,
+    ground_moment_body_nm: DVec3,
     thrust_n: f64,
     fuel_flow_kgps: f64,
 }
@@ -576,6 +592,7 @@ impl AircraftModel {
             height_msl_m,
             force_body_n,
             ground_force_body_n: ground.force_body_n,
+            ground_moment_body_nm: ground.moment_body_nm,
             thrust_n,
             fuel_flow_kgps,
         }
@@ -600,6 +617,39 @@ impl AircraftModel {
     pub fn telemetry<E: FlightEnv>(&self, s: &AircraftState, env: &E, t_s: f64) -> Telemetry {
         let mass = self.mass.props(&s.fuel);
         let st = self.stage(&s.body, s, &mass, env, t_s);
+        self.telemetry_of(s, &st, &mass, env)
+    }
+
+    /// Everything the control laws read, from one evaluation of the forces: the telemetry, the
+    /// body angular acceleration the aircraft has right now, the mass properties and the aircraft's
+    /// own controls linearised about the flight condition (ADR-34).
+    #[must_use]
+    pub fn sense<E: FlightEnv>(&self, s: &AircraftState, env: &E, t_s: f64) -> Sense {
+        let mass = self.mass.props(&s.fuel);
+        let st = self.stage(&s.body, s, &mass, env, t_s);
+        let tel = self.telemetry_of(s, &st, &mass, env);
+        let controls = self.aero.control_model(&AeroInput {
+            air: st.air,
+            alpha_dot_rps: 0.0,
+            surfaces: s.surfaces,
+            height_agl_m: st.height_msl_m - env.ground_height_m(s.body.pos_bf),
+            cg_body_m: mass.cg_body_m,
+        });
+        Sense {
+            tel,
+            omega_dot_rps2: st.deriv.omega - mass.inertia_inv.mul_vec(st.ground_moment_body_nm),
+            mass,
+            controls,
+        }
+    }
+
+    fn telemetry_of<E: FlightEnv>(
+        &self,
+        s: &AircraftState,
+        st: &Stage,
+        mass: &MassProps,
+        env: &E,
+    ) -> Telemetry {
         let ab_stage = self
             .engines
             .iter()
@@ -629,7 +679,7 @@ impl AircraftModel {
                 .any(|e| !e.running),
             ref_point_bf: self.ref_point_bf(s),
             wow: s.ground.wow,
-            agl_m: gear::lowest_point_agl_m(&self.gear, &s.body, &mass, env),
+            agl_m: gear::lowest_point_agl_m(&self.gear, &s.body, mass, env),
             ground_speed_mps: {
                 let up = env.up_bf(s.body.pos_bf);
                 (s.body.vel_bf - up * s.body.vel_bf.dot(up)).length()

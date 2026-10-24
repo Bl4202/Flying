@@ -281,3 +281,47 @@ fn the_flap_fraction_and_the_structure_input_come_from_the_state() {
     s.surfaces.tef_rad = 10.0;
     assert_eq!(m.flap_fraction(&s.surfaces), 1.0);
 }
+
+#[test]
+fn sense_is_the_telemetry_the_angular_acceleration_and_the_controls_of_one_evaluation() {
+    let m = kestrel();
+    let world = SphereSea::open();
+    let mut s = level(&m, 5000.0, 190.0, 3.0, 2000.0);
+    s.body.omega_body = DVec3::new(0.05, -0.02, 0.01);
+    s.surfaces.elevator_rad = -0.02;
+    let sense = m.sense(&s, &world, 1.0);
+    assert_eq!(sense.tel, m.telemetry(&s, &world, 1.0));
+    let (d, _) = m.derivative(&s, &world, 1.0);
+    assert_eq!(sense.omega_dot_rps2, d.omega);
+    assert_eq!(sense.mass, m.mass.props(&s.fuel));
+    // The controls are the model's own: the elevator moment matches the aero model's, and a
+    // nose-down elevator (positive) pitches down.
+    assert!(sense.controls.dm_de < 0.0 && sense.controls.qbar_s > 1.0e5);
+    let again = m.sense(&s, &world, 1.0);
+    assert_eq!(sense, again, "a pure function of the state");
+}
+
+#[test]
+fn sense_leaves_the_pushes_of_the_wheels_out_of_the_accelerations() {
+    let m = kestrel();
+    let world = SphereSea::default();
+    let (mut s, _) = m
+        .static_state(3000.0, 0.0, 0.0, DVec3::ZERO, &world, EngineCommand::IDLE)
+        .expect("a static pose");
+    // Sinking into the struts: they push back hard, and mostly behind the CG.
+    s.body.vel_bf = DVec3::new(0.0, 0.0, -2.0);
+    let sense = m.sense(&s, &world, 0.0);
+    let (d, _) = m.derivative(&s, &world, 0.0);
+    assert!(sense.tel.ground_force_body_n.length() > 1.0e4, "in contact");
+    let share = (d.omega - sense.omega_dot_rps2).length();
+    assert!(share > 0.05, "the wheels turn the aircraft: {share}");
+    // With no ground at all the same state gives what the sense reports (at 2 m/s the air is
+    // worth almost nothing).
+    let open = m.sense(&s, &SphereSea::open(), 0.0);
+    assert!(
+        (open.omega_dot_rps2 - sense.omega_dot_rps2).length() < 0.01 * share,
+        "{:?} against {:?}",
+        open.omega_dot_rps2,
+        sense.omega_dot_rps2
+    );
+}

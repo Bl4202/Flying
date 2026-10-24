@@ -16,8 +16,9 @@ use crate::table::Curve;
 pub struct PitchGains {
     /// Pitch-rate damping gain of the inner loop, per second.
     pub k_q_per_s: f32,
-    /// Proportional gain on the load-factor error (rate per g, scaled by `g/V` in the law).
-    pub k_n: f32,
+    /// Bandwidth of the load-factor loop, per second: the loop closes `n` on `n_cmd` as a first
+    /// order lag of time constant `1 / k_n_per_s`, whatever the dynamic pressure.
+    pub k_n_per_s: f32,
     /// Integral gain on the load-factor error, per second.
     pub k_ni_per_s: f32,
     /// Time constant of the command prefilter, s.
@@ -134,6 +135,16 @@ pub struct MouseAimGains {
     pub deadzone_deg: f32,
     /// Stick ramp, full scale per second.
     pub ramp_per_s: f32,
+    /// Bank command per unit of bank error when the aim is far (the near value is `k_bank`).
+    pub k_bank_far: f32,
+    /// How far ahead along the rate it closes at the nose is looked at, seconds.
+    pub lead_s: f32,
+    /// The largest turn rate toward the aim asked for, degrees per second.
+    pub rate_cap_dps: f32,
+    /// The largest pull the aim asks for, as a fraction of the pitch stick.
+    pub pitch_stick_max: f32,
+    /// Roll command taken off per unit of roll rate, as a fraction of the largest roll rate.
+    pub k_roll_rate: f32,
 }
 
 /// The recovery button.
@@ -193,7 +204,7 @@ impl FcsDef {
         let p = &self.pitch;
         w.f32s(&[
             p.k_q_per_s,
-            p.k_n,
+            p.k_n_per_s,
             p.k_ni_per_s,
             p.tau_cmd_s,
             p.alpha_band_deg,
@@ -232,7 +243,17 @@ impl FcsDef {
         ]);
         w.f32(self.assist_blend_s);
         let m = &self.mouse_aim;
-        w.f32s(&[m.k_bank, m.k_pitch_per_rad, m.deadzone_deg, m.ramp_per_s]);
+        w.f32s(&[
+            m.k_bank,
+            m.k_pitch_per_rad,
+            m.deadzone_deg,
+            m.ramp_per_s,
+            m.k_bank_far,
+            m.lead_s,
+            m.rate_cap_dps,
+            m.pitch_stick_max,
+            m.k_roll_rate,
+        ]);
         w.f32s(&[self.recover.n_pull, self.recover.gamma_deg]);
         let c = &self.gcas;
         w.f32s(&[c.n_pull, c.buffer_m, c.horizon_s, c.step_s]);
@@ -243,7 +264,7 @@ impl FcsDef {
         let name_key = r.str()?;
         let pitch = PitchGains {
             k_q_per_s: r.f32()?,
-            k_n: r.f32()?,
+            k_n_per_s: r.f32()?,
             k_ni_per_s: r.f32()?,
             tau_cmd_s: r.f32()?,
             alpha_band_deg: r.f32()?,
@@ -298,6 +319,11 @@ impl FcsDef {
             k_pitch_per_rad: r.f32()?,
             deadzone_deg: r.f32()?,
             ramp_per_s: r.f32()?,
+            k_bank_far: r.f32()?,
+            lead_s: r.f32()?,
+            rate_cap_dps: r.f32()?,
+            pitch_stick_max: r.f32()?,
+            k_roll_rate: r.f32()?,
         };
         let recover = RecoverGains {
             n_pull: r.f32()?,
@@ -338,7 +364,7 @@ pub(crate) mod tests {
             name_key: "fcs.sparrow.name".into(),
             pitch: PitchGains {
                 k_q_per_s: 6.0,
-                k_n: 1.5,
+                k_n_per_s: 4.0,
                 k_ni_per_s: 1.0,
                 tau_cmd_s: 0.1,
                 alpha_band_deg: 3.0,
@@ -387,10 +413,15 @@ pub(crate) mod tests {
             },
             assist_blend_s: 0.5,
             mouse_aim: MouseAimGains {
-                k_bank: 1.6,
-                k_pitch_per_rad: 3.0,
+                k_bank: 0.3,
+                k_pitch_per_rad: 8.1,
                 deadzone_deg: 1.0,
-                ramp_per_s: 3.0,
+                ramp_per_s: 50.0,
+                k_bank_far: 0.57,
+                lead_s: 0.23,
+                rate_cap_dps: 30.5,
+                pitch_stick_max: 0.55,
+                k_roll_rate: 0.49,
             },
             recover: RecoverGains {
                 n_pull: 4.0,

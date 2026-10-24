@@ -3,10 +3,10 @@
   "id": "core:fcs/kestrel",
   "name_key": "fcs.kestrel.name",
   "pitch": {
-    "k_q_per_s": 6,
-    "k_n": 1.5,
-    "k_ni_per_s": 1,
-    "tau_cmd_s": 0.1,
+    "k_q_per_s": 8,
+    "k_n_per_s": 3.4,
+    "k_ni_per_s": 0.15,
+    "tau_cmd_s": 0.12,
     "alpha_band_deg": 3,
     "k_alpha_per_s": 3,
     "alpha_min_deg": -10,
@@ -22,8 +22,8 @@
   },
   "roll": {
     "k_p_per_s": 6,
-    "k_pi_per_s": 0.5,
-    "tau_cmd_s": 0.08,
+    "k_pi_per_s": 0,
+    "tau_cmd_s": 0.1,
     "p_max_qbar": {
       "axis": "qbar_kpa",
       "points": [
@@ -73,7 +73,7 @@
     "k_bank_per_s": 2,
     "alpha_margin_deg": 2
   },
-  "overspeed": { "onset": 0.97, "k_pull": 30 },
+  "overspeed": { "onset": 0.92, "k_pull": 70 },
   "config": { "n_min_config": -1 },
   "ground": {
     "wow_debounce_s": 0.1,
@@ -83,7 +83,17 @@
     "nws": { "low_speed_mps": 15, "high_speed_mps": 30, "low_deg": 60, "high_deg": 5 }
   },
   "assist_blend_s": 0.5,
-  "mouse_aim": { "k_bank": 1.6, "k_pitch_per_rad": 3, "deadzone_deg": 1, "ramp_per_s": 3 },
+  "mouse_aim": {
+    "k_bank": 0.3,
+    "k_bank_far": 0.57,
+    "k_pitch_per_rad": 8.1,
+    "deadzone_deg": 1,
+    "ramp_per_s": 50,
+    "lead_s": 0.23,
+    "rate_cap_dps": 30.5,
+    "pitch_stick_max": 0.55,
+    "k_roll_rate": 0.49
+  },
   "recover": { "n_pull": 4, "gamma_deg": 5 },
   "gcas": { "n_pull": 5, "buffer_m": 50, "horizon_s": 10, "step_s": 0.1 }
 }
