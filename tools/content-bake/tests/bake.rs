@@ -107,7 +107,7 @@ fn the_core_pack_bakes_and_holds_the_kestrel() {
     assert_eq!(k.fcs.gear.transit_s, 6.0);
     assert_eq!(reg.id(k.fcs.gains), Some("core:fcs/kestrel"));
     let gains = reg.fcs(k.fcs.gains).expect("the gains reference resolves");
-    assert_eq!(gains.pitch.k_q_per_s, 6.0);
+    assert_eq!(gains.pitch.k_q_per_s, 8.0);
     assert_eq!(gains.ground.nws.low_deg, 60.0);
 
     // The landing gear: a steerable braked nose leg and two braked mains (ADR-35).

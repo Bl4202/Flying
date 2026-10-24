@@ -38,6 +38,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-31](0031-performance-conformance-test-method.md) | Performance Conformance Test method and gates | Accepted |
 | [ADR-32](0032-ground-roll-conformance-method.md) | Ground-roll conformance method and the landing-roll finding | Accepted |
 | [ADR-33](0033-v0-1b-gates.md) | v0.1b gates: circuit, FCS handling, departure, mouse-aim and latency | Accepted |
+| [ADR-34](0034-flight-control-system.md) | The flight control system: assist levels, limiters, ground mode, mouse-aim | Proposed |
 | [ADR-35](0035-ground-model-and-test-airfield.md) | Ground model, touchdown criteria and the test airfield | Proposed |
 | [ADR-38](0038-g-physiology-departure-and-structure.md) | G-physiology, departure diagnostics, structural limits and the onboard control model | Proposed |
 
@@ -46,4 +47,5 @@ ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist befor
 
 ADR-32 and ADR-33 were written first in v0.1b, before any gear or FCS code, for the same reason
 (AC-66.4). ADR-34 to ADR-38 (FCS, ground model and test airfield, session config / ABI v3 / input
-v3 / snapshot v3, controls stack, G-physiology and departure) are added with their work packages.
+v3 / snapshot v3, controls stack, G-physiology and departure) are added with their work packages
+(ADR-34, 35 and 38 so far).

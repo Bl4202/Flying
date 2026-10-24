@@ -222,6 +222,13 @@
           "minimum": 0.0,
           "type": "number"
         },
+        "k_bank_far": {
+          "description": "Bank command per unit of bank error when the aim is far (the near value is `k_bank`).",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
         "k_pitch_per_rad": {
           "description": "Pitch command per radian of elevation error.",
           "format": "double",
@@ -230,6 +237,28 @@
           "type": "number",
           "x-unit": "1/rad"
         },
+        "k_roll_rate": {
+          "description": "Roll command taken off per unit of roll rate, as a fraction of the largest roll rate.",
+          "format": "double",
+          "maximum": 5.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "lead_s": {
+          "description": "How far ahead along the rate it closes at the nose is looked at.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "pitch_stick_max": {
+          "description": "The largest pull the aim asks for, as a fraction of the pitch stick.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.1,
+          "type": "number"
+        },
         "ramp_per_s": {
           "description": "Stick ramp, full scale per second.",
           "format": "double",
@@ -237,13 +266,26 @@
           "minimum": 0.1,
           "type": "number",
           "x-unit": "1/s"
+        },
+        "rate_cap_dps": {
+          "description": "The largest turn rate toward the aim asked for.",
+          "format": "double",
+          "maximum": 90.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "deg/s"
         }
       },
       "required": [
         "k_bank",
         "k_pitch_per_rad",
         "deadzone_deg",
-        "ramp_per_s"
+        "ramp_per_s",
+        "k_bank_far",
+        "lead_s",
+        "rate_cap_dps",
+        "pitch_stick_max",
+        "k_roll_rate"
       ],
       "type": "object"
     },
@@ -346,16 +388,16 @@
           "type": "number",
           "x-unit": "1/s"
         },
-        "k_n": {
-          "description": "Proportional gain on the load-factor error.",
+        "k_n_per_s": {
+          "description": "Bandwidth of the load-factor loop.",
           "format": "double",
           "maximum": 20.0,
           "minimum": 0.0,
           "type": "number",
-          "x-unit": "per g"
+          "x-unit": "1/s"
         },
         "k_ni_per_s": {
-          "description": "Integral gain on the load-factor error.",
+          "description": "Integral gain on the load-factor error, relative to the bandwidth.",
           "format": "double",
           "maximum": 20.0,
           "minimum": 0.0,
@@ -385,7 +427,7 @@
       },
       "required": [
         "k_q_per_s",
-        "k_n",
+        "k_n_per_s",
         "k_ni_per_s",
         "tau_cmd_s",
         "alpha_band_deg",

@@ -20,7 +20,14 @@ use serde_json::Value;
 use crate::util::workspace_root;
 
 /// The crates that make up the simulation (GDD 61.7).
-const SIM_CRATES: &[&str] = &["simmath", "flight", "flight-test", "sim-core", "sim-wasm"];
+const SIM_CRATES: &[&str] = &[
+    "simmath",
+    "flight",
+    "fcs",
+    "flight-test",
+    "sim-core",
+    "sim-wasm",
+];
 
 /// Names shorter than this are not searched for: they would match ordinary words.
 const MIN_NAME_LEN: usize = 3;
