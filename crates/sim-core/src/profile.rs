@@ -127,6 +127,10 @@ pub fn counter_array(
     c[counter::RESPAWNS] = world.respawns;
     c[counter::SNAPSHOTS] = world.snapshots;
     c[counter::TRIM_FAILURES] = world.trim_failures;
+    c[counter::TOUCHDOWNS] = world.touchdowns;
+    c[counter::HARD_LANDINGS] = world.hard_landings;
+    c[counter::GLOC_EVENTS] = world.gloc_events;
+    c[counter::ASSIST_CHANGES] = world.assist_changes;
     c
 }
 
@@ -204,13 +208,17 @@ mod tests {
             respawns: 7,
             snapshots: 8,
             trim_failures: 9,
+            touchdowns: 10,
+            hard_landings: 11,
+            gloc_events: 12,
+            assist_changes: 13,
             // Spectator diagnostics are not exported.
             observer_resets: 100,
             ground_clamps: 101,
             boundary_clamps: 102,
         };
         let arr = counter_array(input, world);
-        assert_eq!(arr, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        assert_eq!(arr, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
         let mut block = [0xFF_u8; p::SIZE];
         write_counters(&mut block, &arr);
         for (i, want) in arr.iter().enumerate() {

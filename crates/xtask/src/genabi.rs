@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use serde_json::{Value, json};
 use sim_core::frame_math::{to_render_quat, to_render_vec};
 use sim_core::input::{ErraticPilot, FRAME_BYTES, InputFrame};
-use sim_core::layout::{self, input_script, snapshot as snap};
+use sim_core::layout::{self, axis, button, input_flag, snapshot as snap};
 use sim_core::math::{DQuat, DVec3};
 use sim_core::rng::RngStreams;
 use sim_core::{DEFAULT_SEED, SimCore};
@@ -77,7 +77,7 @@ fn generate() -> Vec<Generated> {
             contents: input_frame_vectors(),
         },
         Generated {
-            path: root.join("tests/vectors/snapshot_v2.json"),
+            path: root.join("tests/vectors/snapshot_v3.json"),
             contents: snapshot_vectors(),
         },
     ]
@@ -177,6 +177,10 @@ fn frame_json(f: &InputFrame) -> Value {
         "seq": f.seq,
         "flags": f.flags,
         "t_ms": f.t_ms,
+        "t_sent_ms": f.t_sent_ms,
+        "assist_req": f.assist_req,
+        "spawn_ack": f.spawn_ack,
+        "spawn_req": f.spawn_req,
         "axes": f.axes.iter().map(|&a| f64::from(a)).collect::<Vec<_>>(),
         "buttons": f.buttons.to_string(),
         "hats": f.hats,
@@ -223,6 +227,19 @@ fn input_frame_vectors() -> String {
     rounding.buttons = 0x8000_0000_0000_0000;
     frames.push(rounding);
 
+    // A v3 frame: a changed control, an assist request, a spawn request and both host times.
+    let mut v3 = InputFrame::neutral(3);
+    v3.flags = (layout::input_flag::CHANGED | layout::input_flag::MOUSE_AIM) as u32;
+    v3.t_ms = 1_000.25;
+    v3.t_sent_ms = 1_003.75;
+    v3.axes[layout::axis::BRAKE_L] = 0.5;
+    v3.axes[layout::axis::CURSOR_X] = -0.25;
+    v3.buttons = (1 << layout::button::GEAR) | (1 << layout::button::FLAPS_CYCLE);
+    v3.assist_req = 4;
+    v3.spawn_ack = 200;
+    v3.spawn_req = 2;
+    frames.push(v3);
+
     // Frames from the scripted pilot, which is what the determinism run feeds the core.
     let mut pilot = ErraticPilot::new(RngStreams::new(DEFAULT_SEED).stream("input/erratic"));
     for tick in 0..1_800_u64 {
@@ -258,15 +275,36 @@ fn le_f32(b: &[u8], at: usize) -> f64 {
 }
 
 fn snapshot_vectors() -> String {
-    const TICKS: u32 = 1_234;
+    const TICKS: u32 = 300;
     let pack = content_bake::bake::bake_dir(&workspace_root().join("content/core"))
         .unwrap_or_else(|d| panic!("the core pack bakes: {d:?}"))
         .cpack;
     let mut core = SimCore::new(DEFAULT_SEED);
     core.load_content(&pack).expect("the core pack loads");
-    core.set_input_script(input_script::ERRATIC as u32);
     core.start();
-    core.step(TICKS);
+    // The default session: lined up on the runway under Standard assist. The pilot rolls with the
+    // parking brake off, the toe brakes unequal, the pedals over, the flaps at landing and the
+    // mouse pointing, so that the fields the ground and the pilot write are not zero and a reader
+    // that looks in the wrong place cannot pass.
+    for tick in 0..TICKS {
+        let mut f = InputFrame::neutral(tick + 1);
+        f.t_ms = f64::from(tick) * (1_000.0 / 60.0);
+        f.spawn_ack = 1;
+        f.flags = (input_flag::MOUSE_AIM | input_flag::CHANGED) as u32;
+        f.axes[axis::THROTTLE] = 0.9;
+        f.axes[axis::YAW] = 0.4;
+        f.axes[axis::BRAKE_L] = 0.3;
+        f.axes[axis::BRAKE_R] = 0.6;
+        f.axes[axis::CURSOR_X] = 0.25;
+        f.axes[axis::CURSOR_Y] = -0.1;
+        if tick == 5 {
+            f.buttons = (1 << button::PARKING_BRAKE) | (1 << button::FLAPS_DOWN);
+        }
+        let mut wire = [0_u8; FRAME_BYTES];
+        f.encode(&mut wire);
+        core.push_inputs(&wire);
+        core.step(1);
+    }
     let b = core.snapshot_bytes();
 
     // Decode independently of the writer, straight from the layout constants.
@@ -278,6 +316,54 @@ fn snapshot_vectors() -> String {
     };
     let body_count = le_u32(b, snap::H_BODY_COUNT) as usize;
     let bodies: Vec<Value> = [0, 1, 2, body_count - 1].into_iter().map(body).collect();
+    // Built in two parts: `json!` recurses once per token and the whole object is too large.
+    let mut ownship = json!({
+        "pos_bf": [le_f64(b, snap::O_POS_BF), le_f64(b, snap::O_POS_BF + 8), le_f64(b, snap::O_POS_BF + 16)],
+        "quat": (0..4).map(|k| le_f32(b, snap::O_QUAT + 4 * k)).collect::<Vec<_>>(),
+        "vel_bf": (0..3).map(|k| le_f32(b, snap::O_VEL_BF + 4 * k)).collect::<Vec<_>>(),
+        "tas": le_f32(b, snap::O_TAS),
+        "cas": le_f32(b, snap::O_CAS),
+        "mach": le_f32(b, snap::O_MACH),
+        "alpha": le_f32(b, snap::O_ALPHA),
+        "beta": le_f32(b, snap::O_BETA),
+        "nz": le_f32(b, snap::O_NZ),
+        "throttle": le_f32(b, snap::O_THROTTLE),
+        "thrust": le_f32(b, snap::O_THRUST),
+        "fuel": le_f32(b, snap::O_FUEL),
+        "mass": le_f32(b, snap::O_MASS),
+        "omega": (0..3).map(|k| le_f32(b, snap::O_OMEGA + 4 * k)).collect::<Vec<_>>(),
+        "surfaces": (0..3).map(|k| le_f32(b, snap::O_SURFACES + 4 * k)).collect::<Vec<_>>(),
+        "altitude": le_f32(b, snap::O_ALTITUDE),
+        "ab_stage": b[snap::O_AB_STAGE],
+        "flags": b[snap::O_FLAGS]
+    });
+    let ownship_v3 = json!({
+            "assist": b[snap::O_ASSIST],
+            "fcs_mode": b[snap::O_FCS_MODE],
+            "flags2": u16::from_le_bytes([b[snap::O_FLAGS2], b[snap::O_FLAGS2 + 1]]),
+            "spawn_seq": b[snap::O_SPAWN_SEQ],
+            "flap_detent": b[snap::O_FLAP_DETENT],
+            "gear_pos": le_f32(b, snap::O_GEAR_POS),
+            "tef": le_f32(b, snap::O_TEF),
+            "airbrake": le_f32(b, snap::O_AIRBRAKE),
+            "brake": [le_f32(b, snap::O_BRAKE_L), le_f32(b, snap::O_BRAKE_R)],
+            "steer": le_f32(b, snap::O_STEER),
+            "ground_speed": le_f32(b, snap::O_GROUND_SPEED),
+            "vs": le_f32(b, snap::O_VS),
+            "agl": le_f32(b, snap::O_AGL),
+            "g_lagged": le_f32(b, snap::O_G_LAGGED),
+            "g_stress": le_f32(b, snap::O_G_STRESS),
+            "redout": le_f32(b, snap::O_REDOUT),
+            "n_cmd": le_f32(b, snap::O_N_CMD),
+            "touchdown_vs": le_f32(b, snap::O_TOUCHDOWN_VS),
+            "aim": [le_f32(b, snap::O_AIM_AZ), le_f32(b, snap::O_AIM_EL)],
+            "crash_cause": b[snap::O_CRASH_CAUSE],
+            "gear_bits": b[snap::O_GEAR_BITS],
+    });
+    ownship
+        .as_object_mut()
+        .expect("an object")
+        .extend(ownship_v3.as_object().expect("an object").clone());
     let decoded = json!({
         "magic": le_u32(b, snap::H_MAGIC),
         "version": le_u32(b, snap::H_VERSION),
@@ -287,30 +373,11 @@ fn snapshot_vectors() -> String {
         "body_count": body_count,
         "core_state": le_u32(b, snap::H_CORE_STATE),
         "input_t_ms": le_f64(b, snap::H_INPUT_T_MS),
-        "ownship": {
-            "pos_bf": [le_f64(b, snap::O_POS_BF), le_f64(b, snap::O_POS_BF + 8), le_f64(b, snap::O_POS_BF + 16)],
-            "quat": (0..4).map(|k| le_f32(b, snap::O_QUAT + 4 * k)).collect::<Vec<_>>(),
-            "vel_bf": (0..3).map(|k| le_f32(b, snap::O_VEL_BF + 4 * k)).collect::<Vec<_>>(),
-            "tas": le_f32(b, snap::O_TAS),
-            "cas": le_f32(b, snap::O_CAS),
-            "mach": le_f32(b, snap::O_MACH),
-            "alpha": le_f32(b, snap::O_ALPHA),
-            "beta": le_f32(b, snap::O_BETA),
-            "nz": le_f32(b, snap::O_NZ),
-            "throttle": le_f32(b, snap::O_THROTTLE),
-            "thrust": le_f32(b, snap::O_THRUST),
-            "fuel": le_f32(b, snap::O_FUEL),
-            "mass": le_f32(b, snap::O_MASS),
-            "omega": (0..3).map(|k| le_f32(b, snap::O_OMEGA + 4 * k)).collect::<Vec<_>>(),
-            "surfaces": (0..3).map(|k| le_f32(b, snap::O_SURFACES + 4 * k)).collect::<Vec<_>>(),
-            "altitude": le_f32(b, snap::O_ALTITUDE),
-            "ab_stage": b[snap::O_AB_STAGE],
-            "flags": b[snap::O_FLAGS],
-        },
+        "ownship": ownship,
         "bodies": bodies,
     });
     format!(
-        "{{\n  \"note\": \"Generated by `cargo xtask gen-abi` from sim_core::snapshot. Do not edit.\",\n  \"seed\": \"{DEFAULT_SEED:016x}\",\n  \"script\": \"erratic\",\n  \"content\": \"core\",\n  \"ticks\": {TICKS},\n  \"size\": {},\n  \"decoded\": {decoded},\n  \"hex\": \"{}\"\n}}\n",
+        "{{\n  \"note\": \"Generated by `cargo xtask gen-abi` from sim_core::snapshot. Do not edit.\",\n  \"seed\": \"{DEFAULT_SEED:016x}\",\n  \"script\": \"runway roll: toe brakes, pedals, mouse-aim\",\n  \"content\": \"core\",\n  \"ticks\": {TICKS},\n  \"size\": {},\n  \"decoded\": {decoded},\n  \"hex\": \"{}\"\n}}\n",
         b.len(),
         hex(b)
     )

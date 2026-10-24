@@ -1,11 +1,12 @@
 /**
- * Snapshot v2: what the sim publishes each tick and the renderer draws from. Layout in
+ * Snapshot v3: what the sim publishes each tick and the renderer draws from. Layout in
  * `layout.gen.ts` (from Rust); this file reads and stamps it.
  *
  * Positions are battlefield-frame `f64`, orientations `f32` quaternions `[w, x, y, z]`, bodies
  * are structure-of-arrays so a whole axis is contiguous. The ownship block is the player's
  * aircraft (its reference point, attitude, air data, engine and fuel) or, with no aircraft
- * content, the spectator (`OWNSHIP_FLAG.SPECTATOR`; air data zero). Angles are radians.
+ * content, the spectator (`OWNSHIP_FLAG.SPECTATOR`; air data zero). Angles are radians. v3 adds the
+ * flight control system, gear, wheel, g-physiology and mouse-aim state (`O_ASSIST` onward).
  */
 import { SNAPSHOT } from './layout.gen.ts';
 
@@ -161,6 +162,113 @@ export class SnapshotReader {
   /** `OWNSHIP_FLAG` bits. */
   ownshipFlags(): number {
     return this.#dv.getUint8(SNAPSHOT.O_FLAGS);
+  }
+
+  /** Assist level in force (`ASSIST_LEVEL`; 0 for the spectator). */
+  ownshipAssist(): number {
+    return this.#dv.getUint8(SNAPSHOT.O_ASSIST);
+  }
+
+  /** What the flight control system is doing (`FCS_MODE`). */
+  ownshipFcsMode(): number {
+    return this.#dv.getUint8(SNAPSHOT.O_FCS_MODE);
+  }
+
+  /** `OWNSHIP_FLAG2` bits. */
+  ownshipFlags2(): number {
+    return this.#dv.getUint16(SNAPSHOT.O_FLAGS2, true);
+  }
+
+  /** Spawn counter, wrapping at 256: changes whenever the aircraft is (re)spawned. */
+  ownshipSpawnSeq(): number {
+    return this.#dv.getUint8(SNAPSHOT.O_SPAWN_SEQ);
+  }
+
+  /** Flap detent: 0 up, 1 take-off, 2 landing. */
+  ownshipFlapDetent(): number {
+    return this.#dv.getUint8(SNAPSHOT.O_FLAP_DETENT);
+  }
+
+  /** Gear position, 0 up to 1 down. */
+  ownshipGearPos(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_GEAR_POS, true);
+  }
+
+  /** Trailing-edge flap, radians. */
+  ownshipTef(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_TEF, true);
+  }
+
+  /** Airbrake, 0 stowed to 1 open. */
+  ownshipAirbrake(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_AIRBRAKE, true);
+  }
+
+  /** Left and right wheel brake commands, 0 to 1. */
+  ownshipBrakes(out: Float32Array, at = 0): void {
+    out[at] = this.#dv.getFloat32(SNAPSHOT.O_BRAKE_L, true);
+    out[at + 1] = this.#dv.getFloat32(SNAPSHOT.O_BRAKE_R, true);
+  }
+
+  /** Nose-wheel steering angle, radians (positive turns right). */
+  ownshipSteer(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_STEER, true);
+  }
+
+  /** Speed over the ground, m/s. */
+  ownshipGroundSpeed(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_GROUND_SPEED, true);
+  }
+
+  /** Vertical speed, m/s (climb positive). */
+  ownshipVs(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_VS, true);
+  }
+
+  /** Height of the lowest wheel above the ground, metres. */
+  ownshipAgl(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_AGL, true);
+  }
+
+  /** The pilot's lagged ("heart-level") g. */
+  ownshipGLagged(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_G_LAGGED, true);
+  }
+
+  /** G stress `S`: greyout from 0.35, blackout from 0.7, G-LOC at 1.0. */
+  ownshipGStress(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_G_STRESS, true);
+  }
+
+  /** Red-out stress `R` (negative g): tint from 0.5, vision loss at 1.0. */
+  ownshipRedout(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_REDOUT, true);
+  }
+
+  /** The flight control system's load-factor command, g. */
+  ownshipNCmd(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_N_CMD, true);
+  }
+
+  /** Sink rate at the last touchdown, m/s. */
+  ownshipTouchdownVs(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_TOUCHDOWN_VS, true);
+  }
+
+  /** The mouse-aim direction the core is using: azimuth and elevation, radians. */
+  ownshipAim(out: Float32Array, at = 0): void {
+    out[at] = this.#dv.getFloat32(SNAPSHOT.O_AIM_AZ, true);
+    out[at + 1] = this.#dv.getFloat32(SNAPSHOT.O_AIM_EL, true);
+  }
+
+  /** Why the aircraft was destroyed (`CRASH_CAUSE`). */
+  ownshipCrashCause(): number {
+    return this.#dv.getUint8(SNAPSHOT.O_CRASH_CAUSE);
+  }
+
+  /** Per leg `i`: bit `2i` weight-on-wheels, bit `2i+1` collapsed; bit 6 lever down; bit 7 locked. */
+  ownshipGearBits(): number {
+    return this.#dv.getUint8(SNAPSHOT.O_GEAR_BITS);
   }
 
   /** Body `i` position, BF metres. */

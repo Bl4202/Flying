@@ -4,7 +4,9 @@
       "enum": [
         "mach",
         "alpha_deg",
-        "deflection_deg"
+        "deflection_deg",
+        "qbar_kpa",
+        "nz_g"
       ],
       "type": "string"
     },
@@ -74,7 +76,9 @@
           "enum": [
             "mach",
             "alpha_deg",
-            "deflection_deg"
+            "deflection_deg",
+            "qbar_kpa",
+            "nz_g"
           ],
           "type": "string"
         },
@@ -176,91 +180,55 @@
     },
     "LateralFile": {
       "additionalProperties": false,
-      "description": "Lateral and directional derivatives (GDD C.5).",
+      "description": "Lateral and directional derivatives (GDD C.5), each against `|alpha_deg|` (ADR-38).",
       "properties": {
         "cl_beta_per_rad": {
-          "description": "Rolling moment from sideslip.",
-          "format": "double",
-          "maximum": 10.0,
-          "minimum": -10.0,
-          "type": "number"
+          "$ref": "#/$defs/CurveFile",
+          "description": "Rolling moment from sideslip."
         },
         "cl_da_per_rad": {
-          "description": "Rolling moment per radian of aileron.",
-          "format": "double",
-          "maximum": 10.0,
-          "minimum": -10.0,
-          "type": "number"
+          "$ref": "#/$defs/CurveFile",
+          "description": "Rolling moment per radian of aileron."
         },
         "cl_dr_per_rad": {
-          "description": "Rolling moment per radian of rudder.",
-          "format": "double",
-          "maximum": 10.0,
-          "minimum": -10.0,
-          "type": "number"
+          "$ref": "#/$defs/CurveFile",
+          "description": "Rolling moment per radian of rudder."
         },
         "cl_p_per_rad": {
-          "description": "Roll damping.",
-          "format": "double",
-          "maximum": 0.0,
-          "minimum": -10.0,
-          "type": "number"
+          "$ref": "#/$defs/CurveFile",
+          "description": "Roll damping."
         },
         "cl_r_per_rad": {
-          "description": "Rolling moment from yaw rate.",
-          "format": "double",
-          "maximum": 10.0,
-          "minimum": -10.0,
-          "type": "number"
+          "$ref": "#/$defs/CurveFile",
+          "description": "Rolling moment from yaw rate."
         },
         "cn_beta_per_rad": {
-          "description": "Yawing moment from sideslip.",
-          "format": "double",
-          "maximum": 10.0,
-          "minimum": -10.0,
-          "type": "number"
+          "$ref": "#/$defs/CurveFile",
+          "description": "Yawing moment from sideslip."
         },
         "cn_da_per_rad": {
-          "description": "Yawing moment per radian of aileron.",
-          "format": "double",
-          "maximum": 10.0,
-          "minimum": -10.0,
-          "type": "number"
+          "$ref": "#/$defs/CurveFile",
+          "description": "Yawing moment per radian of aileron."
         },
         "cn_dr_per_rad": {
-          "description": "Yawing moment per radian of rudder.",
-          "format": "double",
-          "maximum": 10.0,
-          "minimum": -10.0,
-          "type": "number"
+          "$ref": "#/$defs/CurveFile",
+          "description": "Yawing moment per radian of rudder."
         },
         "cn_p_per_rad": {
-          "description": "Yawing moment from roll rate.",
-          "format": "double",
-          "maximum": 10.0,
-          "minimum": -10.0,
-          "type": "number"
+          "$ref": "#/$defs/CurveFile",
+          "description": "Yawing moment from roll rate."
         },
         "cn_r_per_rad": {
-          "description": "Yaw damping.",
-          "format": "double",
-          "maximum": 0.0,
-          "minimum": -10.0,
-          "type": "number"
+          "$ref": "#/$defs/CurveFile",
+          "description": "Yaw damping."
         },
         "cy_beta_per_rad": {
-          "description": "Side force from sideslip.",
-          "format": "double",
-          "maximum": 10.0,
-          "minimum": -10.0,
-          "type": "number"
+          "$ref": "#/$defs/CurveFile",
+          "description": "Side force from sideslip."
         },
         "cy_dr_per_rad": {
-          "description": "Side force per radian of rudder.",
-          "format": "double",
-          "maximum": 10.0,
-          "minimum": -10.0,
-          "type": "number"
+          "$ref": "#/$defs/CurveFile",
+          "description": "Side force per radian of rudder."
         }
       },
       "required": [

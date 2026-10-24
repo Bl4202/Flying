@@ -4,6 +4,10 @@
 //! They queue until the tick boundary, then the Ingest stage validates and applies them in order:
 //! axes are "latest wins", button presses are edges accumulated over every frame applied in the
 //! tick, so a tap between two ticks is never lost.
+//!
+//! v3 frames also carry an absolute assist request, a spawn request and the spawn acknowledgement
+//! (all part of the replayed input), and two host times that are observations only: when the
+//! source event happened and when the frame was written (ADR-33, ADR-36).
 
 use crate::hash::StateHasher;
 use crate::layout::{axis, input_flag, input_frame as f};
@@ -23,14 +27,23 @@ pub struct InputFrame {
     pub seq: u32,
     /// Bit flags (see [`crate::layout::input_flag`]).
     pub flags: u32,
-    /// Host timestamp in milliseconds. Observation only: never part of simulation state.
+    /// Host time of the source event in milliseconds. Observation only: never part of simulation
+    /// state.
     pub t_ms: f64,
+    /// Host time the frame was written, milliseconds. Observation only.
+    pub t_sent_ms: f64,
     /// Pitch, roll, yaw, throttle, throttle2, brake L/R, trims, cursor (see [`crate::layout::axis`]).
     pub axes: [f32; AXIS_COUNT],
     /// One bit per action (see [`crate::layout::button`]).
     pub buttons: u64,
     /// Hat switches.
     pub hats: [u8; f::HAT_COUNT],
+    /// Requested assist level (`assist_level`; 0 keeps the current one).
+    pub assist_req: u8,
+    /// The `spawn_seq` the host has seen and synchronised its throttle lever to.
+    pub spawn_ack: u8,
+    /// Spawn for the next reset (`spawn_request`; 0 uses the session's).
+    pub spawn_req: u8,
 }
 
 fn rd_u32(b: &[u8], o: usize) -> u32 {
@@ -53,9 +66,13 @@ impl InputFrame {
             seq,
             flags: 0,
             t_ms: 0.0,
+            t_sent_ms: 0.0,
             axes: [0.0; AXIS_COUNT],
             buttons: 0,
             hats: [0; f::HAT_COUNT],
+            assist_req: 0,
+            spawn_ack: 0,
+            spawn_req: 0,
         }
     }
 
@@ -73,9 +90,13 @@ impl InputFrame {
             seq: rd_u32(bytes, f::SEQ),
             flags: rd_u32(bytes, f::FLAGS),
             t_ms: f64::from_bits(rd_u64(bytes, f::T_MS)),
+            t_sent_ms: f64::from_bits(rd_u64(bytes, f::T_SENT_MS)),
             axes,
             buttons: rd_u64(bytes, f::BUTTONS),
             hats: [bytes[f::HATS], bytes[f::HATS + 1]],
+            assist_req: bytes[f::ASSIST_REQ],
+            spawn_ack: bytes[f::SPAWN_ACK],
+            spawn_req: bytes[f::SPAWN_REQ],
         })
     }
 
@@ -91,6 +112,11 @@ impl InputFrame {
         out[f::BUTTONS..f::BUTTONS + 8].copy_from_slice(&self.buttons.to_le_bytes());
         out[f::HATS] = self.hats[0];
         out[f::HATS + 1] = self.hats[1];
+        out[f::ASSIST_REQ] = self.assist_req;
+        out[f::SPAWN_ACK] = self.spawn_ack;
+        out[f::SPAWN_REQ] = self.spawn_req;
+        out[f::T_SENT_MS..f::T_SENT_MS + 8]
+            .copy_from_slice(&self.t_sent_ms.to_bits().to_le_bytes());
     }
 }
 
@@ -140,6 +166,8 @@ pub struct InputState {
     /// `t_ms` of the last applied frame, for latency measurement. Never hashed.
     last_applied_t_ms: f64,
     script: Option<Script>,
+    /// The spawn counter a scripted pilot acknowledges: it has no lever to hand over.
+    script_spawn_ack: u8,
 }
 
 impl Default for InputState {
@@ -167,12 +195,19 @@ impl InputState {
             pending_len: 0,
             last_applied_t_ms: 0.0,
             script: None,
+            script_spawn_ack: 0,
         }
     }
 
     /// Installs (or removes) the scripted pilot that stands in for a person.
     pub fn set_script(&mut self, script: Option<Script>) {
         self.script = script;
+    }
+
+    /// Sets the spawn counter that scripted frames acknowledge. A script has no throttle lever to
+    /// synchronise with the snapshot, so the core acknowledges each spawn on its behalf (ADR-36).
+    pub fn set_script_spawn_ack(&mut self, seq: u8) {
+        self.script_spawn_ack = seq;
     }
 
     /// Queues a frame for the next tick. Returns false if the queue is full.
@@ -186,19 +221,47 @@ impl InputState {
         true
     }
 
+    /// The circuit tester, when that is the script.
+    #[must_use]
+    pub fn circuit(&self) -> Option<&fcs::tester::Tester> {
+        match self.script.as_ref() {
+            Some(Script::Circuit(t)) => Some(t),
+            _ => None,
+        }
+    }
+
+    /// The circuit tester, when that is the script. The core steps it with the aircraft's state
+    /// and hands the frame it wrote to [`Self::ingest_with`].
+    pub fn circuit_mut(&mut self) -> Option<&mut fcs::tester::Tester> {
+        match self.script.as_mut() {
+            Some(Script::Circuit(t)) => Some(t),
+            _ => None,
+        }
+    }
+
     /// Start of a tick's Ingest: forget last tick's press edges, run the script, then apply
     /// everything queued by the host, in order.
     pub fn ingest(&mut self, tick: u64) {
+        self.ingest_with(tick, None);
+    }
+
+    /// As [`Self::ingest`], with the frame the circuit tester wrote this tick (the tester needs
+    /// the aircraft, which the input state does not know, so the core makes the frame).
+    pub fn ingest_with(&mut self, tick: u64, circuit: Option<InputFrame>) {
         self.edges = 0;
         if let Some(script) = self.script.as_mut() {
             let frame = match script {
                 Script::Erratic(pilot) => pilot.next_frame(tick),
                 Script::Flight60 => flight60_frame(tick),
+                Script::Circuit(_) => circuit.unwrap_or_else(|| {
+                    InputFrame::neutral(u32::try_from((tick + 1) & 0xFFFF_FFFF).unwrap_or(0))
+                }),
             };
             // Exercise the real wire path: encode, then decode what a host would have sent.
             let mut wire = [0_u8; FRAME_BYTES];
             frame.encode(&mut wire);
-            if let Some(decoded) = InputFrame::decode(&wire) {
+            if let Some(mut decoded) = InputFrame::decode(&wire) {
+                decoded.spawn_ack = self.script_spawn_ack;
                 self.push(decoded);
             }
         }
@@ -229,6 +292,13 @@ impl InputState {
         }
         if saw_nonfinite {
             self.counters.nonfinite = self.counters.nonfinite.wrapping_add(1);
+        }
+        // Codes outside their group mean "no request": a bad byte must not pick a level or a spawn.
+        if usize::from(frame.assist_req) > crate::layout::assist_level::MANUAL {
+            frame.assist_req = 0;
+        }
+        if usize::from(frame.spawn_req) > crate::layout::spawn_request::AIR {
+            frame.spawn_req = 0;
         }
         self.edges |= frame.buttons & !self.prev_buttons;
         self.prev_buttons = frame.buttons;
@@ -279,6 +349,31 @@ impl InputState {
         bit < 64 && self.latest.buttons & (1_u64 << bit) != 0
     }
 
+    /// True if the latest frame has the flag whose value is `mask` (see
+    /// [`crate::layout::input_flag`], for example `input_flag::MOUSE_AIM`).
+    #[must_use]
+    pub fn has_flag(&self, mask: usize) -> bool {
+        self.latest.flags & u32::try_from(mask).unwrap_or(0) != 0
+    }
+
+    /// The assist level the host asked for in the latest frame (0 = no request).
+    #[must_use]
+    pub fn assist_req(&self) -> u8 {
+        self.latest.assist_req
+    }
+
+    /// The spawn counter the host has acknowledged in the latest frame.
+    #[must_use]
+    pub fn spawn_ack(&self) -> u8 {
+        self.latest.spawn_ack
+    }
+
+    /// The spawn requested for the next reset in the latest frame (0 = the session's).
+    #[must_use]
+    pub fn spawn_req(&self) -> u8 {
+        self.latest.spawn_req
+    }
+
     /// Counters since creation.
     #[must_use]
     pub fn counters(&self) -> InputCounters {
@@ -305,7 +400,16 @@ impl InputState {
                 h.write_u64(u64::from(a.to_bits()));
             }
             h.write_u64(fr.buttons);
-            h.write_u64(u64::from(fr.hats[0]) | (u64::from(fr.hats[1]) << 8));
+            // ALGO: the v3 request bytes ride in the hat word, above the two hat bytes. A frame
+            // that makes no request hashes exactly as a v2 frame did, so every script that
+            // predates v3 keeps its input hash.
+            h.write_u64(
+                u64::from(fr.hats[0])
+                    | (u64::from(fr.hats[1]) << 8)
+                    | (u64::from(fr.assist_req) << 16)
+                    | (u64::from(fr.spawn_ack) << 24)
+                    | (u64::from(fr.spawn_req) << 32),
+            );
         };
         frame(h, &self.latest);
         for fr in &self.recent {
@@ -324,6 +428,12 @@ impl InputState {
             }
             // A pure function of the tick: nothing to hash but which script it is.
             Some(Script::Flight60) => h.write_u64(2),
+            Some(Script::Circuit(t)) => {
+                h.write_u64(3);
+                for w in t.words() {
+                    h.write_u64(w);
+                }
+            }
             None => h.write_u64(0),
         }
     }
@@ -336,6 +446,9 @@ pub enum Script {
     Erratic(ErraticPilot),
     /// The 60 s scripted flight of `AC-11.7`, [`flight60_frame`].
     Flight60,
+    /// The virtual tester (ADR-33): take-off, a circuit and a landing. Its frames are made by the
+    /// core from the aircraft's state ([`InputState::circuit_mut`]).
+    Circuit(Box<fcs::tester::Tester>),
 }
 
 /// Length of the Flight60 script, ticks (60 s).
@@ -459,6 +572,23 @@ mod tests {
     }
 
     #[test]
+    fn the_erratic_script_still_sends_the_frames_it_sent_in_v0_1a() {
+        // The digest of the first 2 000 encoded frames of the erratic pilot at the default seed,
+        // taken with the v0.1a code (tag `v0.1a`). Input frame v3 adds fields in bytes the script
+        // leaves zero, so the bytes are the same; if this fails the determinism suites no longer
+        // test the same pilot (ADR-36).
+        let rng = crate::rng::RngStreams::new(crate::DEFAULT_SEED);
+        let mut pilot = ErraticPilot::new(rng.stream("input/erratic"));
+        let mut h = StateHasher::new();
+        for tick in 0..2_000_u64 {
+            let mut wire = [0_u8; FRAME_BYTES];
+            pilot.next_frame(tick).encode(&mut wire);
+            h.write_bytes(&wire);
+        }
+        assert_eq!(format!("{:016x}", h.finish()), "a55807f25e5cb5d7");
+    }
+
+    #[test]
     fn encode_decode_round_trip_and_layout() {
         let mut fr = frame(0xDEAD_BEEF);
         fr.flags = 1;
@@ -468,6 +598,10 @@ mod tests {
         ];
         fr.buttons = 0x8000_0000_0000_0005;
         fr.hats = [3, 7];
+        fr.assist_req = 4;
+        fr.spawn_ack = 9;
+        fr.spawn_req = 2;
+        fr.t_sent_ms = 12_346.5;
         let mut bytes = [0xAA_u8; FRAME_BYTES];
         fr.encode(&mut bytes);
         assert_eq!(InputFrame::decode(&bytes), Some(fr));
@@ -476,10 +610,77 @@ mod tests {
         assert_eq!(&bytes[16..20], &0.5_f32.to_le_bytes());
         assert_eq!(&bytes[64..72], &0x8000_0000_0000_0005_u64.to_le_bytes());
         assert_eq!((bytes[72], bytes[73]), (3, 7));
+        assert_eq!((bytes[74], bytes[75], bytes[76]), (4, 9, 2));
+        assert_eq!(&bytes[80..88], &12_346.5_f64.to_le_bytes());
         assert!(
-            bytes[74..].iter().all(|&b| b == 0),
+            bytes[77..80].iter().chain(&bytes[88..]).all(|&b| b == 0),
             "reserved bytes are zero"
         );
+    }
+
+    #[test]
+    fn a_v2_frame_decodes_with_no_requests() {
+        // The bytes a v0.1a host wrote: everything past the hats is zero.
+        let mut fr = frame(7);
+        fr.buttons = 1;
+        let mut bytes = [0_u8; FRAME_BYTES];
+        fr.encode(&mut bytes);
+        let back = InputFrame::decode(&bytes).unwrap();
+        assert_eq!((back.assist_req, back.spawn_ack, back.spawn_req), (0, 0, 0));
+        assert_eq!(back.t_sent_ms, 0.0);
+    }
+
+    #[test]
+    fn out_of_range_request_codes_are_ignored() {
+        let mut s = InputState::new();
+        let mut fr = frame(1);
+        fr.assist_req = 9;
+        fr.spawn_req = 7;
+        fr.spawn_ack = 200;
+        s.push(fr);
+        assert_eq!(s.assist_req(), 0, "5 and above is not a level");
+        assert_eq!(s.spawn_req(), 0);
+        assert_eq!(
+            s.spawn_ack(),
+            200,
+            "an acknowledgement is a counter, any value"
+        );
+        let mut ok = frame(2);
+        ok.assist_req = 4;
+        ok.spawn_req = 2;
+        s.push(ok);
+        assert_eq!((s.assist_req(), s.spawn_req()), (4, 2));
+    }
+
+    #[test]
+    fn flags_are_read_by_value() {
+        use crate::layout::input_flag;
+        let mut s = InputState::new();
+        let mut fr = frame(1);
+        fr.flags = (input_flag::MOUSE_AIM | input_flag::CHANGED) as u32;
+        s.push(fr);
+        assert!(s.has_flag(input_flag::MOUSE_AIM));
+        assert!(s.has_flag(input_flag::CHANGED));
+        assert!(!s.has_flag(input_flag::AUTO_GCAS));
+        assert!(!s.has_flag(input_flag::NEUTRAL));
+    }
+
+    #[test]
+    fn the_request_bytes_are_replayed_state_and_enter_the_hash() {
+        let hash = |edit: fn(&mut InputFrame)| {
+            let mut s = InputState::new();
+            let mut fr = frame(1);
+            edit(&mut fr);
+            s.push(fr);
+            let mut h = StateHasher::new();
+            s.hash_into(&mut h);
+            h.finish()
+        };
+        let base = hash(|_| {});
+        assert_ne!(base, hash(|f| f.assist_req = 1));
+        assert_ne!(base, hash(|f| f.spawn_ack = 1));
+        assert_ne!(base, hash(|f| f.spawn_req = 1));
+        assert_ne!(hash(|f| f.assist_req = 1), hash(|f| f.spawn_ack = 1));
     }
 
     #[test]
@@ -632,6 +833,8 @@ mod tests {
         let (mut fa, mut fb) = (frame(1), frame(1));
         fa.t_ms = 1.0;
         fb.t_ms = 9_999_999.0;
+        fa.t_sent_ms = 2.0;
+        fb.t_sent_ms = 8_888_888.0;
         a.push(fa);
         b.push(fb);
         let (mut ha, mut hb) = (StateHasher::new(), StateHasher::new());

@@ -10,9 +10,6 @@ use crate::util::{run, workspace_root};
 const CONTENT: &str = "content-out/core.cpack";
 /// Where the report and traces go.
 const OUT_DIR: &str = "target/conformance";
-/// The points the gate requires to be deferred, and no others (ADR-31: the ground rolls wait
-/// for the gear model of v0.1b).
-const EXPECT_DEFERRED: &str = "to_roll,ldg_roll";
 
 pub fn run_command(args: &[String]) -> Result<(), String> {
     let mut only = Vec::new();
@@ -42,7 +39,6 @@ pub fn run_command(args: &[String]) -> Result<(), String> {
     cmd.current_dir(&root)
         .arg("conformance")
         .args(["--content", CONTENT])
-        .args(["--expect-deferred", EXPECT_DEFERRED])
         .arg("--json")
         .arg(out.join("report.json"))
         .arg("--traces")

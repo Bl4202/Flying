@@ -1,6 +1,7 @@
 //! The flight-test procedures (ADR-31) and the harness they share.
 
 pub mod fuel_flow;
+pub mod ground_roll;
 pub mod level_accel;
 pub mod stall;
 pub mod turn;
@@ -11,6 +12,7 @@ use flight::actuators::Surfaces;
 use flight::aircraft::{AircraftModel, AircraftState, Commands};
 use flight::engine::EngineCommand;
 use flight::env::SphereSea;
+use flight::gear::WheelCommands;
 use flight::trim::TrimSetup;
 use simmath::math::DVec3;
 
@@ -47,7 +49,9 @@ pub const TRACE_COLUMNS: [&str; 18] = [
 pub struct Trace {
     /// File stem (the run's name).
     pub name: String,
-    /// Rows of [`TRACE_COLUMNS`].
+    /// What the columns of each row are ([`TRACE_COLUMNS`], or the ground rolls' own).
+    pub columns: &'static [&'static str],
+    /// Rows of 18 values.
     pub rows: Vec<[f64; 18]>,
 }
 
@@ -55,7 +59,7 @@ impl Trace {
     /// The trace as CSV with a header line.
     #[must_use]
     pub fn csv(&self) -> String {
-        let mut s = TRACE_COLUMNS.join(",");
+        let mut s = self.columns.join(",");
         s.push('\n');
         for row in &self.rows {
             let cells: Vec<String> = row.iter().map(|v| format!("{v:.6}")).collect();
@@ -95,9 +99,11 @@ pub fn config_surfaces(model: &AircraftModel, c: EnvelopeConfig) -> Surfaces {
             gear: 1.0,
             ..Surfaces::NEUTRAL
         },
+        // C.7: "brakes mu_b = 0.55, airbrake" (v0.1a left the airbrake in).
         EnvelopeConfig::LdgBrakes => Surfaces {
             tef_rad: tef,
             gear: 1.0,
+            airbrake: 1.0,
             ..Surfaces::NEUTRAL
         },
         _ => Surfaces::NEUTRAL,
@@ -166,6 +172,7 @@ impl<'a> Flight<'a> {
             tick: 0,
             trace: Trace {
                 name: name.to_owned(),
+                columns: &TRACE_COLUMNS,
                 rows: Vec::new(),
             },
             faults: 0,
@@ -222,6 +229,7 @@ impl<'a> Flight<'a> {
         let cmd = Commands {
             surfaces,
             engine: self.engine,
+            wheels: WheelCommands::NONE,
         };
         let t = self.t();
         self.faults += self
@@ -272,6 +280,7 @@ mod tests {
     fn a_trace_is_csv() {
         let t = Trace {
             name: "x".into(),
+            columns: &TRACE_COLUMNS,
             rows: vec![[1.0; 18]],
         };
         let csv = t.csv();

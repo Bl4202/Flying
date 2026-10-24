@@ -56,18 +56,18 @@
     "cm_alpha_dot_per_rad": -3
   },
   "lateral": {
-    "cy_beta_per_rad": -0.9,
-    "cl_beta_per_rad": -0.1,
-    "cn_beta_per_rad": 0.14,
-    "cl_p_per_rad": -0.3,
-    "cl_r_per_rad": 0.1,
-    "cn_p_per_rad": -0.03,
-    "cn_r_per_rad": -0.3,
-    "cl_da_per_rad": 0.16,
-    "cn_da_per_rad": -0.01,
-    "cl_dr_per_rad": 0.01,
-    "cn_dr_per_rad": -0.07,
-    "cy_dr_per_rad": 0.2
+    "cy_beta_per_rad": { "axis": "alpha_deg", "points": [[0, -0.9], [90, -0.9]] },
+    "cl_beta_per_rad": { "axis": "alpha_deg", "points": [[0, -0.1], [15, -0.1], [20, -0.14], [25, -0.18], [30, -0.084], [34, -0.0075], [40, 0.02], [90, 0]] },
+    "cn_beta_per_rad": { "axis": "alpha_deg", "points": [[0, 0.14], [15, 0.14], [30, 0], [40, -0.08], [90, 0]] },
+    "cl_p_per_rad": { "axis": "alpha_deg", "points": [[0, -0.3], [20, -0.3], [32, 0.05], [40, 0.05], [90, -0.2]] },
+    "cl_r_per_rad": { "axis": "alpha_deg", "points": [[0, 0.1], [90, 0.1]] },
+    "cn_p_per_rad": { "axis": "alpha_deg", "points": [[0, -0.03], [90, -0.03]] },
+    "cn_r_per_rad": { "axis": "alpha_deg", "points": [[0, -0.3], [25, -0.3], [40, -0.15], [90, -0.15]] },
+    "cl_da_per_rad": { "axis": "alpha_deg", "points": [[0, 0.16], [15, 0.16], [35, 0.064], [90, 0.064]] },
+    "cn_da_per_rad": { "axis": "alpha_deg", "points": [[0, -0.01], [15, -0.01], [30, -0.04], [90, -0.04]] },
+    "cl_dr_per_rad": { "axis": "alpha_deg", "points": [[0, 0.01], [90, 0.01]] },
+    "cn_dr_per_rad": { "axis": "alpha_deg", "points": [[0, -0.07], [90, -0.07]] },
+    "cy_dr_per_rad": { "axis": "alpha_deg", "points": [[0, 0.2], [90, 0.2]] }
   },
   "post_stall": {
     "blend_start_deg": { "axis": "mach", "points": [[0, 41.62], [0.3, 41.62], [0.6, 41.62], [0.8, 37.66], [0.9, 36.07], [0.95, 35.46], [1.05, 33.87], [1.2, 30.98], [1.5, 31.8], [2, 31.53], [2.5, 32.02], [3, 35.68]] },

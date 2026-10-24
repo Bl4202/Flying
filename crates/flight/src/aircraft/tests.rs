@@ -40,6 +40,7 @@ fn hold(m: &AircraftModel) -> Commands {
     Commands {
         surfaces: Surfaces::NEUTRAL,
         engine: EngineCommand::from_lever(0.6, m.ab_stages()),
+        wheels: WheelCommands::NONE,
     }
 }
 
@@ -107,6 +108,8 @@ fn a_tick_is_two_rk4_sub_steps() {
             m.stage(st, &held, &mass, &world, t).deriv
         });
     }
+    // The ground model also counts the time in the air, once per sub-step.
+    manual.ground.air_time_s += TICK;
     assert_eq!(s, manual);
     // And a tick moves the aircraft by about V dt.
     let moved = (s.body.pos_bf - level(&m, 3000.0, 200.0, 3.0, 2000.0).body.pos_bf).length();
@@ -116,11 +119,13 @@ fn a_tick_is_two_rk4_sub_steps() {
 #[test]
 fn fuel_burns_in_feed_order_unless_mass_is_frozen() {
     let m = kestrel();
-    let world = SphereSea::default();
+    // Sea level but no ground: the bench holds the aircraft at the point, wheels in the water.
+    let world = SphereSea::open();
     let mut s = level(&m, 0.0, 0.5, 0.0, 3100.0);
     let mil = Commands {
         surfaces: Surfaces::NEUTRAL,
         engine: EngineCommand::MILITARY,
+        wheels: WheelCommands::NONE,
     };
     s.engines[0] = m.engines()[0].model.steady(EngineCommand::MILITARY);
     let before = m.mass.fuel_kg(&s.fuel);
@@ -220,6 +225,9 @@ fn fuzz(seed: u64, seconds: u32) -> u32 {
                 trim_nose_down: rng.next() < 0.1,
                 flaps: if rng.next() < 0.1 { 1.0 } else { 0.0 },
                 airbrake: if rng.next() < 0.2 { 1.0 } else { 0.0 },
+                gear: if rng.next() < 0.1 { 1.0 } else { 0.0 },
+                brake_l: rng.next(),
+                brake_r: rng.next(),
             };
         }
         let cmd = m.manual_commands(&mut s, &controls);
@@ -252,4 +260,68 @@ fn manual_flight_under_random_inputs_stays_finite() {
     for &seed in seeds {
         fuzz(seed, 600);
     }
+}
+
+#[test]
+fn the_flap_fraction_and_the_structure_input_come_from_the_state() {
+    let m = kestrel();
+    let world = SphereSea::open();
+    let mut s = level(&m, 3000.0, 150.0, 3.0, 2000.0);
+    assert_eq!(m.flap_fraction(&s.surfaces), 0.0);
+    s.surfaces.tef_rad = m.actuators.tef.max * 0.5;
+    s.surfaces.gear = 1.0;
+    assert!((m.flap_fraction(&s.surfaces) - 0.5).abs() < 1e-12);
+    let t = m.telemetry(&s, &world, 0.0);
+    let i = m.structure_input(&s, &t);
+    assert_eq!((i.gear_pos, i.flap_fraction), (1.0, 0.5));
+    assert_eq!((i.nz_g, i.cas_mps, i.mach), (t.nz_g, t.cas_mps, t.air.mach));
+    // The limits for that configuration are the lowest of the two.
+    assert_eq!(m.limits.n_max_for(i.gear_pos, i.flap_fraction), 4.0);
+    // Over the travel is capped.
+    s.surfaces.tef_rad = 10.0;
+    assert_eq!(m.flap_fraction(&s.surfaces), 1.0);
+}
+
+#[test]
+fn sense_is_the_telemetry_the_angular_acceleration_and_the_controls_of_one_evaluation() {
+    let m = kestrel();
+    let world = SphereSea::open();
+    let mut s = level(&m, 5000.0, 190.0, 3.0, 2000.0);
+    s.body.omega_body = DVec3::new(0.05, -0.02, 0.01);
+    s.surfaces.elevator_rad = -0.02;
+    let sense = m.sense(&s, &world, 1.0);
+    assert_eq!(sense.tel, m.telemetry(&s, &world, 1.0));
+    let (d, _) = m.derivative(&s, &world, 1.0);
+    assert_eq!(sense.omega_dot_rps2, d.omega);
+    assert_eq!(sense.mass, m.mass.props(&s.fuel));
+    // The controls are the model's own: the elevator moment matches the aero model's, and a
+    // nose-down elevator (positive) pitches down.
+    assert!(sense.controls.dm_de < 0.0 && sense.controls.qbar_s > 1.0e5);
+    let again = m.sense(&s, &world, 1.0);
+    assert_eq!(sense, again, "a pure function of the state");
+}
+
+#[test]
+fn sense_leaves_the_pushes_of_the_wheels_out_of_the_accelerations() {
+    let m = kestrel();
+    let world = SphereSea::default();
+    let (mut s, _) = m
+        .static_state(3000.0, 0.0, 0.0, DVec3::ZERO, &world, EngineCommand::IDLE)
+        .expect("a static pose");
+    // Sinking into the struts: they push back hard, and mostly behind the CG.
+    s.body.vel_bf = DVec3::new(0.0, 0.0, -2.0);
+    let sense = m.sense(&s, &world, 0.0);
+    let (d, _) = m.derivative(&s, &world, 0.0);
+    assert!(sense.tel.ground_force_body_n.length() > 1.0e4, "in contact");
+    let share = (d.omega - sense.omega_dot_rps2).length();
+    assert!(share > 0.05, "the wheels turn the aircraft: {share}");
+    // With no ground at all the same state gives what the sense reports (at 2 m/s the air is
+    // worth almost nothing).
+    let open = m.sense(&s, &SphereSea::open(), 0.0);
+    assert!(
+        (open.omega_dot_rps2 - sense.omega_dot_rps2).length() < 0.01 * share,
+        "{:?} against {:?}",
+        open.omega_dot_rps2,
+        sense.omega_dot_rps2
+    );
 }

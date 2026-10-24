@@ -73,6 +73,53 @@ impl AeroOutput {
     };
 }
 
+/// The aircraft's own controls, linearised for the flight control system (ADR-34): the moment
+/// the airframe makes with the primary surfaces centred, and what each surface adds per radian.
+///
+/// All moments are about the CG in body axes (FRD), N m. Each derivative is per radian of raw
+/// deflection and already includes the control-effectiveness fall-off at the surface's current
+/// deflection (`eta(|d|)`, GDD 11.7), so the surface for a wanted moment is
+/// `(M_wanted - M_free) / dM_dd` with the derivative read at the deflection being asked for.
+/// Positive elevator is trailing edge down (nose down), so `dm_de` is negative.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ControlModel {
+    /// Aerodynamic moment about the CG with the elevator, aileron and rudder at zero.
+    pub moment_free_nm: DVec3,
+    /// Pitching moment per radian of elevator.
+    pub dm_de: f64,
+    /// Rolling moment per radian of aileron.
+    pub dl_da: f64,
+    /// Rolling moment per radian of rudder.
+    pub dl_dr: f64,
+    /// Yawing moment per radian of aileron.
+    pub dn_da: f64,
+    /// Yawing moment per radian of rudder.
+    pub dn_dr: f64,
+    /// Body-axis `z` force per radian of elevator (the direct lift of the surface).
+    pub dz_de: f64,
+    /// Dynamic pressure times the reference area, N.
+    pub qbar_s: f64,
+    /// The whole matrix the scalars above are taken from: the moment vector per radian of
+    /// elevator, aileron and rudder, in that order. The off-axis entries (the elevator's roll and
+    /// yaw through the sideslip force, the rudder's pitch) are a thousandth of the main ones.
+    pub moment_per_rad_nm: [DVec3; 3],
+}
+
+impl ControlModel {
+    /// No airflow, no control.
+    pub const ZERO: Self = Self {
+        moment_free_nm: DVec3::ZERO,
+        dm_de: 0.0,
+        dl_da: 0.0,
+        dl_dr: 0.0,
+        dn_da: 0.0,
+        dn_dr: 0.0,
+        dz_de: 0.0,
+        qbar_s: 0.0,
+        moment_per_rad_nm: [DVec3::ZERO; 3],
+    };
+}
+
 /// Aerodynamics of one airframe (GDD 61.5). The table model is the real implementation; the
 /// tick calls it concretely (no `dyn` on the hot path, GDD 61.4.2).
 pub trait AeroModel: Send {
@@ -142,21 +189,88 @@ pub struct Coefficients {
     pub blend: f64,
 }
 
-/// Lateral and directional derivatives, per radian.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Lateral and directional derivatives, per radian, each against `|alpha|` in degrees (ADR-38).
+#[derive(Clone, Debug, PartialEq)]
 struct Lateral {
-    cy_beta: f64,
-    cl_beta: f64,
-    cn_beta: f64,
-    cl_p: f64,
-    cl_r: f64,
-    cn_p: f64,
-    cn_r: f64,
-    cl_da: f64,
-    cn_da: f64,
-    cl_dr: f64,
-    cn_dr: f64,
-    cy_dr: f64,
+    cy_beta: Table1D,
+    cl_beta: Table1D,
+    cn_beta: Table1D,
+    cl_p: Table1D,
+    cl_r: Table1D,
+    cn_p: Table1D,
+    cn_r: Table1D,
+    cl_da: Table1D,
+    cn_da: Table1D,
+    cl_dr: Table1D,
+    cn_dr: Table1D,
+    cy_dr: Table1D,
+}
+
+/// The lateral derivatives at one angle of attack.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LateralAt {
+    /// Side force from sideslip.
+    pub cy_beta: f64,
+    /// Rolling moment from sideslip.
+    pub cl_beta: f64,
+    /// Yawing moment from sideslip.
+    pub cn_beta: f64,
+    /// Roll damping.
+    pub cl_p: f64,
+    /// Rolling moment from yaw rate.
+    pub cl_r: f64,
+    /// Yawing moment from roll rate.
+    pub cn_p: f64,
+    /// Yaw damping.
+    pub cn_r: f64,
+    /// Rolling moment per radian of aileron.
+    pub cl_da: f64,
+    /// Yawing moment per radian of aileron.
+    pub cn_da: f64,
+    /// Rolling moment per radian of rudder.
+    pub cl_dr: f64,
+    /// Yawing moment per radian of rudder.
+    pub cn_dr: f64,
+    /// Side force per radian of rudder.
+    pub cy_dr: f64,
+}
+
+impl Lateral {
+    fn from_def(t: &content::aero::Lateral) -> Result<Self, ModelError> {
+        Ok(Self {
+            cy_beta: curve("cy_beta_per_rad", &t.cy_beta_per_rad)?,
+            cl_beta: curve("cl_beta_per_rad", &t.cl_beta_per_rad)?,
+            cn_beta: curve("cn_beta_per_rad", &t.cn_beta_per_rad)?,
+            cl_p: curve("cl_p_per_rad", &t.cl_p_per_rad)?,
+            cl_r: curve("cl_r_per_rad", &t.cl_r_per_rad)?,
+            cn_p: curve("cn_p_per_rad", &t.cn_p_per_rad)?,
+            cn_r: curve("cn_r_per_rad", &t.cn_r_per_rad)?,
+            cl_da: curve("cl_da_per_rad", &t.cl_da_per_rad)?,
+            cn_da: curve("cn_da_per_rad", &t.cn_da_per_rad)?,
+            cl_dr: curve("cl_dr_per_rad", &t.cl_dr_per_rad)?,
+            cn_dr: curve("cn_dr_per_rad", &t.cn_dr_per_rad)?,
+            cy_dr: curve("cy_dr_per_rad", &t.cy_dr_per_rad)?,
+        })
+    }
+
+    /// The derivatives at `|alpha|` = `alpha_deg`.
+    fn at(&self, alpha_deg: f64) -> LateralAt {
+        let a = alpha_deg.abs();
+        LateralAt {
+            cy_beta: self.cy_beta.eval(a),
+            cl_beta: self.cl_beta.eval(a),
+            cn_beta: self.cn_beta.eval(a),
+            cl_p: self.cl_p.eval(a),
+            cl_r: self.cl_r.eval(a),
+            cn_p: self.cn_p.eval(a),
+            cn_r: self.cn_r.eval(a),
+            cl_da: self.cl_da.eval(a),
+            cn_da: self.cn_da.eval(a),
+            cl_dr: self.cl_dr.eval(a),
+            cn_dr: self.cn_dr.eval(a),
+            cy_dr: self.cy_dr.eval(a),
+        }
+    }
 }
 
 /// The table-driven aerodynamic model of one airframe, built once from content.
@@ -270,20 +384,7 @@ impl TableAero {
             cm_de: curve("cm_de_per_rad", &aero.pitch.cm_de_per_rad)?,
             cm_q: f(aero.pitch.cm_q_per_rad),
             cm_alpha_dot: f(aero.pitch.cm_alpha_dot_per_rad),
-            lateral: Lateral {
-                cy_beta: f(t.cy_beta_per_rad),
-                cl_beta: f(t.cl_beta_per_rad),
-                cn_beta: f(t.cn_beta_per_rad),
-                cl_p: f(t.cl_p_per_rad),
-                cl_r: f(t.cl_r_per_rad),
-                cn_p: f(t.cn_p_per_rad),
-                cn_r: f(t.cn_r_per_rad),
-                cl_da: f(t.cl_da_per_rad),
-                cn_da: f(t.cn_da_per_rad),
-                cl_dr: f(t.cl_dr_per_rad),
-                cn_dr: f(t.cn_dr_per_rad),
-                cy_dr: f(t.cy_dr_per_rad),
-            },
+            lateral: Lateral::from_def(t)?,
             blend_start_deg: curve("blend_start_deg", &aero.post_stall.blend_start_deg)?,
             blend_end_deg: curve("blend_end_deg", &aero.post_stall.blend_end_deg)?,
             cd90: f(aero.post_stall.cd90),
@@ -321,6 +422,13 @@ impl TableAero {
     #[must_use]
     pub fn ref_point_body_m(&self) -> DVec3 {
         self.ref_point_body_m
+    }
+
+    /// The lateral and directional derivatives at an angle of attack, degrees (read at
+    /// `|alpha|`).
+    #[must_use]
+    pub fn lateral_at(&self, alpha_deg: f64) -> LateralAt {
+        self.lateral.at(alpha_deg)
     }
 
     /// Angle of attack of the lift peak at a Mach number, degrees (interpolated between rows).
@@ -364,6 +472,14 @@ impl TableAero {
     /// A deflection scaled by the control-effectiveness table.
     fn effective(&self, deflection_rad: f64) -> f64 {
         self.eta.eval(deflection_rad.abs().to_degrees()) * deflection_rad
+    }
+
+    /// Lift and drag coefficient increments `(dC_L, dC_D0)` of the trailing-edge flaps at a
+    /// position: the take-off values at half travel, the landing values at full travel, linear
+    /// between.
+    #[must_use]
+    pub fn flap_increments(&self, tef_rad: f64) -> (f64, f64) {
+        self.flap(tef_rad)
     }
 
     /// Flap lift and drag increments for a trailing-edge flap position.
@@ -438,7 +554,7 @@ impl TableAero {
 
         // Rate terms: alpha-dot is non-dimensionalised like q.
         let alpha_dot_hat = self.alpha_dot_hat(input.alpha_dot_rps, air.tas_mps);
-        let t = &self.lateral;
+        let t = self.lateral.at(a_deg);
         Coefficients {
             cl,
             cd,
@@ -458,6 +574,93 @@ impl TableAero {
                 + t.cn_da * da
                 + t.cn_dr * dr,
             blend,
+        }
+    }
+
+    /// The aircraft's own controls at a flight condition, for inversion by the control laws
+    /// (ADR-34). The free moment is the model's own [`AeroModel::evaluate`] with the elevator,
+    /// aileron and rudder centred; the derivatives are exact for the moment coefficients and take
+    /// the force-induced term at the CG from the lift and induced-drag slopes at zero deflection.
+    /// The `alpha_dot` the input carries is held, so the elevator's effect on it is not included.
+    #[must_use]
+    pub fn control_model(&self, input: &AeroInput) -> ControlModel {
+        let air = &input.air;
+        if air.qbar_pa.is_nan() || air.qbar_pa <= 0.0 {
+            return ControlModel::ZERO;
+        }
+        let s = &input.surfaces;
+        let centred = AeroInput {
+            surfaces: Surfaces {
+                elevator_rad: 0.0,
+                aileron_rad: 0.0,
+                rudder_rad: 0.0,
+                ..*s
+            },
+            ..*input
+        };
+        let free = self.evaluate(&centred);
+
+        // The attached-flow lift at zero deflection: the point the induced-drag slope is taken at.
+        let (a_deg, m) = (air.alpha_rad.to_degrees(), air.mach);
+        let (flap_cl, _) = self.flap(s.tef_rad);
+        let (phi, ground_cl) = self.ground_effect(input.height_agl_m, air.alpha_rad, m);
+        let cl_att = self.cl_base.eval(a_deg, m) + flap_cl + ground_cl;
+        let blend = smoothstep(
+            self.blend_start_deg.eval(m),
+            self.blend_end_deg.eval(m),
+            a_deg.abs(),
+        );
+        let t = self.lateral.at(a_deg);
+        let (eta_e, eta_a, eta_r) = (
+            self.eta.eval(s.elevator_rad.abs().to_degrees()),
+            self.eta.eval(s.aileron_rad.abs().to_degrees()),
+            self.eta.eval(s.rudder_rad.abs().to_degrees()),
+        );
+
+        // Per radian of raw deflection, as coefficient slopes.
+        let d_cl_e = (1.0 - blend) * self.cl_de.eval(m) * eta_e;
+        let d_cd_e = 2.0
+            * (1.0 - blend)
+            * phi
+            * self.k_induced.eval(m)
+            * (cl_att - self.cl0)
+            * self.cl_de.eval(m)
+            * eta_e;
+        let elevator = Coefficients {
+            cl: d_cl_e,
+            cd: d_cd_e,
+            cm: self.cm_de.eval(m) * eta_e,
+            ..Coefficients::default()
+        };
+        let aileron = Coefficients {
+            cl_roll: t.cl_da * eta_a,
+            cn: t.cn_da * eta_a,
+            ..Coefficients::default()
+        };
+        let rudder = Coefficients {
+            cy: t.cy_dr * eta_r,
+            cl_roll: t.cl_dr * eta_r,
+            cn: t.cn_dr * eta_r,
+            ..Coefficients::default()
+        };
+        let lever = self.ref_point_body_m - input.cg_body_m;
+        let about_cg = |c: &Coefficients| -> (DVec3, DVec3) {
+            let f = self.force(c, air);
+            (self.moment_ref(c, air) + lever.cross(f), f)
+        };
+        let (m_e, f_e) = about_cg(&elevator);
+        let (m_a, _) = about_cg(&aileron);
+        let (m_r, _) = about_cg(&rudder);
+        ControlModel {
+            moment_free_nm: free.moment_body_nm,
+            dm_de: m_e.y,
+            dl_da: m_a.x,
+            dl_dr: m_r.x,
+            dn_da: m_a.z,
+            dn_dr: m_r.z,
+            dz_de: f_e.z,
+            qbar_s: air.qbar_pa * self.wing_area_m2,
+            moment_per_rad_nm: [m_e, m_a, m_r],
         }
     }
 
@@ -910,5 +1113,194 @@ mod tests {
         let mut far = at(8.0, 0.2);
         far.height_agl_m = GROUND_EFFECT_SPANS * m.span_m();
         assert_eq!(m.coefficients(&far), high, "none above four spans");
+    }
+
+    /// A deterministic stream of numbers in [0, 1) (xorshift64*), so the random-state tests are
+    /// the same everywhere.
+    struct Stream(u64);
+
+    impl Stream {
+        fn next(&mut self) -> f64 {
+            self.0 ^= self.0 >> 12;
+            self.0 ^= self.0 << 25;
+            self.0 ^= self.0 >> 27;
+            let v = self.0.wrapping_mul(0x2545_F491_4F6C_DD1D);
+            (v >> 11) as f64 / (1u64 << 53) as f64
+        }
+
+        fn range(&mut self, lo: f64, hi: f64) -> f64 {
+            lo + (hi - lo) * self.next()
+        }
+    }
+
+    /// A random flight condition over the envelope, including the post-stall blend, the ground
+    /// effect, every configuration and a CG off the reference point.
+    fn random_input(r: &mut Stream) -> AeroInput {
+        let tas = r.range(40.0, 700.0);
+        AeroInput {
+            air: AirData {
+                tas_mps: tas,
+                alpha_rad: r.range(-20.0, 70.0).to_radians(),
+                beta_rad: r.range(-0.15, 0.15),
+                mach: r.range(0.1, 2.3),
+                qbar_pa: r.range(500.0, 70_000.0),
+                p_hat: r.range(-0.05, 0.05),
+                q_hat: r.range(-0.05, 0.05),
+                r_hat: r.range(-0.05, 0.05),
+            },
+            alpha_dot_rps: r.range(-0.4, 0.4),
+            surfaces: Surfaces {
+                lef_rad: 0.0,
+                tef_rad: r.range(0.0, 0.52),
+                airbrake: r.range(0.0, 1.0),
+                gear: if r.next() < 0.5 { 0.0 } else { 1.0 },
+                ..Surfaces::NEUTRAL
+            },
+            height_agl_m: r.range(0.0, 60.0),
+            cg_body_m: DVec3::new(r.range(-0.3, 0.3), 0.0, r.range(-0.1, 0.1)),
+        }
+    }
+
+    /// The moment the control model predicts for deflections `d = (elevator, aileron, rudder)`.
+    fn predicted(cm: &ControlModel, d: (f64, f64, f64)) -> DVec3 {
+        let [e, a, r] = cm.moment_per_rad_nm;
+        cm.moment_free_nm + e * d.0 + a * d.1 + r * d.2
+    }
+
+    #[test]
+    fn the_control_model_reproduces_evaluate_at_ten_thousand_states() {
+        let m = kestrel_aero();
+        let mut r = Stream(0x9E37_79B9_7F4A_7C15);
+        let mut worst = 0.0_f64;
+        for _ in 0..10_000 {
+            let mut input = random_input(&mut r);
+            // Small deflections: the model is linear in the deflection to second order.
+            let d = (
+                r.range(-2e-4, 2e-4),
+                r.range(-2e-4, 2e-4),
+                r.range(-2e-4, 2e-4),
+            );
+            input.surfaces.elevator_rad = d.0;
+            input.surfaces.aileron_rad = d.1;
+            input.surfaces.rudder_rad = d.2;
+            let cm = m.control_model(&input);
+            let truth = m.evaluate(&input).moment_body_nm;
+            // Relative to the airframe's moment scale q S b: the free moment can be tiny in one
+            // axis while the deflection terms are not.
+            let scale = cm.qbar_s * m.span_m();
+            let err = (truth - predicted(&cm, d)).length() / scale;
+            worst = worst.max(err);
+            assert!(err < 1e-9, "relative error {err} at {input:?}");
+        }
+        println!("worst relative error of the control model: {worst:.2e}");
+    }
+
+    #[test]
+    fn the_free_moment_is_the_evaluated_moment_with_the_surfaces_centred() {
+        let m = kestrel_aero();
+        let mut r = Stream(7);
+        for _ in 0..200 {
+            let mut input = random_input(&mut r);
+            input.surfaces.elevator_rad = 0.2;
+            input.surfaces.aileron_rad = -0.3;
+            input.surfaces.rudder_rad = 0.1;
+            let mut centred = input;
+            centred.surfaces.elevator_rad = 0.0;
+            centred.surfaces.aileron_rad = 0.0;
+            centred.surfaces.rudder_rad = 0.0;
+            assert_eq!(
+                m.control_model(&input).moment_free_nm,
+                m.evaluate(&centred).moment_body_nm
+            );
+        }
+    }
+
+    #[test]
+    fn a_worked_point_at_the_reference_point() {
+        // M 0.6, 5 deg, 20 kPa, CG on the reference point: the surfaces' moments are exactly
+        // q S b C and q S c C_m,de, with the C.5 / A.1 derivatives.
+        let m = kestrel_aero();
+        let input = at(5.0, 0.6);
+        let c = m.control_model(&input);
+        let qs = 20_000.0 * m.wing_area_m2();
+        assert_eq!(c.qbar_s, qs);
+        let (cl_de, cm_de) = m.elevator_power_per_rad(0.6);
+        assert!((c.dm_de - qs * m.mac_m() * cm_de).abs() < 1e-9 * qs);
+        assert!(c.dm_de < 0.0, "trailing edge down pitches the nose down");
+        let t = m.lateral_at(5.0);
+        assert!((c.dl_da - qs * m.span_m() * t.cl_da).abs() < 1e-9 * qs);
+        assert!((c.dn_da - qs * m.span_m() * t.cn_da).abs() < 1e-9 * qs);
+        assert!((c.dl_dr - qs * m.span_m() * t.cl_dr).abs() < 1e-9 * qs);
+        assert!((c.dn_dr - qs * m.span_m() * t.cn_dr).abs() < 1e-9 * qs);
+        // The elevator's lift acts up, along -z, a little less than q S C_L,de (the induced drag
+        // adds a small term along x that has no z at this attitude beyond sin(a)).
+        assert!(c.dz_de < 0.0);
+        assert!(
+            (c.dz_de + qs * cl_de * dmath::cos(5f64.to_radians())).abs() < 0.01 * qs * cl_de,
+            "{} vs {}",
+            c.dz_de,
+            -qs * cl_de
+        );
+        // Aileron: right wing down and adverse yaw; rudder: nose left.
+        assert!(c.dl_da > 0.0 && c.dn_da < 0.0 && c.dn_dr < 0.0);
+        // Symmetric flight, nothing rolls or yaws on its own.
+        assert!(c.moment_free_nm.x.abs() < 1e-9 && c.moment_free_nm.z.abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_derivatives_carry_the_effectiveness_at_the_current_deflection() {
+        let m = kestrel_aero();
+        let neutral = m.control_model(&at(5.0, 0.6));
+        // Aileron at 10 deg: full power, so the same slope.
+        let mut i = at(5.0, 0.6);
+        i.surfaces.aileron_rad = 10f64.to_radians();
+        assert!((m.control_model(&i).dl_da - neutral.dl_da).abs() < 1e-9 * neutral.qbar_s);
+        // At 20 deg it acts like 19: eta = 0.95.
+        i.surfaces.aileron_rad = 20f64.to_radians();
+        let c20 = m.control_model(&i);
+        assert!(
+            (c20.dl_da / neutral.dl_da - 0.95).abs() < 1e-6,
+            "{}",
+            c20.dl_da / neutral.dl_da
+        );
+        // And so does the elevator, which is exact for the moment the pitch law asks for.
+        let mut e = at(5.0, 0.6);
+        e.surfaces.elevator_rad = -20f64.to_radians();
+        let ce = m.control_model(&e);
+        assert!((ce.dm_de / neutral.dm_de - 0.95).abs() < 1e-6);
+        let truth = m.evaluate(&e).moment_body_nm.y;
+        let guess = ce.moment_free_nm.y + ce.dm_de * e.surfaces.elevator_rad;
+        assert!(
+            (truth - guess).abs() < 5e-3 * ce.qbar_s * m.mac_m(),
+            "{truth} vs {guess}"
+        );
+    }
+
+    #[test]
+    fn the_inversion_hits_a_wanted_pitching_moment() {
+        // What the pitch law does: pick the elevator for a wanted moment from the model.
+        let m = kestrel_aero();
+        let input = at(8.0, 0.5);
+        let c = m.control_model(&input);
+        let wanted = -0.1 * c.qbar_s * m.mac_m();
+        let de = (wanted - c.moment_free_nm.y) / c.dm_de;
+        assert!(de.abs() < 15f64.to_radians());
+        let mut flown = input;
+        flown.surfaces.elevator_rad = de;
+        let got = m.evaluate(&flown).moment_body_nm.y;
+        assert!(
+            (got - wanted).abs() < 1e-3 * wanted.abs(),
+            "{got} vs {wanted}"
+        );
+    }
+
+    #[test]
+    fn without_airflow_there_is_no_control() {
+        let m = kestrel_aero();
+        let mut input = at(5.0, 0.6);
+        input.air.qbar_pa = 0.0;
+        assert_eq!(m.control_model(&input), ControlModel::ZERO);
+        input.air.qbar_pa = f64::NAN;
+        assert_eq!(m.control_model(&input), ControlModel::ZERO);
     }
 }

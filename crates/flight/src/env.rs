@@ -8,6 +8,7 @@ use simmath::math::DVec3;
 
 use crate::atmosphere::NonStandardDay;
 use crate::physical::{EARTH_RADIUS_M, G0};
+use crate::surface::{SurfaceKind, SurfaceSample};
 
 /// The world as seen by one aircraft.
 pub trait FlightEnv {
@@ -32,6 +33,10 @@ pub trait FlightEnv {
     /// Terrain (or sea) height above MSL below a BF position, m.
     fn ground_height_m(&self, pos_bf: DVec3) -> f64;
 
+    /// The ground below a BF position: its height (equal to [`FlightEnv::ground_height_m`]), its
+    /// normal in BF, what it is made of and how wet it is.
+    fn surface(&self, pos_bf: DVec3) -> SurfaceSample;
+
     /// Wind velocity in BF at a position and simulation time, m/s.
     fn wind_bf(&self, _pos_bf: DVec3, _t_s: f64) -> DVec3 {
         DVec3::ZERO
@@ -44,13 +49,18 @@ pub trait FlightEnv {
 }
 
 /// A sphere covered by sea at height 0, BF origin on its surface with `+z` up there. Still air,
-/// standard day.
+/// standard day. Its ground is a smooth, dry surface of one kind: paved by default, so a wheel
+/// test on it runs on asphalt; [`SphereSea::open`] has no ground at all.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SphereSea {
     /// Sphere radius, m.
     pub radius_m: f64,
     /// Height of the surface above MSL, m; `-inf` for none.
     pub ground_m: f64,
+    /// What the surface is.
+    pub kind: SurfaceKind,
+    /// How wet it is, 0 (dry) to 1.
+    pub wetness: f64,
 }
 
 impl Default for SphereSea {
@@ -58,6 +68,8 @@ impl Default for SphereSea {
         Self {
             radius_m: EARTH_RADIUS_M,
             ground_m: 0.0,
+            kind: SurfaceKind::Paved,
+            wetness: 0.0,
         }
     }
 }
@@ -70,6 +82,7 @@ impl SphereSea {
     pub fn open() -> Self {
         Self {
             ground_m: f64::NEG_INFINITY,
+            kind: SurfaceKind::Water,
             ..Self::default()
         }
     }
@@ -95,6 +108,15 @@ impl FlightEnv for SphereSea {
     fn ground_height_m(&self, _pos_bf: DVec3) -> f64 {
         self.ground_m
     }
+
+    fn surface(&self, pos_bf: DVec3) -> SurfaceSample {
+        SurfaceSample {
+            height_msl_m: self.ground_m,
+            normal_bf: self.up_bf(pos_bf),
+            kind: self.kind,
+            wetness: self.wetness,
+        }
+    }
 }
 
 /// A flat sea at `z = 0` with `+z` up everywhere. Gravity still weakens with height.
@@ -112,6 +134,15 @@ impl FlightEnv for FlatSea {
 
     fn ground_height_m(&self, _pos_bf: DVec3) -> f64 {
         0.0
+    }
+
+    fn surface(&self, _pos_bf: DVec3) -> SurfaceSample {
+        SurfaceSample {
+            height_msl_m: 0.0,
+            normal_bf: DVec3::Z,
+            kind: SurfaceKind::Water,
+            wetness: 0.0,
+        }
     }
 }
 
@@ -154,6 +185,28 @@ mod tests {
         );
         assert_eq!(FlatSea.wind_bf(DVec3::ZERO, 0.0), DVec3::ZERO);
         assert_eq!(FlatSea.day(), NonStandardDay::ISA);
+    }
+
+    #[test]
+    fn the_surface_agrees_with_the_ground_height_and_faces_up() {
+        for w in [SphereSea::default(), SphereSea::open()] {
+            for p in [DVec3::ZERO, DVec3::new(12_000.0, -4_000.0, 30.0)] {
+                let s = w.surface(p);
+                assert_eq!(s.height_msl_m, w.ground_height_m(p));
+                assert!((s.normal_bf - w.up_bf(p)).length() < 1e-15);
+                assert_eq!(s.wetness, 0.0);
+            }
+        }
+        assert_eq!(
+            SphereSea::default().surface(DVec3::ZERO).kind,
+            SurfaceKind::Paved
+        );
+        assert_eq!(
+            SphereSea::open().surface(DVec3::ZERO).kind,
+            SurfaceKind::Water
+        );
+        let flat = FlatSea.surface(DVec3::new(1.0, 2.0, 50.0));
+        assert_eq!((flat.height_msl_m, flat.normal_bf), (0.0, DVec3::Z));
     }
 
     #[test]

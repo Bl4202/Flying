@@ -1,4 +1,4 @@
-//! Snapshot v2: the render-relevant state published at the end of every tick
+//! Snapshot v3: the render-relevant state published at the end of every tick
 //! (GDD 61.2 "Sim -> Render", layout in [`crate::layout::snapshot`]).
 //!
 //! The core writes into a buffer it owns and never reallocates; the host copies it out into a
@@ -113,6 +113,33 @@ impl SnapshotBuffer {
         }
         b[s::O_AB_STAGE] = o.ab_stage;
         b[s::O_FLAGS] = o.flags;
+        b[s::O_ASSIST] = o.assist;
+        b[s::O_FCS_MODE] = o.fcs_mode;
+        b[s::O_FLAGS2..s::O_FLAGS2 + 2].copy_from_slice(&o.flags2.to_le_bytes());
+        b[s::O_SPAWN_SEQ] = o.spawn_seq;
+        b[s::O_FLAP_DETENT] = o.flap_detent;
+        for (at, value) in [
+            (s::O_GEAR_POS, o.gear_pos),
+            (s::O_TEF, o.tef_rad),
+            (s::O_AIRBRAKE, o.airbrake),
+            (s::O_BRAKE_L, o.brake[0]),
+            (s::O_BRAKE_R, o.brake[1]),
+            (s::O_STEER, o.steer_rad),
+            (s::O_GROUND_SPEED, o.ground_speed_mps),
+            (s::O_VS, o.vs_mps),
+            (s::O_AGL, o.agl_m),
+            (s::O_G_LAGGED, o.g_lagged),
+            (s::O_G_STRESS, o.g_stress),
+            (s::O_REDOUT, o.redout),
+            (s::O_N_CMD, o.n_cmd),
+            (s::O_TOUCHDOWN_VS, o.touchdown_vs_mps),
+            (s::O_AIM_AZ, o.aim_rad[0]),
+            (s::O_AIM_EL, o.aim_rad[1]),
+        ] {
+            put_f32(b, at, value as f32);
+        }
+        b[s::O_CRASH_CAUSE] = o.crash_cause;
+        b[s::O_GEAR_BITS] = o.gear_bits;
 
         for i in 0..BODY_COUNT {
             let [x, y, z] = src.probe.pos_bf(i);
@@ -129,7 +156,7 @@ impl SnapshotBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::layout::ownship_flag;
+    use crate::layout::{crash_cause, ownship_flag, ownship_flag2};
     use crate::math::{DQuat, DVec3};
 
     fn u32_at(b: &[u8], o: usize) -> u32 {
@@ -168,6 +195,28 @@ mod tests {
             altitude_m: 2900.5,
             ab_stage: 3,
             flags: (ownship_flag::STALL_WARN | ownship_flag::FLAMEOUT) as u8,
+            assist: 2,
+            fcs_mode: 1,
+            flags2: (ownship_flag2::WOW | ownship_flag2::GLOC | ownship_flag2::THROTTLE_HELD)
+                as u16,
+            spawn_seq: 200,
+            flap_detent: 2,
+            gear_pos: 1.0,
+            tef_rad: 0.5,
+            airbrake: 0.25,
+            brake: [0.75, 0.5],
+            steer_rad: -0.125,
+            ground_speed_mps: 61.5,
+            vs_mps: -2.25,
+            agl_m: 3.5,
+            g_lagged: 4.5,
+            g_stress: 0.625,
+            redout: 0.125,
+            n_cmd: 3.5,
+            touchdown_vs_mps: 1.75,
+            aim_rad: [0.5, -0.25],
+            crash_cause: crash_cause::SINK_RATE as u8,
+            gear_bits: 0b1010_0101,
         };
         (SnapshotBuffer::new(), ownship, probe)
     }
@@ -177,7 +226,7 @@ mod tests {
         let b = SnapshotBuffer::new();
         assert_eq!(b.bytes().len(), s::SIZE);
         assert_eq!(&b.bytes()[0..4], b"FGSN");
-        assert_eq!(u32_at(b.bytes(), s::H_VERSION), 2);
+        assert_eq!(u32_at(b.bytes(), s::H_VERSION), 3);
         assert!(b.bytes()[8..].iter().all(|&x| x == 0));
     }
 
@@ -233,8 +282,37 @@ mod tests {
             u32::from(b[s::O_FLAGS]),
             (ownship_flag::STALL_WARN | ownship_flag::FLAMEOUT) as u32
         );
+        // The v3 block.
+        assert_eq!((b[s::O_ASSIST], b[s::O_FCS_MODE]), (2, 1));
+        assert_eq!(
+            u16::from_le_bytes([b[s::O_FLAGS2], b[s::O_FLAGS2 + 1]]),
+            (ownship_flag2::WOW | ownship_flag2::GLOC | ownship_flag2::THROTTLE_HELD) as u16
+        );
+        assert_eq!((b[s::O_SPAWN_SEQ], b[s::O_FLAP_DETENT]), (200, 2));
+        for (at, v) in [
+            (s::O_GEAR_POS, 1.0),
+            (s::O_TEF, 0.5),
+            (s::O_AIRBRAKE, 0.25),
+            (s::O_BRAKE_L, 0.75),
+            (s::O_BRAKE_R, 0.5),
+            (s::O_STEER, -0.125),
+            (s::O_GROUND_SPEED, 61.5),
+            (s::O_VS, -2.25),
+            (s::O_AGL, 3.5),
+            (s::O_G_LAGGED, 4.5),
+            (s::O_G_STRESS, 0.625),
+            (s::O_REDOUT, 0.125),
+            (s::O_N_CMD, 3.5),
+            (s::O_TOUCHDOWN_VS, 1.75),
+            (s::O_AIM_AZ, 0.5),
+            (s::O_AIM_EL, -0.25),
+        ] {
+            assert_eq!(f32_at(b, at), v as f32, "offset {at}");
+        }
+        assert_eq!(b[s::O_CRASH_CAUSE], crash_cause::SINK_RATE as u8);
+        assert_eq!(b[s::O_GEAR_BITS], 0b1010_0101);
         assert!(
-            b[s::O_FLAGS + 1..s::B_X].iter().all(|&x| x == 0),
+            b[s::O_GEAR_BITS + 1..s::B_X].iter().all(|&x| x == 0),
             "reserved bytes are zero"
         );
 

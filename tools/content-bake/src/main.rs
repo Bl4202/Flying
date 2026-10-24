@@ -60,13 +60,14 @@ fn run_bake(pack_dir: &Path, out_dir: &Path) -> ExitCode {
         return ExitCode::from(2);
     }
     println!(
-        "content-bake: {} -> {} ({} bytes, {} aircraft, {} engines, {} aero sets)",
+        "content-bake: {} -> {} ({} bytes, {} aircraft, {} engines, {} aero sets, {} control gains)",
         pack_dir.display(),
         out_dir.join(&cpack_name).display(),
         baked.cpack.len(),
         baked.aircraft.len(),
         baked.engines.len(),
-        baked.aero.len()
+        baked.aero.len(),
+        baked.fcs.len()
     );
     ExitCode::SUCCESS
 }

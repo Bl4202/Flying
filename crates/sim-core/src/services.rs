@@ -2,12 +2,14 @@
 //! implementation (GDD 61.5); the defaults are the simple, real first implementations.
 
 use content::Registry;
+use fcs::FcsModel;
 use flight::aircraft::AircraftModel;
 use flight::atmosphere::NonStandardDay;
 use flight::env::FlightEnv;
+use flight::surface::{SurfaceKind, SurfaceSample};
 
 use crate::math::DVec3;
-use crate::seams::geo::{GeoService, ProceduralGeo};
+use crate::seams::geo::{GeoService, ProceduralGeo, SurfaceClass};
 use crate::seams::los::{LosService, OpenSky};
 use crate::seams::strategic::{NoStrategicContext, StrategicContext};
 use crate::seams::weather::{StillAir, WeatherProvider};
@@ -28,6 +30,9 @@ pub struct Services {
     /// entry with the lowest handle (no ids in code, `AC-12.4`). `None` without aircraft content,
     /// and then the player is a spectator.
     pub aircraft: Option<AircraftModel>,
+    /// The control laws of that aircraft, built from the gains its entry refers to (ADR-34).
+    /// `Some` exactly when `aircraft` is.
+    pub fcs: Option<FcsModel>,
 }
 
 impl Services {
@@ -42,6 +47,7 @@ impl Services {
             strategic: Box::new(NoStrategicContext),
             registry: Registry::empty(),
             aircraft: None,
+            fcs: None,
         }
     }
 
@@ -91,12 +97,32 @@ impl FlightEnv for ServicesEnv<'_> {
         self.geo.ground_height_msl_m(pos_bf)
     }
 
+    fn surface(&self, pos_bf: DVec3) -> SurfaceSample {
+        let g = self.geo.bf_to_geo(pos_bf);
+        SurfaceSample {
+            height_msl_m: self.geo.ground_height_msl_m(pos_bf),
+            normal_bf: self.geo.terrain_normal(g.lat_rad, g.lon_rad),
+            kind: surface_kind(self.geo.surface_class(g.lat_rad, g.lon_rad)),
+            wetness: self.weather.runway_wetness().clamp(0.0, 1.0),
+        }
+    }
+
     fn wind_bf(&self, pos_bf: DVec3, t_s: f64) -> DVec3 {
         self.weather.wind_bf(pos_bf, t_s)
     }
 
     fn day(&self) -> NonStandardDay {
         self.weather.day()
+    }
+}
+
+/// What the wheels run on over a coarse surface class of the world.
+fn surface_kind(class: SurfaceClass) -> SurfaceKind {
+    match class {
+        SurfaceClass::Water => SurfaceKind::Water,
+        SurfaceClass::Land => SurfaceKind::Grass,
+        SurfaceClass::Ice => SurfaceKind::Snow,
+        SurfaceClass::Urban | SurfaceClass::Paved => SurfaceKind::Paved,
     }
 }
 
@@ -125,5 +151,35 @@ mod tests {
         let env = ServicesEnv::new(&flat, &StillAir);
         assert_eq!(env.height_msl_m(DVec3::new(5.0, 6.0, 700.0)), 700.0);
         assert_eq!(env.ground_height_m(DVec3::new(5.0, 6.0, 700.0)), 0.0);
+    }
+
+    #[test]
+    fn the_surface_is_the_ground_below_the_aircraft() {
+        let geo = ProceduralGeo::default_frame();
+        let env = ServicesEnv::new(&geo, &StillAir);
+        for p in [
+            DVec3::new(0.0, -6_000.0, 100.0),
+            DVec3::new(40_000.0, -25_000.0, 3_000.0),
+        ] {
+            let s = env.surface(p);
+            assert_eq!(s.height_msl_m, env.ground_height_m(p));
+            assert!((s.normal_bf.length() - 1.0).abs() < 1e-12);
+            assert!(s.normal_bf.dot(env.up_bf(p)) > 0.9);
+            assert_eq!(s.wetness, 0.0);
+        }
+        // A flat world faces straight up.
+        let flat = FlatGeo::new();
+        let s = ServicesEnv::new(&flat, &StillAir).surface(DVec3::new(5.0, 6.0, 700.0));
+        assert_eq!((s.height_msl_m, s.kind), (0.0, SurfaceKind::Grass));
+        assert!((s.normal_bf - DVec3::Z).length() < 1e-9);
+    }
+
+    #[test]
+    fn world_classes_map_to_wheel_surfaces() {
+        assert_eq!(surface_kind(SurfaceClass::Water), SurfaceKind::Water);
+        assert_eq!(surface_kind(SurfaceClass::Land), SurfaceKind::Grass);
+        assert_eq!(surface_kind(SurfaceClass::Ice), SurfaceKind::Snow);
+        assert_eq!(surface_kind(SurfaceClass::Urban), SurfaceKind::Paved);
+        assert_eq!(surface_kind(SurfaceClass::Paved), SurfaceKind::Paved);
     }
 }

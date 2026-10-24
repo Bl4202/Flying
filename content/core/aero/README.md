@@ -24,7 +24,7 @@ Performance Conformance Test (ADR-31) is the judge.
 | SM, `C_m,ac`, `C_m,de` by Mach | SM 0.06 to M 0.8 (C.4, so `C_m,alpha = -0.216` as C.5), then aft through the transonic range to 0.15 from M 2; Mach tuck `C_m,ac` from +0.010 to -0.015; `C_m,de` from -0.65 to -0.34. Chosen so the trimmed elevator, after the control-effectiveness fall-off, stays within 23 deg up to C_L,max or 9 g over the envelope (*target*) |
 | `lift.cl_de_per_rad` | `-C_m,de / 1.6`: the stabilator acts 1.6 MAC behind the reference point |
 | `post_stall` | blend from `alpha_peak + 10` to `alpha_peak + 30` deg (ADR-30: the stall itself is in `cl_base`); `cd90` 1.2, flat-plate centre at 0.50 MAC (GDD 11.6.3) |
-| `lateral`, damping | C.5, plus `C_lr` +0.10, `C_np` -0.03, `C_nda` -0.01, `C_ldr` +0.01 (*targets*) |
+| `lateral` | C.5, plus `C_lr` +0.10, `C_np` -0.03, `C_nda` -0.01, `C_ldr` +0.01 (*targets*). Since v0.1b every derivative is a table against \|alpha\| in degrees, equal to the single C.5 value up to 15 deg and shaped above it (see "Lateral tables") |
 | `control_effectiveness` | 1 to 15 deg, 0.95 at 20, 0.90 at 25, 0.85 at 30 (GDD 11.7: falls beyond 15 deg; *target*) |
 | `config` | C.4 increments; flap lift 0.30 so flapped `C_L,max` is 1.90 |
 
@@ -33,6 +33,38 @@ wing tanks (on the CG) feed first, then the forward (900 kg at +1.65 m) and aft 
 -1.35 m) tanks feed together in proportion, and their moments balance. The empty inertia is
 derived so that the 10 000 kg state (wings empty, 720 kg forward, 880 kg aft) has C.2's
 13 000 / 76 000 / 86 000 kg m2 and `I_xz` 1 300 kg m2.
+
+## Lateral tables (v0.1b, ADR-38)
+
+The twelve lateral and directional derivatives (`lateral.*`) are curves against |alpha|, read at the
+absolute value of the angle of attack. Up to 15 deg each equals its C.5 scalar, so an aircraft
+in symmetric flight below 15 deg is exactly the v0.1a aircraft. Above it the shapes are authored
+(*targets*) for the departure behaviour of GDD 11.15: the Standard and Full assist levels keep the
+aircraft below the angle-of-attack limit (26 deg), and Reduced and Manual have no such limit, so
+the aircraft can depart.
+
+| Derivative | 0 to 15 deg | Shape above |
+|---|---|---|
+| `cn_beta_per_rad` | 0.14 | falls to 0 at 30, -0.08 at 40, back to 0 at 90 |
+| `cl_beta_per_rad` | -0.10 | -0.14 at 20, -0.18 at 25, -0.084 at 30, -0.0075 at 34, +0.02 at 40, 0 at 90 |
+| `cl_p_per_rad` | -0.30 (to 20) | +0.05 at 32 to 40 (wing rock), -0.20 at 90 |
+| `cn_r_per_rad` | -0.30 (to 25) | -0.15 at 40 |
+| `cl_da_per_rad` | 0.16 | 0.064 (40 %) from 35 |
+| `cn_da_per_rad` | -0.01 | -0.04 from 30 |
+| others | flat | flat |
+
+The dynamic directional stability parameter `C_n,beta,dyn = C_n,beta cos(a) - (I_z / I_x) C_l,beta
+sin(a)` is designed to turn negative near 34 deg. `flight::departure` computes it from these tables
+(I_z / I_x is about 6.6 at 1 600 kg of fuel) and the linearise test prints it at each C.5 trim
+point. Measured (WP4, ADR-38): **34.05 deg**. The lateral control departure parameter
+`LCDP = C_n,beta - C_l,beta C_n,da / C_l,da` is +0.134 to 15 deg and crosses zero at about 25 deg
+(-0.011 at the 26 deg limiter), so the aileron loses its authority and then reverses there; the
+FCS cuts the roll command with alpha for that reason (`p_max_alpha`).
+
+**Effect on the C.9 points.** The tables do not move any airborne point except through the
+sustained-turn points, which are flown above 15 deg of angle of attack: `turn_sl_m05` read
+20.8167 deg/s before this change and 20.8169 after (+0.001 %); the other nine did not change in the
+printed digits. The ground-roll points fly below 15 deg.
 
 ## Tuning log
 
@@ -44,3 +76,5 @@ point moved, by how much (ADR-31).
 | 2026-10-14 | Initial tables as derived above | (baseline; conformance not yet run) |
 | 2026-10-14 | Before conformance, from the trim solver's elevator check (WP6): `control_effectiveness` 0.85/0.75/0.70 at 20/25/30 deg became 0.95/0.90/0.85; from M 1.05 up, `C_m,de` -0.48/-0.45/-0.42/-0.36/-0.33/-0.30 became -0.50/-0.50/-0.48/-0.42/-0.38/-0.34 and the static margin 0.15/0.16/0.18 at M 1.2/1.5/2+ became 0.13/0.14/0.15. The design review had sized the elevator without the fall-off, so trim at C_L,max needed 31 to 34 deg from M 1.2 up (beyond the 25 deg travel) | Supersonic stall trim -32 deg became about -18 deg. Subsonic rows unchanged, so no C.9 point moves (all are subsonic or 1 g, where trim adds no drag) |
 | 2026-10-14 | First conformance run (`cargo xtask conformance`): no data change | All ten airborne points pass with their cross-checks: `vmax_sl` +0.72 %, `vmax_11k` +0.17 %, `vmax_dry_sl` +0.09 %, `roc_sl` +0.02 %, `stall_clean` +0.12 %, `nsust_sl_m07` +1.77 % (35 % of its tolerance, the most), `turn_sl_m05` +1.54 %, `nsust_6k_m09` +1.59 %, `ff_mil_sl` +0.01 %, `ff_ab_sl` -0.01 %. All as ADR-31 predicted |
+| 2026-10-22 | v0.1b WP2: lateral derivatives became tables against \|alpha\| (equal to the C.5 scalars to 15 deg, shaped above; see "Lateral tables") | `turn_sl_m05` 20.8167 to 20.8169 deg/s (+0.001 %); no other point moves in the printed digits |
+| 2026-10-22 | v0.1b WP6, first ground-roll run (ADR-32), gear data as authored in WP2, no change: `to_roll` 195.72 m, `ldg_roll` 322.23 m | `to_roll` +0.37 % (7 % of tolerance), `ldg_roll` +0.07 % (1 %); point-mass cross-checks +0.19 % and -0.09 %, energy closure -0.000 % and +0.115 %. The airborne points are unchanged |

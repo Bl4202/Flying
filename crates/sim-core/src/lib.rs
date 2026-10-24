@@ -8,23 +8,30 @@
 //! * no hash-ordered collections and no fast-math.
 #![deny(missing_docs)]
 
+pub mod circuit;
 pub mod frame_math;
+#[cfg(test)]
+mod ground_tests;
 pub mod hash;
 pub mod input;
 pub mod layout;
 pub mod observer;
 pub mod ownship;
+mod pilot;
 pub mod probe;
 pub mod profile;
 pub mod rng;
 pub mod schedule;
 pub mod seams;
 pub mod services;
+pub mod session;
 mod sim;
 pub mod snapshot;
 pub mod spawn;
 mod systems;
 pub mod terrain;
+#[cfg(test)]
+mod test_support;
 pub mod time;
 pub mod world;
 
@@ -38,4 +45,5 @@ pub const DEFAULT_SEED: u64 = 0x1F1E_5EED_0000_0001;
 
 pub use hash::SubsystemHashes;
 pub use input::InputFrame;
+pub use session::{Assist, ConfigError, GEffects, SessionConfig, Spawn};
 pub use sim::{CoreState, LoadContentError, SimCore};

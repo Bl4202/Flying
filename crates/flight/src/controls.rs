@@ -27,6 +27,12 @@ pub struct PilotControls {
     pub flaps: f64,
     /// Airbrake lever, 0 (stowed) to 1 (open).
     pub airbrake: f64,
+    /// Gear lever, 0 (up) to 1 (down).
+    pub gear: f64,
+    /// Left wheel brake, 0 to 1.
+    pub brake_l: f64,
+    /// Right wheel brake, 0 to 1.
+    pub brake_r: f64,
 }
 
 impl PilotControls {
@@ -44,6 +50,9 @@ impl PilotControls {
             trim_nose_down: self.trim_nose_down,
             flaps: c(self.flaps, 0.0, 1.0),
             airbrake: c(self.airbrake, 0.0, 1.0),
+            gear: c(self.gear, 0.0, 1.0),
+            brake_l: c(self.brake_l, 0.0, 1.0),
+            brake_r: c(self.brake_r, 0.0, 1.0),
         }
     }
 }
@@ -86,7 +95,7 @@ impl ControlLaw for ManualLaw {
             lef_rad: 0.0,
             tef_rad: c.flaps * a.tef.max,
             airbrake: c.airbrake,
-            gear: 0.0,
+            gear: c.gear,
         }
     }
 }
@@ -128,7 +137,7 @@ mod tests {
             lef: Actuator::fixed(),
             tef: deg(0.0, 30.0, 20.0),
             airbrake: Actuator::new(0.0, 1.0, 1.0, 0.3, dt),
-            gear: Actuator::fixed(),
+            gear: Actuator::new(0.0, 1.0, 1.0 / 6.0, 0.0, dt),
         }
     }
 
@@ -173,6 +182,11 @@ mod tests {
         });
         assert!((flaps.tef_rad - 15f64.to_radians()).abs() < 1e-15);
         assert_eq!((flaps.airbrake, flaps.lef_rad, flaps.gear), (1.0, 0.0, 0.0));
+        let down = cmd(PilotControls {
+            gear: 1.0,
+            ..PilotControls::default()
+        });
+        assert_eq!(down.gear, 1.0, "the gear lever commands the gear");
     }
 
     #[test]
@@ -217,6 +231,9 @@ mod tests {
             throttle: 1.5,
             flaps: -1.0,
             airbrake: f64::INFINITY,
+            gear: 2.0,
+            brake_l: f64::NAN,
+            brake_r: 7.0,
             ..PilotControls::default()
         }
         .sanitized();
@@ -231,5 +248,6 @@ mod tests {
             ),
             (0.0, 1.0, -1.0, 1.0, 0.0, 1.0)
         );
+        assert_eq!((wild.gear, wild.brake_l, wild.brake_r), (1.0, 0.0, 1.0));
     }
 }

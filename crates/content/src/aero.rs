@@ -2,7 +2,8 @@
 //!
 //! Angles in tables are degrees (`alpha_deg`, deflection in degrees); derivatives are per radian.
 //! Two-dimensional tables are `alpha_deg` along x and `mach` along y, so each row is one Mach
-//! number. One-dimensional tables are against Mach unless stated.
+//! number. One-dimensional tables are against Mach unless stated; the lateral and directional
+//! derivatives are against `|alpha_deg|` (v0.1b, ADR-38).
 
 use crate::codec::{Reader, Writer};
 use crate::cpack::CpackError;
@@ -47,33 +48,54 @@ pub struct Pitch {
     pub cm_alpha_dot_per_rad: f32,
 }
 
-/// Lateral and directional derivatives, per radian (GDD C.5).
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Lateral and directional derivatives, per radian (GDD C.5), each against `|alpha_deg|`.
+#[derive(Clone, Debug, PartialEq)]
 pub struct Lateral {
     /// Side force from sideslip.
-    pub cy_beta_per_rad: f32,
+    pub cy_beta_per_rad: Curve,
     /// Rolling moment from sideslip (dihedral effect).
-    pub cl_beta_per_rad: f32,
+    pub cl_beta_per_rad: Curve,
     /// Yawing moment from sideslip (weathercock stability).
-    pub cn_beta_per_rad: f32,
+    pub cn_beta_per_rad: Curve,
     /// Roll damping.
-    pub cl_p_per_rad: f32,
+    pub cl_p_per_rad: Curve,
     /// Rolling moment from yaw rate.
-    pub cl_r_per_rad: f32,
+    pub cl_r_per_rad: Curve,
     /// Yawing moment from roll rate.
-    pub cn_p_per_rad: f32,
+    pub cn_p_per_rad: Curve,
     /// Yaw damping.
-    pub cn_r_per_rad: f32,
+    pub cn_r_per_rad: Curve,
     /// Rolling moment per radian of aileron.
-    pub cl_da_per_rad: f32,
+    pub cl_da_per_rad: Curve,
     /// Yawing moment per radian of aileron (adverse yaw).
-    pub cn_da_per_rad: f32,
+    pub cn_da_per_rad: Curve,
     /// Rolling moment per radian of rudder.
-    pub cl_dr_per_rad: f32,
+    pub cl_dr_per_rad: Curve,
     /// Yawing moment per radian of rudder.
-    pub cn_dr_per_rad: f32,
+    pub cn_dr_per_rad: Curve,
     /// Side force per radian of rudder.
-    pub cy_dr_per_rad: f32,
+    pub cy_dr_per_rad: Curve,
+}
+
+impl Lateral {
+    /// The twelve derivative tables, in storage order.
+    #[must_use]
+    pub fn curves(&self) -> [&Curve; 12] {
+        [
+            &self.cy_beta_per_rad,
+            &self.cl_beta_per_rad,
+            &self.cn_beta_per_rad,
+            &self.cl_p_per_rad,
+            &self.cl_r_per_rad,
+            &self.cn_p_per_rad,
+            &self.cn_r_per_rad,
+            &self.cl_da_per_rad,
+            &self.cn_da_per_rad,
+            &self.cl_dr_per_rad,
+            &self.cn_dr_per_rad,
+            &self.cy_dr_per_rad,
+        ]
+    }
 }
 
 /// The blend to a flat-plate model beyond the tables (GDD 11.6.3 as amended by ADR-30).
@@ -146,21 +168,9 @@ impl AeroDef {
         w.curve(&p.cm_de_per_rad)?;
         w.f32(p.cm_q_per_rad);
         w.f32(p.cm_alpha_dot_per_rad);
-        let t = &self.lateral;
-        w.f32s(&[
-            t.cy_beta_per_rad,
-            t.cl_beta_per_rad,
-            t.cn_beta_per_rad,
-            t.cl_p_per_rad,
-            t.cl_r_per_rad,
-            t.cn_p_per_rad,
-            t.cn_r_per_rad,
-            t.cl_da_per_rad,
-            t.cn_da_per_rad,
-            t.cl_dr_per_rad,
-            t.cn_dr_per_rad,
-            t.cy_dr_per_rad,
-        ]);
+        for c in self.lateral.curves() {
+            w.curve(c)?;
+        }
         let s = &self.post_stall;
         w.curve(&s.blend_start_deg)?;
         w.curve(&s.blend_end_deg)?;
@@ -201,18 +211,18 @@ impl AeroDef {
             cm_alpha_dot_per_rad: r.f32()?,
         };
         let lateral = Lateral {
-            cy_beta_per_rad: r.f32()?,
-            cl_beta_per_rad: r.f32()?,
-            cn_beta_per_rad: r.f32()?,
-            cl_p_per_rad: r.f32()?,
-            cl_r_per_rad: r.f32()?,
-            cn_p_per_rad: r.f32()?,
-            cn_r_per_rad: r.f32()?,
-            cl_da_per_rad: r.f32()?,
-            cn_da_per_rad: r.f32()?,
-            cl_dr_per_rad: r.f32()?,
-            cn_dr_per_rad: r.f32()?,
-            cy_dr_per_rad: r.f32()?,
+            cy_beta_per_rad: r.curve()?,
+            cl_beta_per_rad: r.curve()?,
+            cn_beta_per_rad: r.curve()?,
+            cl_p_per_rad: r.curve()?,
+            cl_r_per_rad: r.curve()?,
+            cn_p_per_rad: r.curve()?,
+            cn_r_per_rad: r.curve()?,
+            cl_da_per_rad: r.curve()?,
+            cn_da_per_rad: r.curve()?,
+            cl_dr_per_rad: r.curve()?,
+            cn_dr_per_rad: r.curve()?,
+            cy_dr_per_rad: r.curve()?,
         };
         let post_stall = PostStall {
             blend_start_deg: r.curve()?,
@@ -276,18 +286,18 @@ pub(crate) mod tests {
                 cm_alpha_dot_per_rad: -3.0,
             },
             lateral: Lateral {
-                cy_beta_per_rad: -0.9,
-                cl_beta_per_rad: -0.1,
-                cn_beta_per_rad: 0.14,
-                cl_p_per_rad: -0.3,
-                cl_r_per_rad: 0.1,
-                cn_p_per_rad: -0.03,
-                cn_r_per_rad: -0.3,
-                cl_da_per_rad: 0.16,
-                cn_da_per_rad: -0.01,
-                cl_dr_per_rad: 0.01,
-                cn_dr_per_rad: -0.07,
-                cy_dr_per_rad: 0.2,
+                cy_beta_per_rad: Curve::from_points(&[(0.0, -0.9), (90.0, -0.9)]),
+                cl_beta_per_rad: Curve::from_points(&[(0.0, -0.1), (25.0, -0.18), (90.0, 0.0)]),
+                cn_beta_per_rad: Curve::from_points(&[(0.0, 0.14), (30.0, 0.0), (90.0, 0.0)]),
+                cl_p_per_rad: flat(-0.3),
+                cl_r_per_rad: flat(0.1),
+                cn_p_per_rad: flat(-0.03),
+                cn_r_per_rad: flat(-0.3),
+                cl_da_per_rad: Curve::from_points(&[(0.0, 0.16), (35.0, 0.064)]),
+                cn_da_per_rad: flat(-0.01),
+                cl_dr_per_rad: flat(0.01),
+                cn_dr_per_rad: flat(-0.07),
+                cy_dr_per_rad: flat(0.2),
             },
             post_stall: PostStall {
                 blend_start_deg: flat(40.0),

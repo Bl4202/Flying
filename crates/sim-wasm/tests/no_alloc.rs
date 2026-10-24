@@ -4,7 +4,16 @@
 //! lets every lazily grown buffer reach its working size, 1 000 ticks with a fresh input frame
 //! pushed every tick must allocate zero times, with profiling off and on, and while the host reads
 //! the snapshot and profile pointers the way the Sim Worker does. Then the same with the core
-//! pack's aircraft flying: manoeuvres, a reset (a trim solve), a crash and the respawn.
+//! pack's aircraft flying: manoeuvres, a reset (a trim solve), a crash and the respawn. Then the
+//! aircraft on the runway: the spawn (a static-pose solve), the take-off roll, rotation, gear and
+//! flaps, the parking and toe brakes, every assist level in turn, and resets to the air and back.
+//!
+//! Then the virtual tester's whole sortie under each assist level (take-off, circuit, landing and
+//! rollout): the touchdown, the bounce and the stop.
+//!
+//! A G-LOC is out of reach through the ABI (twelve seconds of sustained 9 g are beyond the
+//! aircraft's energy); the control system's G-LOC path is in `fcs_no_alloc.rs`, and the ground
+//! model's hard landing and collapse are in `flight_no_alloc.rs`.
 //!
 //! One test only: the ABI shares a process-wide global.
 #![allow(unsafe_code)]
@@ -14,9 +23,12 @@ use std::cell::Cell;
 
 use sim_core::InputFrame;
 use sim_core::dmath;
-use sim_core::layout::{axis, button, content_status, counter, input_frame, input_script};
+use sim_core::layout::{
+    assist_level, axis, button, config_status, content_status, counter, g_effects, input_frame,
+    input_script, spawn_kind, spawn_request,
+};
 use sim_wasm::abi::{
-    fg_content_reserve, fg_init, fg_load_content, fg_profile_ptr, fg_push_inputs,
+    fg_configure, fg_content_reserve, fg_init, fg_load_content, fg_profile_ptr, fg_push_inputs,
     fg_set_input_script, fg_set_profiling, fg_snapshot_ptr, fg_start, fg_state_hash_lo, fg_step,
     with_content_buffer, with_input_buffer, with_profile,
 };
@@ -136,6 +148,15 @@ fn the_tick_path_allocates_nothing_after_warm_up() {
     with_content_buffer(|b| b.copy_from_slice(&pack));
     assert_eq!(fg_load_content(len), content_status::OK as u32);
     assert_eq!(fg_set_input_script(input_script::NONE as u32), 1);
+    // The v0.1a way of flying: in the air, the stick moving the surfaces.
+    assert_eq!(
+        fg_configure(
+            spawn_kind::AIR as u32,
+            assist_level::MANUAL as u32,
+            g_effects::FULL as u32
+        ),
+        config_status::OK as u32
+    );
     assert_eq!(fg_start(), 1);
     measure(1, 300);
     let flying = measure(301, 1_000);
@@ -171,6 +192,189 @@ fn the_tick_path_allocates_nothing_after_warm_up() {
         "the reset and the post-crash respawn"
     );
     assert_eq!(read(counter::FDM_FAULTS), 0);
+
+    runway_flight(&pack);
+    circuit_flight(&pack);
+}
+
+/// The counters of the profile block.
+fn counters(i: usize) -> u32 {
+    with_profile(|b| {
+        let at = sim_core::layout::profile::COUNTERS + 4 * i;
+        u32::from_le_bytes(b[at..at + 4].try_into().unwrap())
+    })
+    .unwrap()
+}
+
+/// The aircraft on the runway under Standard assist. The frames acknowledge the spawn the way the
+/// browser's pump does (`ack` is the counter the snapshot would show).
+#[allow(
+    clippy::too_many_lines,
+    reason = "one scripted sortie, read top to bottom"
+)]
+fn runway_flight(pack: &[u8]) {
+    assert_eq!(fg_init(0x1F1E_5EED, 0), 0);
+    let len = u32::try_from(pack.len()).unwrap();
+    assert_ne!(fg_content_reserve(len), 0);
+    with_content_buffer(|b| b.copy_from_slice(pack));
+    assert_eq!(fg_load_content(len), content_status::OK as u32);
+    assert_eq!(fg_set_input_script(input_script::NONE as u32), 1);
+    // The default session: runway, Standard, g-effects full.
+    assert_eq!(fg_start(), 1);
+
+    let mut seq = 0_u32;
+    let ack = Cell::new(1_u8);
+    let mut go = |ticks: u32, f: &dyn Fn(u32, &mut InputFrame)| {
+        for i in 0..ticks {
+            seq += 1;
+            push_frame_with(seq, |fr| {
+                fr.spawn_ack = ack.get();
+                f(i, fr);
+            });
+            assert_eq!(fg_step(1), 1);
+        }
+    };
+    // Warm-up: the spawn's own work, the first use of each table.
+    go(120, &|_, fr| fr.axes[axis::THROTTLE] = 0.0);
+
+    let before = allocations();
+    // Parking brake off, full power; rotate at about 7 s; the gear and flaps up after lift-off.
+    go(8 * 60, &|i, fr| {
+        fr.axes[axis::THROTTLE] = 1.0;
+        if i == 0 {
+            fr.buttons |= 1 << button::PARKING_BRAKE;
+        }
+    });
+    go(6 * 60, &|i, fr| {
+        fr.axes[axis::THROTTLE] = 1.0;
+        fr.axes[axis::PITCH] = 0.3;
+        if i == 4 * 60 {
+            fr.buttons |= 1 << button::GEAR;
+        }
+        if i == 4 * 60 + 30 {
+            fr.buttons |= 1 << button::FLAPS_CYCLE;
+        }
+    });
+    // Every assist level in turn, with the stick moving, then the gear back down on the way.
+    for (k, level) in [
+        assist_level::FULL,
+        assist_level::REDUCED,
+        assist_level::MANUAL,
+        assist_level::STANDARD,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        go(2 * 60, &|i, fr| {
+            fr.axes[axis::THROTTLE] = 0.8;
+            fr.assist_req = level as u8;
+            fr.axes[axis::ROLL] = if i < 60 { 0.5 } else { -0.5 };
+            fr.axes[axis::PITCH] = 0.1;
+            if k == 3 && i == 30 {
+                fr.buttons |= 1 << button::GEAR;
+            }
+        });
+    }
+    // A reset to the air, the mouse pointing, the recovery button; then back to the runway.
+    go(2, &|i, fr| {
+        if i == 0 {
+            fr.buttons |= 1 << button::RESET;
+            fr.spawn_req = spawn_request::AIR as u8;
+        }
+    });
+    ack.set(2);
+    go(4 * 60, &|i, fr| {
+        fr.axes[axis::THROTTLE] = 0.7;
+        fr.flags |= input_frame_flags_mouse_aim();
+        fr.axes[axis::CURSOR_X] = 0.3;
+        fr.axes[axis::CURSOR_Y] = 0.2;
+        if i > 3 * 60 {
+            fr.buttons |= 1 << button::RECOVER;
+        }
+    });
+    go(2, &|i, fr| {
+        if i == 0 {
+            fr.buttons |= 1 << button::RESET;
+            fr.spawn_req = spawn_request::RUNWAY as u8;
+        }
+    });
+    ack.set(3);
+    // Roll to speed on the runway, then idle and the toe brakes.
+    go(5 * 60, &|_, fr| fr.axes[axis::THROTTLE] = 1.0);
+    go(10 * 60, &|i, fr| {
+        fr.axes[axis::THROTTLE] = 0.0;
+        fr.axes[axis::BRAKE_L] = 1.0;
+        fr.axes[axis::BRAKE_R] = if i < 300 { 1.0 } else { 0.5 };
+        fr.axes[axis::YAW] = 0.2;
+    });
+    assert_eq!(
+        allocations() - before,
+        0,
+        "the runway spawn, take-off, gear, assist switches, resets or brakes allocated"
+    );
+    println!(
+        "runway flight: respawns {} assist changes {} touchdowns {} crashes {} faults {}",
+        counters(counter::RESPAWNS),
+        counters(counter::ASSIST_CHANGES),
+        counters(counter::TOUCHDOWNS),
+        counters(counter::CRASHES),
+        counters(counter::FDM_FAULTS)
+    );
+    assert_eq!(counters(counter::RESPAWNS), 2, "to the air and back");
+    assert!(
+        counters(counter::ASSIST_CHANGES) >= 4,
+        "each level was asked for"
+    );
+    assert_eq!(counters(counter::FDM_FAULTS), 0);
+}
+
+/// The virtual tester's whole sortie: take-off, circuit, landing and rollout, under each assist
+/// level. This is the touchdown, the bounce and the stop the other scripts cannot reach.
+fn circuit_flight(pack: &[u8]) {
+    for assist in [
+        assist_level::STANDARD,
+        assist_level::FULL,
+        assist_level::REDUCED,
+        assist_level::MANUAL,
+    ] {
+        assert_eq!(fg_init(0x1F1E_5EED, 0), 0);
+        let len = u32::try_from(pack.len()).unwrap();
+        assert_ne!(fg_content_reserve(len), 0);
+        with_content_buffer(|b| b.copy_from_slice(pack));
+        assert_eq!(fg_load_content(len), content_status::OK as u32);
+        assert_eq!(
+            fg_configure(
+                spawn_kind::RUNWAY as u32,
+                assist as u32,
+                g_effects::FULL as u32
+            ),
+            config_status::OK as u32
+        );
+        assert_eq!(fg_set_input_script(input_script::CIRCUIT as u32), 1);
+        assert_eq!(fg_start(), 1);
+        // The tester's first seconds are the warm-up; the rest, 230 s, is measured.
+        for _ in 0..300 {
+            assert_eq!(fg_step(1), 1);
+        }
+        let before = allocations();
+        for _ in 0..(230 * 60) {
+            assert_eq!(fg_step(1), 1);
+        }
+        assert_eq!(
+            allocations() - before,
+            0,
+            "the circuit under assist {assist} allocated"
+        );
+        assert!(counters(counter::TOUCHDOWNS) >= 1, "it landed");
+        assert_eq!(counters(counter::CRASHES), 0);
+        assert_eq!(counters(counter::FDM_FAULTS), 0);
+        assert_eq!(counters(counter::HARD_LANDINGS), 0);
+    }
+}
+
+/// `input_flag::MOUSE_AIM` as the frame's flag word.
+fn input_frame_flags_mouse_aim() -> u32 {
+    sim_core::layout::input_flag::MOUSE_AIM as u32
 }
 
 /// Stages one frame built by `f` from neutral (throttle 0.5) and pushes it.

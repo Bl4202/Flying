@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 content.workspace = true
+fcs.workspace = true
 flight.workspace = true
 simmath.workspace = true
 

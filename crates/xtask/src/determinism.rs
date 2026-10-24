@@ -2,13 +2,15 @@
 //!
 //! Steps the same seeded simulation in the native `fg` binary (release and debug) and in both
 //! WebAssembly builds (run under Node), and requires bit-identical per-subsystem state hashes at
-//! every checkpoint. Two suites run, both with the baked core pack loaded, so the player's aircraft
-//! flies the 6-DOF model:
+//! every checkpoint. Three suites run, all with the baked core pack loaded, so the player's aircraft
+//! flies the 6-DOF model, each under the session it names (ADR-36):
 //!
 //! - `erratic`: the seeded random-walk pilot for `--ticks` (10^6 by default) with crashes, resets
 //!   and respawns; golden `tests/golden/determinism.json`.
 //! - `flight60`: the 60 s scripted flight of `AC-11.7`, every second; golden
 //!   `tests/golden/flight60.json`.
+//! - `circuit`: the virtual tester's take-off, circuit and landing from the runway (ADR-33), every
+//!   ten seconds for six minutes; golden `tests/golden/circuit.json`.
 //!
 //! The native hashes must also equal the goldens, which catches accidental behaviour changes
 //! rather than just cross-build drift. `--compare-only` skips the goldens (native against WASM
@@ -33,6 +35,11 @@ const CONTENT: &str = "content-out/core.cpack";
 const FLIGHT60_TICKS: u64 = 3_600;
 /// Its checkpoint spacing: every second.
 const FLIGHT60_EVERY: u64 = 60;
+/// Length of the circuit suite, ticks (six minutes: the sortie takes about 220 s, the rest holds
+/// the aircraft at rest).
+const CIRCUIT_TICKS: u64 = 21_600;
+/// Its checkpoint spacing: every ten seconds.
+const CIRCUIT_EVERY: u64 = 600;
 
 struct Options {
     ticks: u64,
@@ -80,6 +87,8 @@ struct Suite {
     golden: &'static str,
     /// The debug build is compared at this tick (debug is slow).
     debug_probe: u64,
+    /// The session the suite runs under, as `fg hash` / `wasm-hash.ts` flags (ADR-36).
+    session: [&'static str; 6],
 }
 
 /// Powers of ten, every 100 000, and the final tick.
@@ -187,12 +196,21 @@ pub fn run_command(args: &[String]) -> Result<(), String> {
             at: schedule(opts.ticks),
             golden: "tests/golden/determinism.json",
             debug_probe: 10_000.min(opts.ticks),
+            session: ["--spawn", "air", "--assist", "standard", "--g", "full"],
         },
         Suite {
             script: "flight60",
             at: every(FLIGHT60_TICKS, FLIGHT60_EVERY),
             golden: "tests/golden/flight60.json",
             debug_probe: FLIGHT60_TICKS,
+            session: ["--spawn", "air", "--assist", "manual", "--g", "off"],
+        },
+        Suite {
+            script: "circuit",
+            at: every(CIRCUIT_TICKS, CIRCUIT_EVERY),
+            golden: "tests/golden/circuit.json",
+            debug_probe: 3_000,
+            session: ["--spawn", "runway", "--assist", "standard", "--g", "full"],
         },
     ];
     for suite in &suites {
@@ -219,6 +237,12 @@ fn run_suite(
         suite.script,
         "--content",
         content,
+        suite.session[0],
+        suite.session[1],
+        suite.session[2],
+        suite.session[3],
+        suite.session[4],
+        suite.session[5],
     ];
     let at = list(&suite.at);
     let last = *suite.at.last().expect("a suite has checkpoints");
@@ -292,9 +316,11 @@ fn check_golden(
     bless: bool,
 ) -> Result<(), String> {
     let path = root.join(suite.golden);
+    let session = suite.session.join(" ");
     let current = json!({
         "seed": SEED_HEX,
         "script": suite.script,
+        "session": session,
         "ticks": ticks,
         "checkpoints": native,
     });
@@ -309,9 +335,13 @@ fn check_golden(
         &fs::read(&path).map_err(|e| format!("{}: {e} (run with --bless once)", path.display()))?,
     )
     .map_err(|e| e.to_string())?;
-    if ["seed", "script", "ticks"]
-        .iter()
-        .any(|k| stored[*k] != current[*k])
+    // A golden recorded before the session was written down (v0.1a) has no `session` key; the
+    // first bless that records one makes the comparison strict.
+    let session_differs = !stored["session"].is_null() && stored["session"] != current["session"];
+    if session_differs
+        || ["seed", "script", "ticks"]
+            .iter()
+            .any(|k| stored[*k] != current[*k])
     {
         return Err(format!(
             "{} was recorded for seed {} / script {} / {} ticks, this run is seed {} / script {} / {} ticks",
@@ -371,6 +401,14 @@ mod tests {
         let at = every(FLIGHT60_TICKS, FLIGHT60_EVERY);
         assert_eq!(at.len(), 61);
         assert_eq!((at[0], at[60]), (0, 3_600));
+    }
+
+    #[test]
+    fn the_circuit_suite_checkpoints_every_ten_seconds_for_six_minutes() {
+        let at = every(CIRCUIT_TICKS, CIRCUIT_EVERY);
+        assert_eq!(at.len(), 37);
+        assert_eq!((at[0], at[36]), (0, 21_600));
+        assert!(at.contains(&3_000), "the debug probe is a checkpoint");
     }
 
     #[test]

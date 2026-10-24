@@ -15,9 +15,47 @@ import {
   type LoadedWasm,
   type Variant,
 } from '@flying/platform-web/wasm-loader';
-import { ABI, CONTENT_STATUS, HASH_KIND, INPUT_FRAME, TERRAIN } from './layout.gen.ts';
+import {
+  ABI,
+  ASSIST_LEVEL,
+  CONFIG_STATUS,
+  CONTENT_STATUS,
+  G_EFFECTS,
+  HASH_KIND,
+  INPUT_FRAME,
+  SPAWN_KIND,
+  TERRAIN,
+} from './layout.gen.ts';
 
 export { HASH_KIND, hex64 };
+
+/** What kind of sortie to start (GDD 6.3 `session_config/1`, ADR-36). */
+export interface SessionConfig {
+  /** `SPAWN_KIND`: the runway or the air. */
+  spawn: number;
+  /** `ASSIST_LEVEL`: Full, Standard, Reduced or Manual. */
+  assist: number;
+  /** `G_EFFECTS`: Off, Reduced or Full. */
+  gEffects: number;
+}
+
+/** The session the game starts with: the runway, Standard assist, full g-effects. */
+export const DEFAULT_SESSION: Readonly<SessionConfig> = {
+  spawn: SPAWN_KIND.RUNWAY,
+  assist: ASSIST_LEVEL.STANDARD,
+  gEffects: G_EFFECTS.FULL,
+};
+
+/**
+ * The session the scripted erratic run uses (the determinism suite, the self-test and the
+ * performance scenarios): an air start under Standard assist, so those runs do not depend on a
+ * person or on the airfield.
+ */
+export const SCRIPTED_SESSION: Readonly<SessionConfig> = {
+  spawn: SPAWN_KIND.AIR,
+  assist: ASSIST_LEVEL.STANDARD,
+  gEffects: G_EFFECTS.FULL,
+};
 
 /** Must equal `ABI_VERSION` in `crates/sim-wasm/src/abi.rs`. */
 export const EXPECTED_ABI_VERSION = ABI.VERSION;
@@ -30,6 +68,8 @@ export interface SimHandle {
   init(seed: bigint): void;
   /** Loads a `.cpack` into an idle core. Throws if the core refuses it. */
   loadContent(bytes: Uint8Array): void;
+  /** Sets the session on an idle core, before `start`. Throws if the core refuses it. */
+  configure(session: SessionConfig): void;
   /** Selects the scripted pilot (`INPUT_SCRIPT`). Returns false for an unknown script. */
   setInputScript(script: number): boolean;
   /** `Idle -> Running`. Returns false if the core was not idle. */
@@ -114,6 +154,7 @@ export function wrapSim({ variant, instance, memory }: LoadedWasm): SimHandle {
   const start = requireFn(x, 'fg_start');
   const pause = requireFn(x, 'fg_pause');
   const resume = requireFn(x, 'fg_resume');
+  const configure = requireFn(x, 'fg_configure');
   const setScript = requireFn(x, 'fg_set_input_script');
   const inputPtr = requireFn(x, 'fg_input_ptr');
   const inputCapacity = requireFn(x, 'fg_input_capacity');
@@ -163,6 +204,12 @@ export function wrapSim({ variant, instance, memory }: LoadedWasm): SimHandle {
       const status = load(bytes.length);
       if (status !== CONTENT_STATUS.OK) {
         throw new Error(`SYS-007: content rejected (status ${String(status)})`);
+      }
+    },
+    configure(session) {
+      const status = configure(session.spawn, session.assist, session.gEffects);
+      if (status !== CONFIG_STATUS.OK) {
+        throw new Error(`SYS-009: session rejected (status ${String(status)})`);
       }
     },
     setInputScript: (script) => setScript(script) === 1,

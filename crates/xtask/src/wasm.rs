@@ -27,7 +27,7 @@ const MAX_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// Initial shared memory the loader must create: 256 pages = 16 MiB.
 pub const THREADS_INITIAL_PAGES: u64 = 256;
 
-/// Every function the host calls (ABI v2, `crates/sim-wasm/src/abi.rs`).
+/// Every function the host calls (ABI v3, `crates/sim-wasm/src/abi.rs`).
 const REQUIRED_EXPORTS: &[&str] = &[
     "fg_abi_version",
     "fg_init",
@@ -37,6 +37,7 @@ const REQUIRED_EXPORTS: &[&str] = &[
     "fg_start",
     "fg_pause",
     "fg_resume",
+    "fg_configure",
     "fg_set_input_script",
     "fg_input_ptr",
     "fg_input_capacity",
@@ -113,7 +114,7 @@ pub fn run_command(args: &[String]) -> Result<(), String> {
         all.push(e);
     }
     all.sort_by_key(|x| x["variant"].as_str().unwrap_or_default().to_string());
-    let manifest = json!({ "abi_version": 1, "threads_initial_pages": THREADS_INITIAL_PAGES, "variants": all });
+    let manifest = json!({ "abi_version": sim_core::layout::abi::VERSION, "threads_initial_pages": THREADS_INITIAL_PAGES, "variants": all });
     fs::write(
         &manifest_path,
         serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?,

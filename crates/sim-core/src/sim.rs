@@ -3,6 +3,7 @@
 use core::fmt;
 
 use content::{CpackError, Registry};
+use fcs::FcsModel;
 use flight::ModelError;
 use flight::aircraft::AircraftModel;
 use flight::body::RigidState;
@@ -20,8 +21,9 @@ use crate::rng::RngStreams;
 use crate::schedule::{Schedule, TickCtx};
 use crate::seams::replay::{NullReplaySink, ReplaySink};
 use crate::services::Services;
+use crate::session::{ConfigError, SessionConfig};
 use crate::snapshot::SnapshotBuffer;
-use crate::spawn::{SPAWN, spawn_trimmed};
+use crate::spawn::spawn;
 use crate::systems::{default_schedule, write_snapshot};
 use crate::terrain;
 use crate::time::SIM_DT;
@@ -91,6 +93,8 @@ pub struct SimCore {
     world: World,
     schedule: Schedule,
     svc: Services,
+    session: SessionConfig,
+    spawn_fuel: f64,
     profiler: Option<Profiler>,
     profile_block: [u8; profile::SIZE],
     terrain: Option<Box<[u8]>>,
@@ -138,6 +142,8 @@ impl SimCore {
             world,
             schedule: default_schedule(),
             svc,
+            session: SessionConfig::default(),
+            spawn_fuel: crate::ownship::DEFAULT_SPAWN_FUEL,
             profiler: None,
             profile_block: [0; profile::SIZE],
             terrain: None,
@@ -164,16 +170,60 @@ impl SimCore {
             return Err(LoadContentError::NotIdle);
         }
         let registry = Registry::from_cpack(bytes).map_err(LoadContentError::Invalid)?;
-        let aircraft = match registry.aircraft_handles().next() {
-            Some(h) => Some(
-                AircraftModel::from_registry(&registry, h, SIM_DT)
-                    .map_err(LoadContentError::Model)?,
-            ),
-            None => None,
+        let (aircraft, fcs) = match registry.aircraft_handles().next() {
+            Some(h) => {
+                let model = AircraftModel::from_registry(&registry, h, SIM_DT)
+                    .map_err(LoadContentError::Model)?;
+                let fcs = FcsModel::from_registry(&registry, h, &model)
+                    .map_err(LoadContentError::Model)?;
+                (Some(model), Some(fcs))
+            }
+            None => (None, None),
         };
         self.svc.registry = registry;
         self.svc.aircraft = aircraft;
+        self.svc.fcs = fcs;
         Ok(())
+    }
+
+    /// Sets the session: where the aircraft starts (and respawns), the assist level it starts at
+    /// and the g-effects dial (ADR-36). Only an idle core accepts one. It is part of the
+    /// aircraft's hashed state; a core with no aircraft ignores it.
+    ///
+    /// # Errors
+    /// [`ConfigError::NotIdle`] once the core has started.
+    pub fn configure(&mut self, session: SessionConfig) -> Result<(), ConfigError> {
+        if self.state != CoreState::Idle {
+            return Err(ConfigError::NotIdle);
+        }
+        self.session = session;
+        Ok(())
+    }
+
+    /// The session in force.
+    #[must_use]
+    pub fn session(&self) -> SessionConfig {
+        self.session
+    }
+
+    /// Sets the fuel the aircraft spawns with, as a fraction of its capacity (default 60 %), for
+    /// flights at other masses (ADR-33's robustness runs). Only an idle core accepts it, and only
+    /// a fraction from 0 to 1. It is a tool's knob, not part of the ABI.
+    pub fn set_spawn_fuel(&mut self, fraction: f64) -> bool {
+        if self.state != CoreState::Idle || !(0.0..=1.0).contains(&fraction) {
+            return false;
+        }
+        self.spawn_fuel = fraction;
+        true
+    }
+
+    /// The aircraft, for tests that put it in a state no input can reach.
+    #[cfg(test)]
+    pub(crate) fn slot_mut(&mut self) -> &mut AircraftSlot {
+        match &mut self.world.ownship {
+            Ownship::Aircraft(a) => a,
+            Ownship::Spectator(_) => panic!("no aircraft"),
+        }
     }
 
     /// Replaces the replay sink, which receives the snapshot of every completed tick.
@@ -182,24 +232,25 @@ impl SimCore {
     }
 
     /// `Idle -> Running`. Returns false (and changes nothing) from any other state. With
-    /// aircraft content the player's aircraft is allocated here, once, and spawned trimmed.
+    /// aircraft content the player's aircraft is allocated here, once, and spawned as the session
+    /// says: on the runway or trimmed in the air.
     pub fn start(&mut self) -> bool {
         if self.state != CoreState::Idle {
             return false;
         }
-        if let Some(model) = self.svc.aircraft.as_ref() {
+        if let (Some(model), Some(_)) = (self.svc.aircraft.as_ref(), self.svc.fcs.as_ref()) {
             let parked = RigidState {
                 pos_bf: DVec3::ZERO,
                 vel_bf: DVec3::ZERO,
                 att: DQuat::IDENTITY,
                 omega_body: DVec3::ZERO,
             };
-            let mut slot = Box::new(AircraftSlot {
-                state: model.state(parked, 0.0, EngineCommand::IDLE),
-                crashed: false,
-                respawn_ticks: 0,
-            });
-            if !spawn_trimmed(model, &self.svc, &SPAWN, &mut slot) {
+            let mut slot = Box::new(AircraftSlot::new(
+                model.state(parked, 0.0, EngineCommand::IDLE),
+                self.session,
+            ));
+            slot.spawn_fuel = self.spawn_fuel;
+            if !spawn(model, &self.svc, self.session.spawn, &mut slot) {
                 self.world.counters.trim_failures =
                     self.world.counters.trim_failures.wrapping_add(1);
             }
@@ -280,6 +331,9 @@ impl SimCore {
                 self.rng.stream("input/erratic"),
             ))),
             input_script::FLIGHT60 => Some(Script::Flight60),
+            input_script::CIRCUIT => Some(Script::Circuit(Box::new(fcs::tester::Tester::new(
+                crate::circuit::runway(&*self.svc.geo),
+            )))),
             _ => return false,
         };
         self.world.input.set_script(script);
@@ -331,6 +385,12 @@ impl SimCore {
     #[must_use]
     pub fn observer(&self) -> Option<&Observer> {
         self.world.ownship.spectator()
+    }
+
+    /// Where the circuit tester is in its sortie, when it is flying one.
+    #[must_use]
+    pub fn circuit_tester(&self) -> Option<&fcs::tester::Tester> {
+        self.world.input.circuit()
     }
 
     /// Read access to the input state.
@@ -443,6 +503,8 @@ fn hash_registry(reg: &Registry, h: &mut StateHasher) {
 mod tests {
     use super::*;
     use crate::layout::{axis, button, snapshot as snap};
+    use crate::session::{Assist, GEffects, Spawn};
+    use crate::test_support::pack;
 
     fn running(seed: u64) -> SimCore {
         let mut c = SimCore::new(seed);
@@ -678,38 +740,13 @@ mod tests {
         );
     }
 
-    /// The real core pack, baked from `content/core` (the baker is a dev-dependency), with the
-    /// Kestrel's empty mass replaced so tests can tell two packs apart.
-    pub(crate) fn pack(empty_kg: u32) -> Vec<u8> {
-        use content_bake::bake::{Sources, bake_sources};
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content/core");
-        let read = |rel: &str| {
-            let text =
-                std::fs::read_to_string(dir.join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
-            (rel.to_owned(), text)
-        };
-        let mut kestrel = read("aircraft/kestrel.json");
-        kestrel.1 = kestrel
-            .1
-            .replace("\"empty_kg\": 8400", &format!("\"empty_kg\": {empty_kg}"));
-        bake_sources(&Sources {
-            pack: read("pack.json"),
-            locale: read("locales/en.json"),
-            aircraft: vec![kestrel],
-            engines: vec![read("engines/f129.json")],
-            aero: vec![read("aero/kestrel.json")],
-        })
-        .expect("the core pack bakes")
-        .cpack
-    }
-
     #[test]
     fn content_loads_while_idle_and_joins_the_state_hash() {
         let mut c = SimCore::new(5);
         let before = c.subsystem_hashes();
         assert!(c.services().registry.is_empty());
         c.load_content(&pack(8400)).unwrap();
-        assert_eq!(c.services().registry.len(), 3);
+        assert_eq!(c.services().registry.len(), 4);
         let after = c.subsystem_hashes();
         assert_ne!(before.content, after.content);
         assert_ne!(before.combined, after.combined);
@@ -764,7 +801,7 @@ mod tests {
 
         c.start();
         assert_eq!(c.load_content(&pack(8500)), Err(LoadContentError::NotIdle));
-        assert_eq!(c.services().registry.len(), 3);
+        assert_eq!(c.services().registry.len(), 4);
     }
 
     #[test]
@@ -868,10 +905,23 @@ mod tests {
         assert_eq!(c.fill_terrain(0.0, 0.0, -1.0), 0);
     }
 
-    /// A started core flying the core pack's aircraft.
+    /// A started core flying the core pack's aircraft from an air spawn under Manual assist: the
+    /// v0.1a way of flying, the stick moving the surfaces.
     fn flying(seed: u64) -> SimCore {
+        flying_under(
+            seed,
+            SessionConfig {
+                spawn: Spawn::Air,
+                assist: Assist::Manual,
+                g_effects: GEffects::Full,
+            },
+        )
+    }
+
+    fn flying_under(seed: u64, session: SessionConfig) -> SimCore {
         let mut c = SimCore::new(seed);
         c.load_content(&pack(8400)).unwrap();
+        c.configure(session).unwrap();
         assert!(c.start());
         c
     }
@@ -1021,7 +1071,17 @@ mod tests {
         assert!((f32_at(snap::O_NZ) - 1.0).abs() < 0.05);
         assert!((f32_at(snap::O_MASS) - (8400.0 + 0.6 * 3100.0)).abs() < 1.0);
         assert!(f32_at(snap::O_THRUST) > 10_000.0);
-        assert_eq!(f32_at(snap::O_THROTTLE), 0.5, "the lever before any input");
+        // The throttle is held at the trim setting until the host acknowledges the spawn.
+        let lever = trim_lever(&c);
+        assert!((f32_at(snap::O_THROTTLE) - lever).abs() < 1e-3);
+        assert_eq!(b[snap::O_ASSIST], 4, "Manual");
+        assert_ne!(
+            u32::from(u16::from_le_bytes([
+                b[snap::O_FLAGS2],
+                b[snap::O_FLAGS2 + 1]
+            ])) & crate::layout::ownship_flag2::THROTTLE_HELD as u32,
+            0
+        );
         // The spectator says so.
         let s = running(4);
         assert_eq!(
@@ -1035,5 +1095,40 @@ mod tests {
         let mut c = SimCore::new(1);
         assert!(!c.set_input_script(99));
         assert!(c.set_input_script(input_script::NONE as u32));
+        assert!(c.set_input_script(input_script::CIRCUIT as u32));
+    }
+
+    #[test]
+    fn the_session_is_set_while_idle_and_not_after() {
+        let mut c = SimCore::new(1);
+        assert_eq!(c.session(), SessionConfig::default());
+        let wanted = SessionConfig {
+            spawn: Spawn::Air,
+            assist: Assist::Reduced,
+            g_effects: GEffects::Off,
+        };
+        assert_eq!(c.configure(wanted), Ok(()));
+        assert_eq!(c.session(), wanted);
+        assert!(c.start());
+        assert_eq!(
+            c.configure(SessionConfig::default()),
+            Err(ConfigError::NotIdle)
+        );
+        assert_eq!(c.session(), wanted, "a refused session changes nothing");
+    }
+
+    #[test]
+    fn a_core_without_an_aircraft_ignores_the_session() {
+        // The spectator has no assist, spawn or pilot to configure; the session joins the hash of
+        // an aircraft (tests/aircraft.rs) and of nothing else.
+        let mut a = SimCore::new(7);
+        let mut b = SimCore::new(7);
+        b.configure(SessionConfig::from_codes(1, 4, 0).unwrap())
+            .unwrap();
+        a.start();
+        b.start();
+        a.step(300);
+        b.step(300);
+        assert_eq!(a.subsystem_hashes(), b.subsystem_hashes());
     }
 }

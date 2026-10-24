@@ -30,9 +30,11 @@ module_name_repetitions = "allow"
 sim-core.workspace = true
 
 [dev-dependencies]
-# tests/flight_no_alloc.rs: the flight model's tick on its own, with the real Kestrel. It lives here
-# because only this crate may implement the counting allocator (unsafe).
+# tests/flight_no_alloc.rs and tests/fcs_no_alloc.rs: the flight model's tick and the control
+# system's step on their own, with the real Kestrel. They live here because only this crate may
+# implement the counting allocator (unsafe).
 content.workspace = true
 content-bake = { path = "../../tools/content-bake" }
+fcs.workspace = true
 flight.workspace = true
 simmath.workspace = true

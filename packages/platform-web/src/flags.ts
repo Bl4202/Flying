@@ -14,9 +14,15 @@
  * | `perf` | `ps0`: run the PS-0 scenario |
  * | `seconds` | duration of a perf run, 1 to 3600 |
  * | `bench` | `quick` or `full`: run the first-run benchmark |
+ * | `spawn` | `runway` (default) or `air`: where the aircraft starts |
+ * | `assist` | `full`, `standard` (default), `reduced` or `manual` |
+ * | `g` | `off`, `reduced` or `full` (default): the g-effects dial |
  */
 
 export type RendererChoice = 'auto' | 'webgpu' | 'webgl2' | 'null';
+export type SpawnChoice = 'runway' | 'air';
+export type AssistChoice = 'full' | 'standard' | 'reduced' | 'manual';
+export type GEffectsChoice = 'off' | 'reduced' | 'full';
 
 export interface Flags {
   debug: false | 'overlay' | 'perf';
@@ -34,12 +40,21 @@ export interface Flags {
   perf: false | 'ps0';
   seconds: number | undefined;
   bench: false | 'quick' | 'full';
+  /** Where the aircraft starts, if the URL says; otherwise the game's default (the runway). */
+  spawn: SpawnChoice | undefined;
+  /** The assist level, if the URL says. */
+  assist: AssistChoice | undefined;
+  /** The g-effects dial, if the URL says. */
+  g: GEffectsChoice | undefined;
   /** Problems found while parsing, in order. */
   warnings: string[];
 }
 
 const RENDERERS: readonly RendererChoice[] = ['auto', 'webgpu', 'webgl2', 'null'];
 const SWITCHES = ['transfer', 'mainrender', 'timer', 'stall'] as const;
+const SPAWNS: readonly SpawnChoice[] = ['runway', 'air'];
+const ASSISTS: readonly AssistChoice[] = ['full', 'standard', 'reduced', 'manual'];
+const G_DIALS: readonly GEffectsChoice[] = ['off', 'reduced', 'full'];
 const KNOWN = new Set([
   'debug',
   'renderer',
@@ -49,6 +64,9 @@ const KNOWN = new Set([
   'perf',
   'seconds',
   'bench',
+  'spawn',
+  'assist',
+  'g',
 ]);
 
 export function defaultFlags(): Flags {
@@ -64,6 +82,9 @@ export function defaultFlags(): Flags {
     perf: false,
     seconds: undefined,
     bench: false,
+    spawn: undefined,
+    assist: undefined,
+    g: undefined,
     warnings: [],
   };
 }
@@ -151,6 +172,27 @@ export function parseFlags(search: string): Flags {
     flags.bench = bench;
   } else if (bench !== null) {
     bad('bench', bench, 'quick or full');
+  }
+
+  const spawn = params.get('spawn');
+  if (spawn !== null) {
+    const choice = SPAWNS.find((s) => s === spawn);
+    if (choice === undefined) bad('spawn', spawn, SPAWNS.join(' or '));
+    else flags.spawn = choice;
+  }
+
+  const assist = params.get('assist');
+  if (assist !== null) {
+    const choice = ASSISTS.find((a) => a === assist);
+    if (choice === undefined) bad('assist', assist, ASSISTS.join(', '));
+    else flags.assist = choice;
+  }
+
+  const g = params.get('g');
+  if (g !== null) {
+    const choice = G_DIALS.find((d) => d === g);
+    if (choice === undefined) bad('g', g, G_DIALS.join(', '));
+    else flags.g = choice;
   }
 
   return flags;

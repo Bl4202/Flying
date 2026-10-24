@@ -1,6 +1,6 @@
 # Architecture decision records
 
-ADR-01 to ADR-20 were imported verbatim from GDD §0.4 at v0.0a. ADR-21 and later are written as decisions are made (ADR-21 to ADR-23 in v0.0a, ADR-24 to ADR-28 in v0.0b).
+ADR-01 to ADR-20 were imported verbatim from GDD §0.4 at v0.0a. ADR-21 and later are written as decisions are made (ADR-21 to ADR-23 in v0.0a, ADR-24 to ADR-28 in v0.0b, ADR-29 to ADR-31 in v0.1a, ADR-32 onwards in v0.1b).
 To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it below. A gate threshold change needs an ADR (AC-66.4).
 
 | ID | Title | Status |
@@ -36,6 +36,17 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-29](0029-flight-crates-and-integration.md) | Flight crates, the flight environment and the integration scheme | Accepted |
 | [ADR-30](0030-aircraft-data-format-and-cpack-v2.md) | Aircraft data format, cpack v2 and the post-stall blend | Accepted |
 | [ADR-31](0031-performance-conformance-test-method.md) | Performance Conformance Test method and gates | Accepted |
+| [ADR-32](0032-ground-roll-conformance-method.md) | Ground-roll conformance method and the landing-roll finding | Accepted |
+| [ADR-33](0033-v0-1b-gates.md) | v0.1b gates: circuit, FCS handling, departure, mouse-aim and latency | Accepted |
+| [ADR-34](0034-flight-control-system.md) | The flight control system: assist levels, limiters, ground mode, mouse-aim | Proposed |
+| [ADR-35](0035-ground-model-and-test-airfield.md) | Ground model, touchdown criteria and the test airfield | Proposed |
+| [ADR-36](0036-session-config-abi-v3-input-snapshot.md) | Session config, ABI v3, input frame v3, snapshot v3 and the throttle hand-over | Proposed |
+| [ADR-38](0038-g-physiology-departure-and-structure.md) | G-physiology, departure diagnostics, structural limits and the onboard control model | Proposed |
 
 ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist before any tuning
 (AC-66.4).
+
+ADR-32 and ADR-33 were written first in v0.1b, before any gear or FCS code, for the same reason
+(AC-66.4). ADR-34 to ADR-38 (FCS, ground model and test airfield, session config / ABI v3 / input
+v3 / snapshot v3, controls stack, G-physiology and departure) are added with their work packages
+(ADR-34, 35, 36 and 38 so far).

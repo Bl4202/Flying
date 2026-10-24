@@ -5,7 +5,7 @@
  * cores (GDD 60.8). Each worker owns its own module instance, so there is no shared state to
  * contend on; what scales (or does not) is the machine.
  */
-import { loadSim } from '@flying/sim-bridge/sim-handle';
+import { loadSim, SCRIPTED_SESSION } from '@flying/sim-bridge/sim-handle';
 import type { KernelInit, KernelReply } from './kernel.ts';
 
 interface WorkerScope {
@@ -42,6 +42,7 @@ async function prepare(cmd: KernelInit): Promise<void> {
   }
   sim.init(0x1f1e5eed00000001n);
   sim.loadContent(new Uint8Array(await response.arrayBuffer()));
+  sim.configure(SCRIPTED_SESSION);
   if (!sim.start()) throw new Error('SYS-004: the benchmark core would not start');
   scope.postMessage({ type: 'ready' });
 

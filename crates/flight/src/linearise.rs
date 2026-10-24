@@ -328,6 +328,17 @@ mod tests {
             assert!(t.converged, "{alt} m, M {mach}: {t:?}");
             let s = state_of(&m, &setup, &t.point, &world);
             let modes = modes(&m, &s, &world);
+            // The departure diagnostics at the trim angle of attack (GDD 11.15; informational).
+            let alpha_deg = m.telemetry(&s, &world, 0.0).air.alpha_rad.to_degrees();
+            let dep = crate::departure::row(&m.aero, &m.mass.props(&s.fuel), alpha_deg);
+            println!(
+                "    alpha {alpha_deg:5.2} deg: C_n,beta,dyn {:+.3}, LCDP {:+.3}",
+                dep.cn_beta_dyn, dep.lcdp
+            );
+            assert!(
+                dep.cn_beta_dyn > 0.0 && dep.lcdp > 0.0,
+                "stable at the trim point"
+            );
             let sp = modes.short_period.expect("an oscillatory short period");
             let dr = modes.dutch_roll.expect("a Dutch roll");
             println!(

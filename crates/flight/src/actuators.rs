@@ -158,7 +158,8 @@ pub struct Actuators {
     pub tef: Actuator,
     /// Airbrake.
     pub airbrake: Actuator,
-    /// Gear. Held up until the gear model exists (v0.1b).
+    /// Gear: travels from 0 to 1 at a fixed rate, with no lag (the strut model reads the
+    /// extension, and the gear is locked at either end).
     pub gear: Actuator,
 }
 
@@ -173,7 +174,7 @@ impl Actuators {
             lef: Actuator::fixed(),
             tef: Actuator::from_def(&fcs.tef, dt_s),
             airbrake: Actuator::from_airbrake(&fcs.airbrake, dt_s),
-            gear: Actuator::fixed(),
+            gear: Actuator::new(0.0, 1.0, 1.0 / f64::from(fcs.gear.transit_s), 0.0, dt_s),
         }
     }
 
@@ -277,5 +278,44 @@ mod tests {
             DT,
         );
         assert_eq!((b.min, b.max), (0.0, 1.0));
+    }
+
+    #[test]
+    fn the_gear_takes_its_transit_time_and_has_no_lag() {
+        use content::ContentId;
+        use content::aircraft::{Airbrake, Fcs, GearActuator};
+        let act = ActuatorDef {
+            range_deg: [-20.0, 20.0],
+            rate_dps: 80.0,
+            tau_s: 0.05,
+        };
+        let fcs = Fcs {
+            sas_required: false,
+            alpha_limit_deg: 26.0,
+            n_cmd_max: 9.0,
+            roll_rate_max_dps: 270.0,
+            stab: act,
+            aileron: act,
+            rudder: act,
+            lef: act,
+            tef: act,
+            airbrake: Airbrake {
+                rate_per_s: 1.0,
+                tau_s: 0.3,
+            },
+            gear: GearActuator { transit_s: 6.0 },
+            gains: ContentId(0),
+        };
+        let gear = Actuators::from_fcs(&fcs, DT).gear;
+        let mut pos = 0.0;
+        let mut steps = 0;
+        while pos < 1.0 {
+            pos = gear.step(pos, 1.0);
+            steps += 1;
+        }
+        assert!((720..=721).contains(&steps), "6 s at 120 Hz: {steps} steps");
+        // Retraction takes as long, and a command out of range is clamped.
+        assert!((gear.step(1.0, 0.0) - (1.0 - 1.0 / 720.0)).abs() < 1e-15);
+        assert_eq!(gear.clamp(3.0), 1.0);
     }
 }

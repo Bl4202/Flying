@@ -12,9 +12,11 @@ use serde_json::Value;
 use crate::diag::{Diagnostic, pointer};
 use crate::model::{
     AERO_AXES, AERO_SCHEMA, AIRCRAFT_SCHEMA, AeroFile, AircraftFile, CurveFile, ENGINE_AXES,
-    ENGINE_SCHEMA, EngineFile, GridFile, PACK_SCHEMA, PackFile,
+    ENGINE_SCHEMA, EngineFile, FCS_AXES, FCS_SCHEMA, FcsGainsFile, GridFile, PACK_SCHEMA, PackFile,
 };
-use content::{AeroDef, Category, EngineDef, EngineKind, EnvelopeConfig, Era, Metric, Requirement};
+use content::{
+    AeroDef, Category, EngineDef, EngineKind, EnvelopeConfig, Era, FcsDef, Metric, Requirement,
+};
 
 /// Wing loading outside this range (kg/m² at reference weight) is a data error (GDD 62.6).
 const WING_LOADING_KG_M2: (f64, f64) = (100.0, 900.0);
@@ -24,6 +26,8 @@ pub const REFERENCE_FUEL_FRACTION: f64 = 0.6;
 const ALPHA_COVERAGE_DEG: (f64, f64) = (-30.0, 90.0);
 /// The Mach range every two-dimensional aero table must cover (GDD 11.6.2).
 const MACH_COVERAGE: (f64, f64) = (0.0, 3.0);
+/// The lateral tables must reach this angle of attack (they are read at |alpha|), degrees.
+const LATERAL_ALPHA_DEG: f64 = 90.0;
 /// A row's lift peak may exceed the trimmed `C_L,max` by this factor at most: the table is the
 /// untrimmed lift, raised to make up for the elevator's trim loss, which grows with the static
 /// margin to about 15 % supersonic (ADR-30).
@@ -51,6 +55,16 @@ impl Ctx<'_> {
     /// True if none of the pointers has been flagged yet.
     fn clean(&self, pointers: &[&str]) -> bool {
         pointers.iter().all(|p| !self.flagged.contains(*p))
+    }
+
+    /// True if nothing at or under any of the pointers has been flagged yet.
+    fn clean_under(&self, prefixes: &[&str]) -> bool {
+        prefixes.iter().all(|p| {
+            !self
+                .flagged
+                .iter()
+                .any(|f| f == p || f.strip_prefix(p).is_some_and(|rest| rest.starts_with('/')))
+        })
     }
 }
 
@@ -285,6 +299,32 @@ pub fn load_aero(file: &str, text: &str, pack_id: &str) -> Result<LoadedAero, Ve
     Ok(LoadedAero { file: a, def })
 }
 
+/// A validated fcs file and its runtime form.
+#[derive(Debug)]
+pub struct LoadedFcs {
+    /// The authoring form.
+    pub file: FcsGainsFile,
+    /// The runtime form.
+    pub def: FcsDef,
+}
+
+/// Loads and validates one control-gains file.
+///
+/// # Errors
+/// Every problem found, each with its pointer.
+pub fn load_fcs(
+    file: &str,
+    text: &str,
+    pack_id: &str,
+    locale: &BTreeMap<String, String>,
+) -> Result<LoadedFcs, Vec<Diagnostic>> {
+    let f = load(file, text, &crate::schema::fcs_schema(), |c, f| {
+        check_fcs(c, f, pack_id, locale);
+    })?;
+    let def = f.to_def();
+    Ok(LoadedFcs { file: f, def })
+}
+
 /// The diagnostic for a name that validated but then failed to convert.
 #[must_use]
 pub fn baker_bug(file: &str) -> Vec<Diagnostic> {
@@ -401,6 +441,12 @@ fn check_aircraft(
     check_tanks(c, a);
     check_inertia(c, a);
     check_references_and_fcs(c, a, pack_id);
+    // The gear checks read the masses and the geometry; a value already blamed is not blamed again.
+    if c.clean_under(&["/geometry", "/mass"]) {
+        for p in crate::gear::lint_geometry(a) {
+            c.err(&p.ptr, p.message, p.hint);
+        }
+    }
     check_envelope(c, a);
 }
 
@@ -623,6 +669,26 @@ fn check_references_and_fcs(c: &mut Ctx<'_>, a: &AircraftFile, pack_id: &str) {
             format!("`{}` is not a valid aero-table id", a.aero.tables_ref),
             hint,
         );
+    }
+    if let Err(hint) = check_id(&a.fcs.gains_ref, pack_id, "fcs") {
+        c.err(
+            "/fcs/gains_ref",
+            format!("`{}` is not a valid control-gains id", a.fcs.gains_ref),
+            hint,
+        );
+    }
+    let n = a.aero.n_max_by_config;
+    for (name, v) in [("gear", n.gear), ("flaps", n.flaps)] {
+        if c.clean(&["/aero/n_max"]) && v > a.aero.n_max {
+            c.err(
+                &format!("/aero/n_max_by_config/{name}"),
+                format!(
+                    "the limit with the {name} out ({v} g) is above the clean limit ({} g)",
+                    a.aero.n_max
+                ),
+                "a configuration limit can only be lower than n_max",
+            );
+        }
     }
     let acts = &a.fcs.actuators;
     for (name, act) in [
@@ -976,6 +1042,18 @@ fn aero_tables(a: &AeroFile) -> Vec<(&'static str, &'static [&'static str], Tabl
                 "/drag/k_induced" => TableField::Curve(&a.drag.k_induced),
                 "/pitch/cm_0" => TableField::Grid(&a.pitch.cm_0),
                 "/pitch/cm_de_per_rad" => TableField::Curve(&a.pitch.cm_de_per_rad),
+                "/lateral/cy_beta_per_rad" => TableField::Curve(&a.lateral.cy_beta_per_rad),
+                "/lateral/cl_beta_per_rad" => TableField::Curve(&a.lateral.cl_beta_per_rad),
+                "/lateral/cn_beta_per_rad" => TableField::Curve(&a.lateral.cn_beta_per_rad),
+                "/lateral/cl_p_per_rad" => TableField::Curve(&a.lateral.cl_p_per_rad),
+                "/lateral/cl_r_per_rad" => TableField::Curve(&a.lateral.cl_r_per_rad),
+                "/lateral/cn_p_per_rad" => TableField::Curve(&a.lateral.cn_p_per_rad),
+                "/lateral/cn_r_per_rad" => TableField::Curve(&a.lateral.cn_r_per_rad),
+                "/lateral/cl_da_per_rad" => TableField::Curve(&a.lateral.cl_da_per_rad),
+                "/lateral/cn_da_per_rad" => TableField::Curve(&a.lateral.cn_da_per_rad),
+                "/lateral/cl_dr_per_rad" => TableField::Curve(&a.lateral.cl_dr_per_rad),
+                "/lateral/cn_dr_per_rad" => TableField::Curve(&a.lateral.cn_dr_per_rad),
+                "/lateral/cy_dr_per_rad" => TableField::Curve(&a.lateral.cy_dr_per_rad),
                 "/post_stall/blend_start_deg" => TableField::Curve(&a.post_stall.blend_start_deg),
                 "/post_stall/blend_end_deg" => TableField::Curve(&a.post_stall.blend_end_deg),
                 "/control_effectiveness" => TableField::Curve(&a.control_effectiveness),
@@ -1067,8 +1145,61 @@ fn check_aero(c: &mut Ctx<'_>, a: &AeroFile, pack_id: &str) {
         |v| v > 0.0 && v <= 1.0,
         "in (0, 1]",
     );
+    check_lateral(c, a);
 
     check_lift_peaks_and_blend(c, a);
+}
+
+/// The lateral and directional tables cover `|alpha|` from 0 to 90 degrees and keep the bounds
+/// the scalar derivatives had (ADR-38): every value is within +-10 and the damping derivatives
+/// are negative at zero angle of attack (they may change sign post-stall, which is wing rock).
+fn check_lateral(c: &mut Ctx<'_>, a: &AeroFile) {
+    let l = &a.lateral;
+    let tables: [(&str, &CurveFile, f64, f64); 12] = [
+        ("cy_beta_per_rad", &l.cy_beta_per_rad, -10.0, 10.0),
+        ("cl_beta_per_rad", &l.cl_beta_per_rad, -10.0, 10.0),
+        ("cn_beta_per_rad", &l.cn_beta_per_rad, -10.0, 10.0),
+        ("cl_p_per_rad", &l.cl_p_per_rad, -10.0, 10.0),
+        ("cl_r_per_rad", &l.cl_r_per_rad, -10.0, 10.0),
+        ("cn_p_per_rad", &l.cn_p_per_rad, -10.0, 10.0),
+        ("cn_r_per_rad", &l.cn_r_per_rad, -10.0, 10.0),
+        ("cl_da_per_rad", &l.cl_da_per_rad, -10.0, 10.0),
+        ("cn_da_per_rad", &l.cn_da_per_rad, -10.0, 10.0),
+        ("cl_dr_per_rad", &l.cl_dr_per_rad, -10.0, 10.0),
+        ("cn_dr_per_rad", &l.cn_dr_per_rad, -10.0, 10.0),
+        ("cy_dr_per_rad", &l.cy_dr_per_rad, -10.0, 10.0),
+    ];
+    for (name, t, lo, hi) in tables {
+        let ptr = format!("/lateral/{name}");
+        let (x0, x1) = (t.points[0][0], t.points[t.points.len() - 1][0]);
+        if x0 > 0.0 || x1 < LATERAL_ALPHA_DEG {
+            c.err(
+                &format!("{ptr}/points"),
+                format!("|alpha| covers {x0} to {x1} deg, not 0 to {LATERAL_ALPHA_DEG}"),
+                "extend the table to 0 and to 90 degrees (the model uses |alpha|)",
+            );
+        }
+        if matches!(name, "cl_p_per_rad" | "cn_r_per_rad") && t.points[0][1] >= 0.0 {
+            c.err(
+                &format!("{ptr}/points/0"),
+                format!(
+                    "the damping {} at zero angle of attack is not negative",
+                    t.points[0][1]
+                ),
+                "roll and yaw damping oppose the rotation: use a negative value",
+            );
+        }
+        if let Some(i) = t.points.iter().position(|p| p[1] < lo || p[1] > hi) {
+            c.err(
+                &format!("{ptr}/points/{i}"),
+                format!(
+                    "{} is outside the allowed range {lo} to {hi}",
+                    t.points[i][1]
+                ),
+                "check the value for a typo",
+            );
+        }
+    }
 }
 
 /// Each Mach row of `C_L,base` peaks at the trimmed `C_L,max` raised by at most the trim loss,
@@ -1120,6 +1251,95 @@ fn check_lift_peaks_and_blend(c: &mut Ctx<'_>, a: &AeroFile) {
             );
             return;
         }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Control gains.
+
+fn fcs_tables(f: &FcsGainsFile) -> Vec<(&'static str, &'static [&'static str], &CurveFile)> {
+    FCS_AXES
+        .iter()
+        .map(|&(ptr, axes)| {
+            let t = match ptr {
+                "/pitch/q_max_dps" => &f.pitch.q_max_dps,
+                "/roll/p_max_qbar" => &f.roll.p_max_qbar,
+                "/roll/p_max_alpha" => &f.roll.p_max_alpha,
+                "/roll/p_max_nz" => &f.roll.p_max_nz,
+                "/yaw/beta_max_deg" => &f.yaw.beta_max_deg,
+                other => unreachable!("FCS_AXES lists `{other}` but fcs_tables does not"),
+            };
+            (ptr, axes, t)
+        })
+        .collect()
+}
+
+fn check_fcs(c: &mut Ctx<'_>, f: &FcsGainsFile, pack_id: &str, locale: &BTreeMap<String, String>) {
+    if f.schema != FCS_SCHEMA {
+        c.err(
+            "/schema",
+            format!("`{}` is not a control-gains file", f.schema),
+            format!("set it to `{FCS_SCHEMA}`"),
+        );
+    }
+    if let Err(hint) = check_id(&f.id, pack_id, "fcs") {
+        c.err(
+            "/id",
+            format!("`{}` is not a valid control-gains id", f.id),
+            hint,
+        );
+    }
+    check_locale_key(c, &f.name_key, locale);
+    for (ptr, axes, t) in fcs_tables(f) {
+        if check_table(c, ptr, &TableField::Curve(t), axes) {
+            curve_values(c, ptr, t, |v| v > 0.0, "positive");
+        }
+    }
+    for (ptr, t) in [
+        ("/roll/p_max_qbar", &f.roll.p_max_qbar),
+        ("/roll/p_max_alpha", &f.roll.p_max_alpha),
+        ("/roll/p_max_nz", &f.roll.p_max_nz),
+    ] {
+        if c.clean(&[ptr]) {
+            curve_values(c, ptr, t, |v| v <= 1.5, "at most 1.5 (a fraction of p_max)");
+        }
+    }
+    let nws = &f.ground.nws;
+    if c.clean(&["/ground/nws/low_speed_mps", "/ground/nws/high_speed_mps"])
+        && nws.low_speed_mps >= nws.high_speed_mps
+    {
+        c.err(
+            "/ground/nws/high_speed_mps",
+            format!(
+                "the steering range falls between {} and {} m/s, which is not an interval",
+                nws.low_speed_mps, nws.high_speed_mps
+            ),
+            "make high_speed_mps larger than low_speed_mps",
+        );
+    }
+    if c.clean(&["/ground/nws/low_deg", "/ground/nws/high_deg"]) && nws.low_deg < nws.high_deg {
+        c.err(
+            "/ground/nws/high_deg",
+            format!(
+                "the steering range grows with speed ({} deg then {} deg)",
+                nws.low_deg, nws.high_deg
+            ),
+            "steering must be limited more at speed than when taxiing",
+        );
+    }
+    if c.clean(&["/gcas/step_s", "/gcas/horizon_s"]) && f.gcas.step_s > f.gcas.horizon_s {
+        c.err(
+            "/gcas/step_s",
+            "the look-ahead step is longer than the look-ahead",
+            "use a step of a small fraction of horizon_s",
+        );
+    }
+    if c.clean(&["/gcas/step_s", "/gcas/horizon_s"]) && f.gcas.horizon_s / f.gcas.step_s > 200.0 {
+        c.err(
+            "/gcas/step_s",
+            "the look-ahead would take more than 200 steps",
+            "use a larger step; the sim reserves 200 look-ahead steps",
+        );
     }
 }
 

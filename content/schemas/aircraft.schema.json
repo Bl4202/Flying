@@ -51,6 +51,10 @@
           "$ref": "#/$defs/AirbrakeFile",
           "description": "Airbrake."
         },
+        "gear": {
+          "$ref": "#/$defs/GearActuatorFile",
+          "description": "Landing gear."
+        },
         "lef": {
           "$ref": "#/$defs/ActuatorFile",
           "description": "Leading-edge flaps."
@@ -74,7 +78,8 @@
         "rudder",
         "lef",
         "tef",
-        "airbrake"
+        "airbrake",
+        "gear"
       ],
       "type": "object"
     },
@@ -119,6 +124,10 @@
           "minimum": 1.0,
           "type": "number",
           "x-unit": "g"
+        },
+        "n_max_by_config": {
+          "$ref": "#/$defs/NMaxByConfigFile",
+          "description": "Positive load factors with the gear or the flaps out."
         },
         "n_min": {
           "description": "Structural negative load factor (below zero).",
@@ -165,6 +174,7 @@
         "service_ceiling_m",
         "n_max",
         "n_min",
+        "n_max_by_config",
         "gear_limit_mps",
         "flap_limit_mps",
         "static_margin_mac"
@@ -195,6 +205,33 @@
       "required": [
         "rate_per_s",
         "tau_s"
+      ],
+      "type": "object"
+    },
+    "ContactFile": {
+      "additionalProperties": false,
+      "description": "One airframe contact point.",
+      "properties": {
+        "id": {
+          "description": "Name within the aircraft (`nose_tip`, `tail`, `wing_l`, ...).",
+          "minLength": 1,
+          "type": "string"
+        },
+        "pos_m": {
+          "description": "Position in body axes.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        }
+      },
+      "required": [
+        "id",
+        "pos_m"
       ],
       "type": "object"
     },
@@ -346,11 +383,15 @@
     },
     "FcsFile": {
       "additionalProperties": false,
-      "description": "Flight-control data (GDD 11.11; the control laws arrive in v0.1b).",
+      "description": "Flight-control data (GDD 11.11): limits and actuators, and the gains by reference.",
       "properties": {
         "actuators": {
           "$ref": "#/$defs/ActuatorsFile",
           "description": "Control-surface actuators (GDD 11.7)."
+        },
+        "gains_ref": {
+          "description": "Id of the control-law gains (`namespace:fcs/name`).",
+          "type": "string"
         },
         "limiters": {
           "$ref": "#/$defs/LimitersFile",
@@ -363,8 +404,109 @@
       },
       "required": [
         "sas_required",
+        "gains_ref",
         "limiters",
         "actuators"
+      ],
+      "type": "object"
+    },
+    "GearActuatorFile": {
+      "additionalProperties": false,
+      "description": "The landing-gear actuator.",
+      "properties": {
+        "transit_s": {
+          "description": "Time for the gear to travel from up to down (or back).",
+          "format": "double",
+          "maximum": 60.0,
+          "minimum": 0.5,
+          "type": "number",
+          "x-unit": "s"
+        }
+      },
+      "required": [
+        "transit_s"
+      ],
+      "type": "object"
+    },
+    "GearLegFile": {
+      "additionalProperties": false,
+      "description": "One landing-gear leg: a massless strut with a wheel at its end.",
+      "properties": {
+        "brake": {
+          "description": "True if the wheel has a brake.",
+          "type": "boolean"
+        },
+        "c_comp_nspm": {
+          "description": "Damping while the strut compresses.",
+          "format": "double",
+          "maximum": 500000.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "N s/m"
+        },
+        "c_ext_nspm": {
+          "description": "Damping while the strut extends (usually the larger).",
+          "format": "double",
+          "maximum": 500000.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "N s/m"
+        },
+        "id": {
+          "description": "Name within the aircraft (`nose`, `main_l`, ...).",
+          "minLength": 1,
+          "type": "string"
+        },
+        "k_npm": {
+          "description": "Spring rate.",
+          "format": "double",
+          "maximum": 5000000.0,
+          "minimum": 1000.0,
+          "type": "number",
+          "x-unit": "N/m"
+        },
+        "main": {
+          "description": "True for a main leg.",
+          "type": "boolean"
+        },
+        "pos_m": {
+          "description": "Wheel contact point with the leg fully extended, in body axes.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        },
+        "steer_max_deg": {
+          "description": "Largest steering angle (0 if the leg does not steer).",
+          "format": "double",
+          "maximum": 90.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "stroke_m": {
+          "description": "Strut travel.",
+          "format": "double",
+          "maximum": 2.0,
+          "minimum": 0.05,
+          "type": "number",
+          "x-unit": "m"
+        }
+      },
+      "required": [
+        "id",
+        "pos_m",
+        "stroke_m",
+        "k_npm",
+        "c_comp_nspm",
+        "c_ext_nspm",
+        "steer_max_deg",
+        "brake",
+        "main"
       ],
       "type": "object"
     },
@@ -382,6 +524,22 @@
           "minItems": 3,
           "type": "array",
           "x-unit": "m"
+        },
+        "contacts": {
+          "description": "Airframe points that can scrape the ground.",
+          "items": {
+            "$ref": "#/$defs/ContactFile"
+          },
+          "maxItems": 8,
+          "type": "array"
+        },
+        "gear": {
+          "description": "Landing-gear legs (GDD 11.13).",
+          "items": {
+            "$ref": "#/$defs/GearLegFile"
+          },
+          "maxItems": 4,
+          "type": "array"
         },
         "mac_m": {
           "description": "Mean aerodynamic chord.",
@@ -424,7 +582,9 @@
         "span_m",
         "mac_m",
         "ref_point_m",
-        "bbox_m"
+        "bbox_m",
+        "gear",
+        "contacts"
       ],
       "type": "object"
     },
@@ -556,6 +716,33 @@
         "inertia_kgm2",
         "fuel_density_kgpl",
         "tanks"
+      ],
+      "type": "object"
+    },
+    "NMaxByConfigFile": {
+      "additionalProperties": false,
+      "description": "Load-factor limits that depend on the configuration.",
+      "properties": {
+        "flaps": {
+          "description": "Positive limit with the flaps out.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "g"
+        },
+        "gear": {
+          "description": "Positive limit with the gear extended.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "g"
+        }
+      },
+      "required": [
+        "gear",
+        "flaps"
       ],
       "type": "object"
     },

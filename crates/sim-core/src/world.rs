@@ -21,6 +21,14 @@ pub struct Counters {
     pub trim_failures: u32,
     /// Snapshots published.
     pub snapshots: u32,
+    /// First wheel contacts after being airborne.
+    pub touchdowns: u32,
+    /// Touchdowns at a sink rate of 3.0 m/s or more.
+    pub hard_landings: u32,
+    /// Times the pilot was incapacitated by sustained g.
+    pub gloc_events: u32,
+    /// Changes of the assist level.
+    pub assist_changes: u32,
     /// Spectator only: times the observer was restored after a non-finite value.
     pub observer_resets: u32,
     /// Spectator only: times the observer was lifted back above the ground.

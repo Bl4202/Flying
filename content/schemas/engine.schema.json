@@ -9,7 +9,9 @@
           "enum": [
             "mach",
             "alpha_deg",
-            "deflection_deg"
+            "deflection_deg",
+            "qbar_kpa",
+            "nz_g"
           ],
           "type": "string"
         },

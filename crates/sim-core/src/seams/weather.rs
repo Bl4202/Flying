@@ -14,6 +14,12 @@ pub trait WeatherProvider: Send {
     fn day(&self) -> NonStandardDay {
         NonStandardDay::ISA
     }
+
+    /// How wet the runways are, 0 (dry) to 1 (flooded): the friction of a paved surface falls with
+    /// it (GDD 10.4, ADR-35). Dry by default.
+    fn runway_wetness(&self) -> f64 {
+        0.0
+    }
 }
 
 /// No wind anywhere.
@@ -61,6 +67,11 @@ pub fn contract(w: &dyn WeatherProvider) {
             "wind is below any plausible jet-stream speed: {a:?}"
         );
     }
+    assert!(
+        (0.0..=1.0).contains(&w.runway_wetness()),
+        "runway wetness within 0 to 1: {}",
+        w.runway_wetness()
+    );
     let day = w.day();
     assert!(
         (-40.0..=40.0).contains(&day.delta_t_k),
