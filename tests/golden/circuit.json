@@ -1,0 +1,378 @@
+{
+  "checkpoints": [
+    {
+      "bodies": "53680ecf7f1b2ae2",
+      "combined": "d7ede1d3665d7639",
+      "content": "588264193afd399a",
+      "input": "beaf74afad6523fb",
+      "ownship": "e44c006658221508",
+      "rng": "e8e3c512ad9ba48a",
+      "tick": 0,
+      "tick_h": "e00562d1f56ddc92"
+    },
+    {
+      "bodies": "c12c244fd9e76a34",
+      "combined": "ac7f935b129c40e9",
+      "content": "588264193afd399a",
+      "input": "296fa6e23bda519d",
+      "ownship": "5deff83497726bc2",
+      "rng": "159ce61db6a33f71",
+      "tick": 600,
+      "tick_h": "bb5ede3ffacc09f4"
+    },
+    {
+      "bodies": "aa2a3e48a129d65d",
+      "combined": "f841e8ab92b11daf",
+      "content": "588264193afd399a",
+      "input": "0d327a2e76c8c5ba",
+      "ownship": "f977592f74c9f10c",
+      "rng": "38e365ec87d8e40b",
+      "tick": 1200,
+      "tick_h": "be18148c89cd1c56"
+    },
+    {
+      "bodies": "dfcc57130ebdf346",
+      "combined": "2a3abc81b6f1ef4d",
+      "content": "588264193afd399a",
+      "input": "ea76030799cf9d22",
+      "ownship": "0710a55b782b87a3",
+      "rng": "93721494770202b6",
+      "tick": 1800,
+      "tick_h": "88a660150d86609b"
+    },
+    {
+      "bodies": "270565b6f2fab0a5",
+      "combined": "0e2c91f11014eb5d",
+      "content": "588264193afd399a",
+      "input": "0f2ae7b683e1b09d",
+      "ownship": "044ca9b9583690a0",
+      "rng": "056db1b3039355d6",
+      "tick": 2400,
+      "tick_h": "0df050b9eb49267d"
+    },
+    {
+      "bodies": "333fe5843f33c8a5",
+      "combined": "c32e25b940bad3d7",
+      "content": "588264193afd399a",
+      "input": "e2dab479d86b86b3",
+      "ownship": "2295b61bd983c2b1",
+      "rng": "f55618f07978ef65",
+      "tick": 3000,
+      "tick_h": "7dffd74c9c91826f"
+    },
+    {
+      "bodies": "dab51dcefbe3773b",
+      "combined": "0813df25f3c2c509",
+      "content": "588264193afd399a",
+      "input": "9f882102a2605d89",
+      "ownship": "03f189602b0d62d3",
+      "rng": "1e4e6950492e5113",
+      "tick": 3600,
+      "tick_h": "ec87002c14b98b88"
+    },
+    {
+      "bodies": "f07db24a08791d64",
+      "combined": "77ad0f33f6d8b1d1",
+      "content": "588264193afd399a",
+      "input": "e0cb7cb66c97723a",
+      "ownship": "1d577613eb969586",
+      "rng": "03054a887c617c81",
+      "tick": 4200,
+      "tick_h": "ee66b678a301d3aa"
+    },
+    {
+      "bodies": "742763643a9a6555",
+      "combined": "4b2ad9873cbbaa7b",
+      "content": "588264193afd399a",
+      "input": "5295e8f211c01fbd",
+      "ownship": "17db5666a4791e5c",
+      "rng": "230d52baeed5c4e0",
+      "tick": 4800,
+      "tick_h": "16eecd54df75b08c"
+    },
+    {
+      "bodies": "dac4a0fb15b3451b",
+      "combined": "b9f40654d740ab52",
+      "content": "588264193afd399a",
+      "input": "961d0722234e7f53",
+      "ownship": "5a47dd3c747b6481",
+      "rng": "7da22ec49d10df00",
+      "tick": 5400,
+      "tick_h": "0592a4fbf880e071"
+    },
+    {
+      "bodies": "8819cc4bb9d9cff2",
+      "combined": "64a735e668e3f02c",
+      "content": "588264193afd399a",
+      "input": "1035706c72d2941a",
+      "ownship": "7bd2c30dd26c1875",
+      "rng": "15a3d32c70353461",
+      "tick": 6000,
+      "tick_h": "a6456bf9da40f593"
+    },
+    {
+      "bodies": "43ef27fcb2fd14fb",
+      "combined": "44fb78fd75449cbe",
+      "content": "588264193afd399a",
+      "input": "c7f0e92d28fe092d",
+      "ownship": "645cf64c09f73d8a",
+      "rng": "4a99c694ec1337a9",
+      "tick": 6600,
+      "tick_h": "e2d37d52f951d065"
+    },
+    {
+      "bodies": "2c377acb9143c461",
+      "combined": "acd796c0401d6836",
+      "content": "588264193afd399a",
+      "input": "2ed2809504f1831c",
+      "ownship": "072c82793e188365",
+      "rng": "10197ef1ee27a582",
+      "tick": 7200,
+      "tick_h": "1591680661b0e51e"
+    },
+    {
+      "bodies": "33e8e842a231cdeb",
+      "combined": "c2acfb0b88b54972",
+      "content": "588264193afd399a",
+      "input": "690782c0e9844cbc",
+      "ownship": "b12162565d46ddac",
+      "rng": "fab5a49c52e361d7",
+      "tick": 7800,
+      "tick_h": "8d79ed172506ca70"
+    },
+    {
+      "bodies": "8a3e10e157e27a04",
+      "combined": "aa00974b1b7e954c",
+      "content": "588264193afd399a",
+      "input": "1f8b92fe9b85bbb5",
+      "ownship": "a871ac9bb5348c3f",
+      "rng": "b9efaacfab97dd05",
+      "tick": 8400,
+      "tick_h": "d47c7e6f4feb20e2"
+    },
+    {
+      "bodies": "b63c0e9e9aebab44",
+      "combined": "df0b8b4cb10227be",
+      "content": "588264193afd399a",
+      "input": "2475bbd349ff8b7f",
+      "ownship": "736eaccd7b09ee7f",
+      "rng": "a0460760c50b70b6",
+      "tick": 9000,
+      "tick_h": "fd50a2b5aef48647"
+    },
+    {
+      "bodies": "de6ff52e11772211",
+      "combined": "243b502c75eabf3b",
+      "content": "588264193afd399a",
+      "input": "a0fdfff4d4fa6e2b",
+      "ownship": "77f5fe75e26a520c",
+      "rng": "36ca637ae4259726",
+      "tick": 9600,
+      "tick_h": "d041b98f76b04369"
+    },
+    {
+      "bodies": "6eb23157b40ea31b",
+      "combined": "e546a56e9a10c3cf",
+      "content": "588264193afd399a",
+      "input": "58fd64c1edd41655",
+      "ownship": "4ac16bb5f6ca3d3f",
+      "rng": "6c9032a7ca37cfe3",
+      "tick": 10200,
+      "tick_h": "b4e54de4299aaaab"
+    },
+    {
+      "bodies": "b114bfce254eeeaa",
+      "combined": "35faa2b1825a2b1b",
+      "content": "588264193afd399a",
+      "input": "cda331af3ac0efb7",
+      "ownship": "0ff57a0d5f740be2",
+      "rng": "60bf84edf2c12850",
+      "tick": 10800,
+      "tick_h": "228e834af2d4a594"
+    },
+    {
+      "bodies": "eb98509215699842",
+      "combined": "1fcb0857a2541ecb",
+      "content": "588264193afd399a",
+      "input": "f3e7a594dd999ce6",
+      "ownship": "79c754609afbcf9c",
+      "rng": "51c6f1aa092f9b8e",
+      "tick": 11400,
+      "tick_h": "ea74949f6fb98f06"
+    },
+    {
+      "bodies": "c5b756a85d282636",
+      "combined": "ef8b7d33017e1ddc",
+      "content": "588264193afd399a",
+      "input": "a9cee2839e31b55a",
+      "ownship": "59914484d1584b17",
+      "rng": "8b347f82e9f2224b",
+      "tick": 12000,
+      "tick_h": "77551074f7907558"
+    },
+    {
+      "bodies": "ca098c3abb7a8c6e",
+      "combined": "f2fd16ba50ac2c26",
+      "content": "588264193afd399a",
+      "input": "37272a63c45ec050",
+      "ownship": "c6091bcb7a2423d9",
+      "rng": "ecf5f290c184d0d8",
+      "tick": 12600,
+      "tick_h": "cecb6694467dff3d"
+    },
+    {
+      "bodies": "d11a666f69ec4502",
+      "combined": "a32f63cf3b2991f1",
+      "content": "588264193afd399a",
+      "input": "351b678ae1fdcf1c",
+      "ownship": "100245ae8239a61b",
+      "rng": "62c360bff924cc84",
+      "tick": 13200,
+      "tick_h": "4a640316fa307ddf"
+    },
+    {
+      "bodies": "e2ed4e743b8b2a70",
+      "combined": "e0aba4fc6962d2e0",
+      "content": "588264193afd399a",
+      "input": "6e162c51bffc8a58",
+      "ownship": "1f12a5493f3c10c0",
+      "rng": "ed37f052305d72fb",
+      "tick": 13800,
+      "tick_h": "aa46dcd68f061fa1"
+    },
+    {
+      "bodies": "0b13b5a910f2b55d",
+      "combined": "279981fd7a02488e",
+      "content": "588264193afd399a",
+      "input": "6fb6e62ba12513b9",
+      "ownship": "ed421a95d9e7e91a",
+      "rng": "6fb82c3020d3444b",
+      "tick": 14400,
+      "tick_h": "e28ac02f819ee00a"
+    },
+    {
+      "bodies": "11600830025bae9d",
+      "combined": "3e3d8facfd8e7f23",
+      "content": "588264193afd399a",
+      "input": "773075ba3b912332",
+      "ownship": "c70ad0db4dd006f1",
+      "rng": "c54de195ec31285d",
+      "tick": 15000,
+      "tick_h": "bc9a1773408be29c"
+    },
+    {
+      "bodies": "0831859d9f064303",
+      "combined": "6a06d43e4592182c",
+      "content": "588264193afd399a",
+      "input": "3224d3d514b8be33",
+      "ownship": "9c7d901d56c9c0c1",
+      "rng": "39e3be6d7a8bd54c",
+      "tick": 15600,
+      "tick_h": "bb976aa7abd1c98e"
+    },
+    {
+      "bodies": "85d4a8135d59d76b",
+      "combined": "c654c71b563199cf",
+      "content": "588264193afd399a",
+      "input": "2da51d0de4eebb47",
+      "ownship": "4efb5602f46f1158",
+      "rng": "26970665f99eb38a",
+      "tick": 16200,
+      "tick_h": "baeac2657fc99263"
+    },
+    {
+      "bodies": "2cc7d891b6a6da06",
+      "combined": "0d6eea693b0175ff",
+      "content": "588264193afd399a",
+      "input": "39fe5f756575f05a",
+      "ownship": "b8f2c6a683797375",
+      "rng": "f981302e28a0a682",
+      "tick": 16800,
+      "tick_h": "f1b8c04e21104775"
+    },
+    {
+      "bodies": "70124f32acdbc1e9",
+      "combined": "9b4b993e6465b0fd",
+      "content": "588264193afd399a",
+      "input": "206ba1f43c21458e",
+      "ownship": "d67bc70529406534",
+      "rng": "c30df4bf0c2776fb",
+      "tick": 17400,
+      "tick_h": "1d143e4ce6ba3dd7"
+    },
+    {
+      "bodies": "0e1c3023bb229eba",
+      "combined": "a1c2e23d6019a249",
+      "content": "588264193afd399a",
+      "input": "e7e01f9139b38ef1",
+      "ownship": "4470f129050b45e8",
+      "rng": "9b33b5963fc71adc",
+      "tick": 18000,
+      "tick_h": "a5c16eb4491038a0"
+    },
+    {
+      "bodies": "80402af176c44e9a",
+      "combined": "a04b6dbc15346f8d",
+      "content": "588264193afd399a",
+      "input": "9d7111aa46311fa1",
+      "ownship": "42f2882c7e230c05",
+      "rng": "9273d05c1b945032",
+      "tick": 18600,
+      "tick_h": "9d6394ac459a0792"
+    },
+    {
+      "bodies": "b34f2015117fbb91",
+      "combined": "5d43564e4a84b439",
+      "content": "588264193afd399a",
+      "input": "3fe0303d18082a0f",
+      "ownship": "a01c6cfdff8ae683",
+      "rng": "8f723516269c9b70",
+      "tick": 19200,
+      "tick_h": "1fcfaf7c21ccdea7"
+    },
+    {
+      "bodies": "4949bb8a3df5dfb5",
+      "combined": "d4633f4c93039ad1",
+      "content": "588264193afd399a",
+      "input": "05654272629bb559",
+      "ownship": "2a1b008090908737",
+      "rng": "3604b7abe580c271",
+      "tick": 19800,
+      "tick_h": "1d179fbab65d5f59"
+    },
+    {
+      "bodies": "52961568a9ef398c",
+      "combined": "e4a55aa0809a86f7",
+      "content": "588264193afd399a",
+      "input": "470d86fd52a59c31",
+      "ownship": "0edede885106c8be",
+      "rng": "b828e4c563dce49f",
+      "tick": 20400,
+      "tick_h": "98fc6fdd1968a4cb"
+    },
+    {
+      "bodies": "8bf8aeeffa54bdf7",
+      "combined": "60751df98adf8ea8",
+      "content": "588264193afd399a",
+      "input": "c328518fbbd226f0",
+      "ownship": "9009a29826c6afbc",
+      "rng": "6362bfde83e98a13",
+      "tick": 21000,
+      "tick_h": "83814e88618fad34"
+    },
+    {
+      "bodies": "3e7bbf37e808a5b2",
+      "combined": "1158c25f1543c329",
+      "content": "588264193afd399a",
+      "input": "98b8e7aaa72f026e",
+      "ownship": "ead75120023293e3",
+      "rng": "94866784ec11e3a5",
+      "tick": 21600,
+      "tick_h": "ac9d01c7d054c916"
+    }
+  ],
+  "script": "circuit",
+  "seed": "1f1e5eed00000001",
+  "session": "--spawn runway --assist standard --g full",
+  "ticks": 21600
+}
