@@ -51,51 +51,66 @@ export interface AxisEmulation {
 export const DEFAULT_EMULATION: AxisEmulation = { rampUpPerSecond: 3, returnPerSecond: 4 };
 
 /** A virtual stick axis driven by two keys. */
+// The pump runs every few milliseconds and must not make garbage. V8 gives every store of a
+// fractional number into an object field a fresh heap number, but a store into a Float64Array
+// element allocates nothing, so the state of the classes the pump drives lives in one.
+
 export class AxisEmulator {
   readonly #opts: AxisEmulation;
-  #value = 0;
+  readonly #v = new Float64Array(1);
 
   constructor(opts: AxisEmulation = DEFAULT_EMULATION) {
     this.#opts = opts;
   }
 
   get value(): number {
-    return this.#value;
+    return this.#v[0] ?? 0;
   }
 
   /**
    * Advances by `dtMs`. Holding the positive key ramps towards +1, the negative towards -1, both
-   * (or neither) lets go. Reversing passes through zero at the faster return rate.
+   * (or neither) lets go. Reversing passes through zero at the faster return rate. Returns the
+   * new value.
    */
   update(dtMs: number, negative: boolean, positive: boolean): number {
+    this.step(dtMs, negative, positive);
+    return this.#v[0] ?? 0;
+  }
+
+  /** `update` without a return value, for callers that read `value` and must make no garbage. */
+  step(dtMs: number, negative: boolean, positive: boolean): void {
     const target = (positive ? 1 : 0) - (negative ? 1 : 0);
     const dt = Math.max(0, dtMs) / 1000;
-    let v = this.#value;
+    const up = this.#opts.rampUpPerSecond;
+    const back = this.#opts.returnPerSecond;
+    let v = this.#v[0] ?? 0;
+    // The ramp is written out here instead of through a helper: a fractional number handed to or
+    // returned from a function the compiler does not inline is a heap allocation.
+    let goal = target;
+    let rate = up;
+    let travel = dt;
     if (target === 0) {
-      v = moveTowards(v, 0, this.#opts.returnPerSecond * dt);
+      rate = back;
     } else if (v * target < 0) {
       // Heading the other way: let go of the old direction quickly, then ramp the new one.
-      const toZero = Math.abs(v) / this.#opts.returnPerSecond;
+      const toZero = Math.abs(v) / back;
       if (dt <= toZero) {
-        v = moveTowards(v, 0, this.#opts.returnPerSecond * dt);
+        goal = 0;
+        rate = back;
       } else {
-        v = moveTowards(0, target, this.#opts.rampUpPerSecond * (dt - toZero));
+        v = 0;
+        travel = dt - toZero;
       }
-    } else {
-      v = moveTowards(v, target, this.#opts.rampUpPerSecond * dt);
     }
-    this.#value = v + 0; // never a negative zero
-    return this.#value;
+    const d = goal - v;
+    const maxStep = rate * travel;
+    v = Math.abs(d) <= maxStep ? goal : v + Math.sign(d) * maxStep;
+    this.#v[0] = v + 0; // never a negative zero
   }
 
   reset(): void {
-    this.#value = 0;
+    this.#v[0] = 0;
   }
-}
-
-function moveTowards(from: number, to: number, maxStep: number): number {
-  const d = to - from;
-  return Math.abs(d) <= maxStep ? to : from + Math.sign(d) * maxStep;
 }
 
 /**
@@ -103,26 +118,31 @@ function moveTowards(from: number, to: number, maxStep: number): number {
  * would set the value directly; this is the incremental mode (GDD 58.2).
  */
 export class ThrottleLever {
-  #value: number;
+  readonly #v = new Float64Array(1);
 
   constructor(initial = 0.5) {
-    this.#value = Math.min(Math.max(initial, 0), 1);
+    this.#v[0] = Math.min(Math.max(initial, 0), 1);
   }
 
   get value(): number {
-    return this.#value;
+    return this.#v[0] ?? 0;
   }
 
   /** Moves the lever by `rate` (fraction of travel per second, signed) for `dtMs`. */
   update(dtMs: number, ratePerSecond: number): number {
-    this.#value = Math.min(
-      Math.max(this.#value + (ratePerSecond * Math.max(0, dtMs)) / 1000, 0),
+    this.move(dtMs, ratePerSecond);
+    return this.#v[0] ?? 0;
+  }
+
+  /** `update` without a return value. */
+  move(dtMs: number, ratePerSecond: number): void {
+    this.#v[0] = Math.min(
+      Math.max((this.#v[0] ?? 0) + (ratePerSecond * Math.max(0, dtMs)) / 1000, 0),
       1,
     );
-    return this.#value;
   }
 
   set(value: number): void {
-    this.#value = Math.min(Math.max(value, 0), 1);
+    this.#v[0] = Math.min(Math.max(value, 0), 1);
   }
 }

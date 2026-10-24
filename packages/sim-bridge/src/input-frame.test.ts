@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   decodeInputFrame,
   encodeInputFrame,
+  InputFrameWriter,
   neutralFrame,
   type InputFrame,
 } from './input-frame.ts';
@@ -119,5 +120,58 @@ describe('InputFrame', () => {
       encodeInputFrame(neutralFrame(), new Uint8Array(95));
     }).toThrow(RangeError);
     expect(() => decodeInputFrame(new Uint8Array(95))).toThrow(RangeError);
+  });
+});
+
+describe('InputFrameWriter', () => {
+  it('writes the same bytes as encodeInputFrame for every reference vector it can express', () => {
+    const w = new InputFrameWriter();
+    let compared = 0;
+    for (const v of vectors.frames) {
+      // The writer carries 32 button bits and no hats: all the pump ever sets.
+      if (BigInt(v.buttons) > 0xffffffffn || v.hats[0] !== 0 || v.hats[1] !== 0) continue;
+      w.seq = v.seq;
+      w.flags = v.flags;
+      w.times[0] = v.t_ms;
+      w.times[1] = v.t_sent_ms;
+      w.axes.set(v.axes);
+      w.buttons = Number(BigInt(v.buttons));
+      w.assistReq = v.assist_req;
+      w.spawnAck = v.spawn_ack;
+      w.spawnReq = v.spawn_req;
+      expect(hexOf(w.encode()), `frame seq ${String(v.seq)}`).toBe(v.hex);
+      compared += 1;
+    }
+    expect(compared).toBeGreaterThanOrEqual(5);
+  });
+
+  it('reuses one buffer and decodes back to what was set', () => {
+    const w = new InputFrameWriter();
+    w.seq = 9;
+    w.flags = INPUT_FLAG.CHANGED | INPUT_FLAG.MOUSE_AIM;
+    w.times[0] = 1234.5;
+    w.times[1] = 1236.25;
+    w.axes[AXIS.ROLL] = -0.5;
+    w.axes[AXIS.CURSOR_X] = 0.25;
+    w.buttons = 0x80000001;
+    w.assistReq = 4;
+    w.spawnAck = 2;
+    w.spawnReq = 1;
+    const a = w.encode();
+    const f = decodeInputFrame(a);
+    expect(f).toMatchObject({
+      seq: 9,
+      flags: 6,
+      tMs: 1234.5,
+      tSentMs: 1236.25,
+      buttons: 0x80000001n,
+      assistReq: 4,
+      spawnAck: 2,
+      spawnReq: 1,
+    });
+    expect(f.axes[AXIS.ROLL]).toBe(-0.5);
+    expect(f.axes[AXIS.CURSOR_X]).toBe(0.25);
+    w.seq = 10;
+    expect(w.encode()).toBe(a);
   });
 });

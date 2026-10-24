@@ -77,10 +77,15 @@ export interface Calibration {
 
 /** Maps a raw reading to [-1, 1] using the recorded minimum, centre and maximum. */
 export function calibrate(raw: number, c: Calibration = { min: -1, centre: 0, max: 1 }): number {
+  return calibrateScalar(raw, c.min, c.centre, c.max);
+}
+
+/** `calibrate` on plain numbers, for the pump's hot path (no object to build). */
+export function calibrateScalar(raw: number, min: number, centre: number, max: number): number {
   if (!Number.isFinite(raw)) return 0;
-  const span = raw >= c.centre ? c.max - c.centre : c.centre - c.min;
+  const span = raw >= centre ? max - centre : centre - min;
   if (!(span > 0)) return 0;
-  return clamp((raw - c.centre) / span, -1, 1);
+  return clamp((raw - centre) / span, -1, 1) + 0;
 }
 
 /** Stage 1. */
@@ -132,39 +137,59 @@ export function shapeStatic(x0: number, shape: AxisShape): number {
   return saturate(x2, shape.gain);
 }
 
+/**
+ * `shapeStatic` written to `out[i]`: for the pump, which must make no garbage, and a function that
+ * returns a fractional number makes some unless the compiler inlines it.
+ */
+export function shapeInto(out: Float64Array, i: number, x0: number, shape: AxisShape): void {
+  out[i] = shapeStatic(x0, shape);
+}
+
 /** The whole pipeline for one axis, with the state that stages 4 and 5 need. */
 export class AxisShaper {
   readonly shape: AxisShape;
-  #smoothed = 0;
-  #limited = 0;
+  /** Smoothed, rate-limited, the memoryless stages' result. A Float64Array: no garbage per step. */
+  readonly #s = new Float64Array(3);
   #primed = false;
 
   constructor(shape: AxisShape = STICK_SHAPE) {
     this.shape = shape;
   }
 
+  /** The shaped value after the last `advance`. */
+  get value(): number {
+    const x6 = (this.shape.invert ? -(this.#s[1] ?? 0) : (this.#s[1] ?? 0)) + this.shape.offset;
+    return clamp(x6, -1, 1) + 0;
+  }
+
   /** Shapes one calibrated reading `x0` taken `dtMs` after the previous one. */
   step(x0: number, dtMs: number): number {
-    const x3 = shapeStatic(x0, this.shape);
+    this.advance(x0, dtMs);
+    return this.value;
+  }
+
+  /** `step` without a return value, for callers that read `value` and must make no garbage. */
+  advance(x0: number, dtMs: number): void {
+    const s = this.#s;
+    shapeInto(s, 2, x0, this.shape);
+    const x3 = s[2] ?? 0;
     if (!this.#primed) {
       // The first sample has no history: start from it instead of easing in from zero.
       this.#primed = true;
-      this.#smoothed = x3;
-      this.#limited = x3;
+      s[0] = x3;
+      s[1] = x3;
     } else {
-      this.#smoothed = smooth(this.#smoothed, x3, dtMs, this.shape.tauMs);
-      this.#limited = Number.isFinite(this.shape.maxRatePerSecond)
-        ? rateLimit(this.#limited, this.#smoothed, dtMs / 1000, this.shape.maxRatePerSecond)
-        : this.#smoothed;
+      const smoothed = smooth(s[0] ?? 0, x3, dtMs, this.shape.tauMs);
+      s[0] = smoothed;
+      s[1] = Number.isFinite(this.shape.maxRatePerSecond)
+        ? rateLimit(s[1] ?? 0, smoothed, dtMs / 1000, this.shape.maxRatePerSecond)
+        : smoothed;
     }
-    const x6 = (this.shape.invert ? -this.#limited : this.#limited) + this.shape.offset;
-    return clamp(x6, -1, 1) + 0;
   }
 
   /** Forgets history (device unplugged, focus lost). */
   reset(): void {
-    this.#smoothed = 0;
-    this.#limited = 0;
+    this.#s.fill(0);
     this.#primed = false;
   }
 }

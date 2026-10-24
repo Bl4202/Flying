@@ -7,9 +7,9 @@ import {
   type InputFrame,
   type InputSink,
 } from '@flying/sim-bridge';
-import { DEFAULT_BINDINGS } from './bindings.ts';
-import { attachInput, type Scheduler } from './dom.ts';
+import { attachInput, type KeyEventLike, type Scheduler } from './dom.ts';
 import { KeyboardState } from './keyboard.ts';
+import { builtinProfile } from './profile.ts';
 import { InputPump } from './pump.ts';
 
 class FakeDocument extends EventTarget {
@@ -19,16 +19,26 @@ class FakeDocument extends EventTarget {
 function key(
   type: 'keydown' | 'keyup',
   code: string,
-  extra: { repeat?: boolean; target?: unknown } = {},
+  extra: {
+    repeat?: boolean;
+    target?: unknown;
+    timeStamp?: number;
+    ctrl?: boolean;
+    shift?: boolean;
+  } = {},
 ) {
   const e = new Event(type, { cancelable: true });
   Object.defineProperty(e, 'code', { value: code });
   Object.defineProperty(e, 'repeat', { value: extra.repeat ?? false });
+  Object.defineProperty(e, 'ctrlKey', { value: extra.ctrl ?? false });
+  Object.defineProperty(e, 'shiftKey', { value: extra.shift ?? false });
+  if (extra.timeStamp !== undefined)
+    Object.defineProperty(e, 'timeStamp', { value: extra.timeStamp });
   if (extra.target !== undefined) Object.defineProperty(e, 'target', { value: extra.target });
   return e;
 }
 
-function rig(opts: { hasFocus?: boolean } = {}) {
+function rig(opts: { hasFocus?: boolean; swallow?: (e: KeyEventLike) => boolean } = {}) {
   const frames: InputFrame[] = [];
   const sink: InputSink = {
     send: (b) => {
@@ -42,7 +52,6 @@ function rig(opts: { hasFocus?: boolean } = {}) {
   const pump = new InputPump({
     sink,
     keyboard,
-    gamepad: { poll: () => null },
     nowMs: () => mono,
     sharedNowMs: () => mono,
   });
@@ -71,10 +80,10 @@ function rig(opts: { hasFocus?: boolean } = {}) {
     { window: win, document: doc },
     {
       keyboard,
-      bindings: DEFAULT_BINDINGS.keyboard,
       pump,
       scheduler,
       ...(opts.hasFocus !== undefined ? { hasFocus: opts.hasFocus } : {}),
+      ...(opts.swallow !== undefined ? { swallow: opts.swallow } : {}),
     },
   );
   return {
@@ -89,6 +98,7 @@ function rig(opts: { hasFocus?: boolean } = {}) {
     advance: (ms: number) => {
       mono += ms;
     },
+    now: () => mono,
   };
 }
 
@@ -194,5 +204,70 @@ describe('attachInput', () => {
     if (!f) throw new Error('no frame');
     encodeInputFrame(f, bytes);
     expect(decodeInputFrame(bytes)).toEqual(f);
+  });
+
+  it('tells the pump when a key event happened, so the frame is dated by the event', () => {
+    const r = rig();
+    r.advance(100);
+    r.win.dispatchEvent(key('keydown', 'KeyD', { timeStamp: r.now() - 4 }));
+    const f = r.frames.at(-1);
+    expect(f?.flags).toBe(INPUT_FLAG.CHANGED);
+    expect(f?.tSentMs).toBe(r.now());
+    expect(f?.tMs).toBe(r.now() - 4);
+    r.advance(30);
+    r.win.dispatchEvent(key('keyup', 'KeyD', { timeStamp: r.now() - 2 }));
+    expect(r.frames.at(-1)?.tMs).toBe(r.now() - 2);
+  });
+
+  it('does not date a frame by an auto-repeat', () => {
+    const r = rig();
+    r.win.dispatchEvent(key('keydown', 'KeyW', { timeStamp: 1 }));
+    r.advance(40);
+    const sent = r.frames.length;
+    r.win.dispatchEvent(key('keydown', 'KeyW', { repeat: true, timeStamp: r.now() }));
+    expect(r.frames.length).toBe(sent);
+  });
+
+  it('claims the keys of the profile in use, and follows a change of profile', () => {
+    const r = rig();
+    const f8 = key('keydown', 'F8');
+    r.win.dispatchEvent(f8);
+    expect(f8.defaultPrevented).toBe(true); // the assist key is bound
+    const profile = builtinProfile('default-km');
+    profile.bindings = profile.bindings.filter(
+      (b) => !(b.source.kind === 'key' && b.source.code === 'F8'),
+    );
+    r.pump.setProfile(profile);
+    const again = key('keydown', 'F9');
+    r.win.dispatchEvent(again);
+    expect(again.defaultPrevented).toBe(false);
+    const gone = key('keydown', 'F8');
+    r.win.dispatchEvent(gone);
+    expect(gone.defaultPrevented).toBe(false);
+  });
+
+  it('leaves the keys the page keeps for itself (the debug chord) out of the flight controls', () => {
+    const chord = (e: KeyEventLike): boolean =>
+      e.code === 'KeyD' && e.ctrlKey === true && e.shiftKey === true;
+    const r = rig({ swallow: chord });
+    r.win.dispatchEvent(key('keydown', 'KeyD'));
+    expect(r.keyboard.isDown('KeyD')).toBe(true);
+    r.win.dispatchEvent(key('keyup', 'KeyD'));
+    const swallowed = key('keydown', 'KeyD', { ctrl: true, shift: true });
+    r.win.dispatchEvent(swallowed);
+    expect(r.keyboard.isDown('KeyD')).toBe(false);
+    expect(swallowed.defaultPrevented).toBe(false); // the page's own handler decides that
+  });
+
+  it('samples at once when a gamepad is connected or disconnected', () => {
+    const r = rig();
+    const before = r.frames.length;
+    r.advance(10);
+    r.win.dispatchEvent(new Event('gamepadconnected'));
+    expect(r.frames.length).toBeGreaterThan(before);
+    const mid = r.frames.length;
+    r.advance(10);
+    r.win.dispatchEvent(new Event('gamepaddisconnected'));
+    expect(r.frames.length).toBeGreaterThan(mid);
   });
 });

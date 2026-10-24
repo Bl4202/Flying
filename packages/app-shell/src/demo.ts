@@ -6,11 +6,12 @@
  */
 import { NullAudioBackend, resumeOnFirstGesture } from '@flying/audio';
 import {
-  DEFAULT_BINDINGS,
-  GamepadReader,
+  GamepadHub,
   InputPump,
   KeyboardState,
   attachInput,
+  builtinProfiles,
+  chooseProfile,
 } from '@flying/input';
 import { RenderClient, type PixelSummary } from '@flying/render';
 import { SHADERS } from '@flying/render/shader-sources';
@@ -37,6 +38,7 @@ import renderWorkerUrl from '@flying/render/render.worker?worker&url';
 import {
   DebugOverlay,
   installOverlayHotkey,
+  isOverlayChord,
   t,
   ToastHost,
   type CompatReport,
@@ -179,18 +181,47 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   // Input: keyboard and gamepad -> shaping -> the channel the Sim Worker drains each tick.
   const sink = openInputSink(inputs.sink);
   const keyboard = new KeyboardState();
+  const pads = new GamepadHub();
+  const profiles = builtinProfiles();
   const pump = new InputPump({
     sink,
     keyboard,
-    gamepad: new GamepadReader(),
+    pads,
     nowMs: monotonicMs,
     sharedNowMs,
     minIntervalMs: modes.inputChannel === 'shared' ? 8 : 33,
   });
+  // The profile follows the devices that are connected (a device plugged in or out re-binds).
+  let profileRevision = -1;
+  const followDevices = (): void => {
+    pads.poll();
+    if (pads.revision === profileRevision) return;
+    profileRevision = pads.revision;
+    const chosen = chooseProfile(profiles, pads.deviceNames());
+    if (chosen.id !== pump.profile.id) pump.setProfile(chosen);
+  };
+  followDevices();
+  const watchDevices = window.setInterval(followDevices, 250);
   // A performance run flies the scripted pilot; frames from the keyboard would fight it.
+  // The overlay's Ctrl+Shift+D chord is the page's, not a roll command.
   const detachInput = ctx.perf
     ? () => undefined
-    : attachInput({ window, document }, { keyboard, bindings: DEFAULT_BINDINGS.keyboard, pump });
+    : attachInput(
+        { window, document },
+        {
+          keyboard,
+          pump,
+          swallow: (e) =>
+            isOverlayChord({
+              code: e.code,
+              ctrlKey: e.ctrlKey === true,
+              shiftKey: e.shiftKey === true,
+              altKey: e.altKey === true,
+              metaKey: e.metaKey === true,
+              repeat: e.repeat,
+            }),
+        },
+      );
 
   // Audio waits for a gesture; the null backend only records that it was asked.
   const audio = new NullAudioBackend();
@@ -312,6 +343,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     removeHotkey();
     document.removeEventListener('visibilitychange', onVisibility);
     detachInput();
+    window.clearInterval(watchDevices);
     cancelAudio();
     overlay.destroy();
     sink.close();
