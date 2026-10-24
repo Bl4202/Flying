@@ -66,6 +66,51 @@ export function encodeInputFrame(frame: InputFrame, out: Uint8Array): void {
   dv.setFloat64(INPUT_FRAME.T_SENT_MS, frame.tSentMs, true);
 }
 
+/**
+ * Encodes frames into one fixed buffer without allocating. `encodeInputFrame` takes a `bigint`
+ * button mask and builds a `DataView` per call, which at the pump's 250 Hz is garbage the page
+ * never needs. Set the public fields, call `encode()`, hand `bytes` to the sink.
+ *
+ * Buttons are a plain number: the 32 low button bits. `BUTTON` uses 11 of them; a button 32 or
+ * above would need the bigint path.
+ */
+export class InputFrameWriter {
+  /** The encoded frame; rewritten by every `encode()`. */
+  readonly bytes = new Uint8Array(INPUT_FRAME.SIZE);
+  readonly axes = new Float32Array(INPUT_FRAME.AXIS_COUNT);
+  /**
+   * `[tMs, tSentMs]`. A Float64Array because V8 allocates for every store of a fractional number
+   * into an object field, and a frame is written every few milliseconds.
+   */
+  readonly times = new Float64Array(2);
+  seq = 0;
+  flags = 0;
+  /** The low 32 button bits. */
+  buttons = 0;
+  assistReq = 0;
+  spawnAck = 0;
+  spawnReq = 0;
+  readonly #dv = new DataView(this.bytes.buffer);
+
+  /** Writes the fields into `bytes` (unused bytes stay zero) and returns it. */
+  encode(): Uint8Array {
+    const dv = this.#dv;
+    dv.setUint32(INPUT_FRAME.SEQ, this.seq >>> 0, true);
+    dv.setUint32(INPUT_FRAME.FLAGS, this.flags >>> 0, true);
+    dv.setFloat64(INPUT_FRAME.T_MS, this.times[0] ?? 0, true);
+    for (let i = 0; i < INPUT_FRAME.AXIS_COUNT; i++) {
+      dv.setFloat32(INPUT_FRAME.AXES + 4 * i, this.axes[i] ?? 0, true);
+    }
+    dv.setUint32(INPUT_FRAME.BUTTONS, this.buttons >>> 0, true);
+    dv.setUint32(INPUT_FRAME.BUTTONS + 4, 0, true);
+    dv.setUint8(INPUT_FRAME.ASSIST_REQ, this.assistReq);
+    dv.setUint8(INPUT_FRAME.SPAWN_ACK, this.spawnAck);
+    dv.setUint8(INPUT_FRAME.SPAWN_REQ, this.spawnReq);
+    dv.setFloat64(INPUT_FRAME.T_SENT_MS, this.times[1] ?? 0, true);
+    return this.bytes;
+  }
+}
+
 export function decodeInputFrame(bytes: Uint8Array): InputFrame {
   if (bytes.byteLength < INPUT_FRAME.SIZE) {
     throw new RangeError(`need ${String(INPUT_FRAME.SIZE)} bytes, got ${String(bytes.byteLength)}`);
