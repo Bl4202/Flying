@@ -8,10 +8,12 @@
 //! aircraft on the runway: the spawn (a static-pose solve), the take-off roll, rotation, gear and
 //! flaps, the parking and toe brakes, every assist level in turn, and resets to the air and back.
 //!
-//! What this cannot reach through the ABI is a G-LOC (a 12 s sustained 9 g is beyond the
-//! aircraft's energy) and a touchdown: the control system's G-LOC path is in `fcs_no_alloc.rs`,
-//! the ground model's touchdown, hard landing and collapse are in `flight_no_alloc.rs`, and the
-//! virtual tester's circuit, which lands, is run here with the circuit script.
+//! Then the virtual tester's whole sortie under each assist level (take-off, circuit, landing and
+//! rollout): the touchdown, the bounce and the stop.
+//!
+//! A G-LOC is out of reach through the ABI (twelve seconds of sustained 9 g are beyond the
+//! aircraft's energy); the control system's G-LOC path is in `fcs_no_alloc.rs`, and the ground
+//! model's hard landing and collapse are in `flight_no_alloc.rs`.
 //!
 //! One test only: the ABI shares a process-wide global.
 #![allow(unsafe_code)]
@@ -192,6 +194,7 @@ fn the_tick_path_allocates_nothing_after_warm_up() {
     assert_eq!(read(counter::FDM_FAULTS), 0);
 
     runway_flight(&pack);
+    circuit_flight(&pack);
 }
 
 /// The counters of the profile block.
@@ -323,6 +326,50 @@ fn runway_flight(pack: &[u8]) {
         "each level was asked for"
     );
     assert_eq!(counters(counter::FDM_FAULTS), 0);
+}
+
+/// The virtual tester's whole sortie: take-off, circuit, landing and rollout, under each assist
+/// level. This is the touchdown, the bounce and the stop the other scripts cannot reach.
+fn circuit_flight(pack: &[u8]) {
+    for assist in [
+        assist_level::STANDARD,
+        assist_level::FULL,
+        assist_level::REDUCED,
+        assist_level::MANUAL,
+    ] {
+        assert_eq!(fg_init(0x1F1E_5EED, 0), 0);
+        let len = u32::try_from(pack.len()).unwrap();
+        assert_ne!(fg_content_reserve(len), 0);
+        with_content_buffer(|b| b.copy_from_slice(pack));
+        assert_eq!(fg_load_content(len), content_status::OK as u32);
+        assert_eq!(
+            fg_configure(
+                spawn_kind::RUNWAY as u32,
+                assist as u32,
+                g_effects::FULL as u32
+            ),
+            config_status::OK as u32
+        );
+        assert_eq!(fg_set_input_script(input_script::CIRCUIT as u32), 1);
+        assert_eq!(fg_start(), 1);
+        // The tester's first seconds are the warm-up; the rest, 230 s, is measured.
+        for _ in 0..300 {
+            assert_eq!(fg_step(1), 1);
+        }
+        let before = allocations();
+        for _ in 0..(230 * 60) {
+            assert_eq!(fg_step(1), 1);
+        }
+        assert_eq!(
+            allocations() - before,
+            0,
+            "the circuit under assist {assist} allocated"
+        );
+        assert!(counters(counter::TOUCHDOWNS) >= 1, "it landed");
+        assert_eq!(counters(counter::CRASHES), 0);
+        assert_eq!(counters(counter::FDM_FAULTS), 0);
+        assert_eq!(counters(counter::HARD_LANDINGS), 0);
+    }
 }
 
 /// `input_flag::MOUSE_AIM` as the frame's flag word.

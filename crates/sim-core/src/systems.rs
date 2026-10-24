@@ -26,11 +26,22 @@ impl System for Ingest {
         Stage::Ingest
     }
     fn run(&mut self, ctx: &mut TickCtx<'_>) {
-        // A scripted pilot has no throttle lever to synchronise: it acknowledges every spawn.
-        if let Ownship::Aircraft(slot) = &ctx.world.ownship {
-            ctx.world.input.set_script_spawn_ack(slot.spawn_seq);
+        let w = &mut *ctx.world;
+        let mut circuit = None;
+        if let Ownship::Aircraft(slot) = &w.ownship {
+            // A scripted pilot has no throttle lever to synchronise: it acknowledges every spawn.
+            w.input.set_script_spawn_ack(slot.spawn_seq);
+            if let (Some(model), Some(fcs_model), Some(tester)) = (
+                ctx.svc.aircraft.as_ref(),
+                ctx.svc.fcs.as_ref(),
+                w.input.circuit_mut(),
+            ) {
+                circuit = Some(crate::circuit::frame(
+                    tester, slot, model, fcs_model, ctx.svc, ctx.tick,
+                ));
+            }
         }
-        ctx.world.input.ingest(ctx.tick);
+        w.input.ingest_with(ctx.tick, circuit);
     }
 }
 

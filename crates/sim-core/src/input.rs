@@ -221,14 +221,41 @@ impl InputState {
         true
     }
 
+    /// The circuit tester, when that is the script.
+    #[must_use]
+    pub fn circuit(&self) -> Option<&fcs::tester::Tester> {
+        match self.script.as_ref() {
+            Some(Script::Circuit(t)) => Some(t),
+            _ => None,
+        }
+    }
+
+    /// The circuit tester, when that is the script. The core steps it with the aircraft's state
+    /// and hands the frame it wrote to [`Self::ingest_with`].
+    pub fn circuit_mut(&mut self) -> Option<&mut fcs::tester::Tester> {
+        match self.script.as_mut() {
+            Some(Script::Circuit(t)) => Some(t),
+            _ => None,
+        }
+    }
+
     /// Start of a tick's Ingest: forget last tick's press edges, run the script, then apply
     /// everything queued by the host, in order.
     pub fn ingest(&mut self, tick: u64) {
+        self.ingest_with(tick, None);
+    }
+
+    /// As [`Self::ingest`], with the frame the circuit tester wrote this tick (the tester needs
+    /// the aircraft, which the input state does not know, so the core makes the frame).
+    pub fn ingest_with(&mut self, tick: u64, circuit: Option<InputFrame>) {
         self.edges = 0;
         if let Some(script) = self.script.as_mut() {
             let frame = match script {
                 Script::Erratic(pilot) => pilot.next_frame(tick),
                 Script::Flight60 => flight60_frame(tick),
+                Script::Circuit(_) => circuit.unwrap_or_else(|| {
+                    InputFrame::neutral(u32::try_from((tick + 1) & 0xFFFF_FFFF).unwrap_or(0))
+                }),
             };
             // Exercise the real wire path: encode, then decode what a host would have sent.
             let mut wire = [0_u8; FRAME_BYTES];
@@ -401,6 +428,12 @@ impl InputState {
             }
             // A pure function of the tick: nothing to hash but which script it is.
             Some(Script::Flight60) => h.write_u64(2),
+            Some(Script::Circuit(t)) => {
+                h.write_u64(3);
+                for w in t.words() {
+                    h.write_u64(w);
+                }
+            }
             None => h.write_u64(0),
         }
     }
@@ -413,6 +446,9 @@ pub enum Script {
     Erratic(ErraticPilot),
     /// The 60 s scripted flight of `AC-11.7`, [`flight60_frame`].
     Flight60,
+    /// The virtual tester (ADR-33): take-off, a circuit and a landing. Its frames are made by the
+    /// core from the aircraft's state ([`InputState::circuit_mut`]).
+    Circuit(Box<fcs::tester::Tester>),
 }
 
 /// Length of the Flight60 script, ticks (60 s).

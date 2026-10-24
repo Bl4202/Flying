@@ -89,7 +89,8 @@ jobs:
       - run: cargo xtask determinism --ticks 1000000 --skip-wasm
 
   # ADR-31: the Performance Conformance Test flies the Kestrel's envelope (release build; the
-  # flying itself takes about a second). The report and the 10 Hz traces are kept either way.
+  # flying itself takes about a second). ADR-33: the virtual tester then flies take-off, circuit
+  # and landing under every assist level. Both reports and the 10 Hz traces are kept either way.
   conformance:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -99,11 +100,14 @@ jobs:
         with:
           node: 'false'
       - run: cargo xtask conformance
+      - run: cargo xtask circuit
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: conformance-report
-          path: target/conformance
+          path: |
+            target/conformance
+            target/circuit
           if-no-files-found: warn
           retention-days: 14
 

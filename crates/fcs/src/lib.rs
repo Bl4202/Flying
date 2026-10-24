@@ -31,6 +31,7 @@ pub mod reduced;
 pub mod sense;
 pub mod standard;
 pub mod state;
+pub mod tester;
 
 use flight::actuators::Surfaces;
 use flight::aircraft::{AircraftModel, AircraftState, Commands};

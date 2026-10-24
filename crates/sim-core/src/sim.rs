@@ -94,6 +94,7 @@ pub struct SimCore {
     schedule: Schedule,
     svc: Services,
     session: SessionConfig,
+    spawn_fuel: f64,
     profiler: Option<Profiler>,
     profile_block: [u8; profile::SIZE],
     terrain: Option<Box<[u8]>>,
@@ -142,6 +143,7 @@ impl SimCore {
             schedule: default_schedule(),
             svc,
             session: SessionConfig::default(),
+            spawn_fuel: crate::ownship::DEFAULT_SPAWN_FUEL,
             profiler: None,
             profile_block: [0; profile::SIZE],
             terrain: None,
@@ -204,6 +206,17 @@ impl SimCore {
         self.session
     }
 
+    /// Sets the fuel the aircraft spawns with, as a fraction of its capacity (default 60 %), for
+    /// flights at other masses (ADR-33's robustness runs). Only an idle core accepts it, and only
+    /// a fraction from 0 to 1. It is a tool's knob, not part of the ABI.
+    pub fn set_spawn_fuel(&mut self, fraction: f64) -> bool {
+        if self.state != CoreState::Idle || !(0.0..=1.0).contains(&fraction) {
+            return false;
+        }
+        self.spawn_fuel = fraction;
+        true
+    }
+
     /// The aircraft, for tests that put it in a state no input can reach.
     #[cfg(test)]
     pub(crate) fn slot_mut(&mut self) -> &mut AircraftSlot {
@@ -236,6 +249,7 @@ impl SimCore {
                 model.state(parked, 0.0, EngineCommand::IDLE),
                 self.session,
             ));
+            slot.spawn_fuel = self.spawn_fuel;
             if !spawn(model, &self.svc, self.session.spawn, &mut slot) {
                 self.world.counters.trim_failures =
                     self.world.counters.trim_failures.wrapping_add(1);
@@ -317,6 +331,9 @@ impl SimCore {
                 self.rng.stream("input/erratic"),
             ))),
             input_script::FLIGHT60 => Some(Script::Flight60),
+            input_script::CIRCUIT => Some(Script::Circuit(Box::new(fcs::tester::Tester::new(
+                crate::circuit::runway(&*self.svc.geo),
+            )))),
             _ => return false,
         };
         self.world.input.set_script(script);
@@ -368,6 +385,12 @@ impl SimCore {
     #[must_use]
     pub fn observer(&self) -> Option<&Observer> {
         self.world.ownship.spectator()
+    }
+
+    /// Where the circuit tester is in its sortie, when it is flying one.
+    #[must_use]
+    pub fn circuit_tester(&self) -> Option<&fcs::tester::Tester> {
+        self.world.input.circuit()
     }
 
     /// Read access to the input state.
@@ -1072,8 +1095,7 @@ mod tests {
         let mut c = SimCore::new(1);
         assert!(!c.set_input_script(99));
         assert!(c.set_input_script(input_script::NONE as u32));
-        // The circuit tester has a code but no implementation until the virtual tester lands.
-        assert!(!c.set_input_script(input_script::CIRCUIT as u32));
+        assert!(c.set_input_script(input_script::CIRCUIT as u32));
     }
 
     #[test]

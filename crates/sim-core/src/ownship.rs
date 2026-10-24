@@ -22,6 +22,8 @@ pub const GEAR_WARNING_AGL_M: f64 = 150.0;
 pub const GEAR_WARNING_CAS_MPS: f64 = 100.0;
 /// ... with the throttle lever below this, and the gear up.
 pub const GEAR_WARNING_THROTTLE: f64 = 0.5;
+/// The fuel the aircraft spawns with, as a fraction of its capacity (60 %).
+pub const DEFAULT_SPAWN_FUEL: f64 = 0.6;
 /// The red-out flag is set from this red-out stress. // ALGO: where the tint shows (physio.rs)
 pub const REDOUT_FLAG_AT: f64 = 0.5;
 
@@ -70,6 +72,8 @@ pub struct AircraftSlot {
     pub aim: Option<[f64; 2]>,
     /// What the ground did in this tick's dynamics, for the contact stage. Empty between ticks.
     pub events: GroundEvents,
+    /// The fuel the aircraft spawns with, as a fraction of its capacity.
+    pub spawn_fuel: f64,
 }
 
 impl AircraftSlot {
@@ -99,6 +103,7 @@ impl AircraftSlot {
             throttle: 0.0,
             aim: None,
             events: GroundEvents::NONE,
+            spawn_fuel: DEFAULT_SPAWN_FUEL,
         }
     }
 }
@@ -244,7 +249,7 @@ fn hash_pilot(a: &AircraftSlot, h: &mut StateHasher) {
             | u64::from(a.aim.is_some()) << 29,
     );
     h.write_f64s(&a.brake_cmd);
-    h.write_f64s(&[a.throttle_hold.unwrap_or(0.0), a.throttle]);
+    h.write_f64s(&[a.throttle_hold.unwrap_or(0.0), a.throttle, a.spawn_fuel]);
     h.write_f64s(&a.aim.unwrap_or([0.0; 2]));
     h.write_u64(a.session.hash_word());
 }
