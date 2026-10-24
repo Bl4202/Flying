@@ -207,3 +207,47 @@ alpha and n limits) are unchanged; two things the wording left open or got wrong
   this record, neither is gated. Full assist (informational) reaches the aim without hunting but
   slowly, because its flight-path rate is limited to 10 deg/s: 0 of 500 meet the time.
 - **GDD 0.2.2** carries the same clarification.
+
+## Amendment 2: the circuit as flown, and what its criteria mean (2026-10-24)
+
+Written when the virtual tester (`fcs::tester`) first flew the circuit. No threshold changes: C1
+to C9 are as in section 1. This records the choices the wording left open, so that the gate cannot
+drift with the tester.
+
+- **The circuit.** A left-hand rectangle on the test airfield (ADR-35): climb-out on the runway
+  heading to 4 200 m, crosswind 3 800 m to the west, downwind to 3 900 m before the threshold,
+  base back to the extended centreline, final on the 3 degree path to an aim point 300 m past the
+  threshold. The plan said "left 90 degrees at 30 degrees of bank"; at 130 m/s that turn has a
+  radius of 3 km, which does not fit inside the 4 km plain round the runway (ADR-35), so the turns
+  are flown at 45 degrees (crosswind, downwind), 40 degrees (base) and 35 degrees (final). Corners
+  are flown by, the next leg starting a turn radius before the corner.
+- **How each criterion is measured**, always from the published snapshot and never from the
+  tester's own state (`sim_core::circuit::report`): **C1** the roll runs from the first tick the
+  parking brake is off to the first tick the main wheels lose weight, and the speed is calibrated
+  airspeed over the take-off stall speed `V_s,TO` at the mass at that moment (`C_L,max` of the
+  table at Mach 0 plus the take-off flap increment, as in ADR-32). **C2** looks from brake release
+  to 10 s after lift-off and over the final approach and flare. **C3** is the gear lever up within
+  20 s of lift-off and the gear position reaching 0. **C4** is the longest unbroken stretch of the
+  downwind phase inside both bands (calibrated airspeed). **C5** reads the first tick of the final
+  at or below 50 m wheel height. **C6** is the first touchdown of the landing: the sink rate the
+  core measured at first contact, the distance past the threshold, and both main wheels inside the
+  runway edges (the centreline offset plus the 1.45 m half-track at most 22.5 m). **C7** is the
+  largest offset from touchdown to the stop, and a stop (ground speed below 2 m/s on the wheels)
+  inside the runway. **C8** is the crash, G-LOC, numerical-fault and overstress flags. **C9** is
+  the time of the stop. A bounce after the first touchdown is allowed and reported (it counts as a
+  second touchdown in the profile counters; it is not a hard landing).
+- **Rotation.** The elevator cannot raise the nose below about 64 m/s (the mains are 0.62 m behind
+  the centre of gravity, ADR-32), so a gentle rotation from `1.1 V_s,TO` lifts off at about
+  `1.6 V_s,TO` and fails C1. The tester pulls full aft stick from `1.1 V_s,TO` until the nose is
+  6 degrees up and then holds 10 degrees; at the default mass it lifts off at 1.35 `V_s,TO`
+  (75 m/s against the allowed 77.8), a margin of 3.5 %. The margin is the airframe's, not the tester's.
+- **Robustness loads.** The Kestrel carries 3 100 kg of fuel over an 8 400 kg airframe, so "8 500
+  to 12 500 kg" is 8 500 to 11 500 kg here; heavier needs external stores, which v0.1b does not
+  have, and an empty tank is a flameout. The informational runs are 10 %, 30 % and full fuel
+  (8 710, 9 330 and 11 500 kg), flown by `fg circuit --robustness`. All four assist levels pass
+  at 9 330 and 11 500 kg. At 8 710 kg all four fail **C1's speed ratio only** (lift-off at 1.404
+  `V_s,TO` against 1.4): the lighter the aircraft, the lower its stall speed and the same speed at which the
+  elevator can lift the nose. Recorded, not gated, as this section said it would be.
+- **Results at the gate load (10 260 kg)**, all four assist levels, `cargo xtask circuit`: every
+  criterion passes; the sortie takes about 217 s; the touchdown sink is 1.1 to 2.3 m/s, 297 to 404
+  m past the threshold; the offset on final at 50 m is below 1.4 m; the roll to lift-off is 251 m.

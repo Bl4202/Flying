@@ -8,6 +8,7 @@
 //! * no hash-ordered collections and no fast-math.
 #![deny(missing_docs)]
 
+pub mod circuit;
 pub mod frame_math;
 #[cfg(test)]
 mod ground_tests;

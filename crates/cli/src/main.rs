@@ -2,13 +2,15 @@
 //!
 //! ```text
 //! fg version
-//! fg hash  [--seed HEX] [--script none|erratic|flight60] [--content PATH]
+//! fg hash  [--seed HEX] [--script none|erratic|flight60|circuit] [--content PATH]
 //!          [--spawn runway|air] [--assist full|standard|reduced|manual] [--g off|reduced|full]
 //!          (--ticks N | --at T1,T2,... | --every N --ticks N)
-//! fg bench [--seed HEX] [--script none|erratic|flight60] [--content PATH] [--ticks N] [--json]
+//! fg bench [--seed HEX] [--script none|erratic|flight60|circuit] [--content PATH] [--ticks N] [--json]
 //! fg bench --aircraft N --content PATH [--ticks N] [--json]
 //! fg conformance --content PATH [--aircraft-index N] [--json PATH] [--traces DIR]
 //!                [--only ID,...] [--expect-deferred ID,...]
+//! fg circuit --content PATH [--assist all|full|standard|reduced|manual] [--json PATH]
+//!            [--traces DIR] [--robustness] [--seed HEX]
 //! ```
 //!
 //! `fg hash` prints one JSON object per requested tick with the combined and per-subsystem state
@@ -16,8 +18,10 @@
 //! builds (ADR-10). `fg bench` times the tick; its wall-clock numbers are observations about the
 //! machine and never feed state; with `--aircraft N` it times N copies of the spawned aircraft
 //! through the flight model alone, the T0 cost per aircraft-tick (GDD 60.2, PS-9). `fg conformance` runs the Performance Conformance Test
-//! (ADR-31) and exits 1 when its gate fails.
+//! (ADR-31) and exits 1 when its gate fails. `fg circuit` flies the virtual tester's take-off,
+//! circuit and landing under each assist level (ADR-33) and exits 1 when a gate run fails.
 
+mod circuit;
 mod conformance;
 
 use std::io::Write;
@@ -29,13 +33,15 @@ use sim_core::{Assist, DEFAULT_SEED, GEffects, SessionConfig, SimCore, Spawn};
 
 const USAGE: &str = "usage:
   fg version
-  fg hash  [--seed HEX] [--script none|erratic|flight60] [--content PATH]
+  fg hash  [--seed HEX] [--script none|erratic|flight60|circuit] [--content PATH]
            [--spawn runway|air] [--assist full|standard|reduced|manual] [--g off|reduced|full]
            (--ticks N | --at T1,T2,... | --every N --ticks N)
-  fg bench [--seed HEX] [--script none|erratic|flight60] [--content PATH] [--ticks N] [--json]
+  fg bench [--seed HEX] [--script none|erratic|flight60|circuit] [--content PATH] [--ticks N] [--json]
   fg bench --aircraft N --content PATH [--ticks N] [--json]
   fg conformance --content PATH [--aircraft-index N] [--json PATH] [--traces DIR]
-                 [--only ID,...] [--expect-deferred ID,...]";
+                 [--only ID,...] [--expect-deferred ID,...]
+  fg circuit --content PATH [--assist all|full|standard|reduced|manual] [--json PATH]
+             [--traces DIR] [--robustness] [--seed HEX]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -57,6 +63,18 @@ fn main() -> ExitCode {
                 option_env!("GIT_SHA").unwrap_or("unknown")
             );
             match conformance::run(&args[1..], &build) {
+                Ok(true) => Ok(()),
+                Ok(false) => return ExitCode::from(1),
+                Err(e) => Err(e),
+            }
+        }
+        Some("circuit") => {
+            let build = format!(
+                "fg {} {}",
+                env!("CARGO_PKG_VERSION"),
+                option_env!("GIT_SHA").unwrap_or("unknown")
+            );
+            match circuit::run(&args[1..], &build) {
                 Ok(true) => Ok(()),
                 Ok(false) => return ExitCode::from(1),
                 Err(e) => Err(e),
@@ -168,9 +186,10 @@ fn parse(args: &[String], switches: &[&str]) -> Result<Parsed, String> {
                     "none" => input_script::NONE as u32,
                     "erratic" => input_script::ERRATIC as u32,
                     "flight60" => input_script::FLIGHT60 as u32,
+                    "circuit" => input_script::CIRCUIT as u32,
                     other => {
                         return Err(format!(
-                            "unknown --script {other:?} (none, erratic or flight60)"
+                            "unknown --script {other:?} (none, erratic, flight60 or circuit)"
                         ));
                     }
                 };
@@ -289,6 +308,7 @@ fn run_bench(args: &[String]) -> Result<(), String> {
     let script = match setup.script as usize {
         input_script::NONE => "none",
         input_script::ERRATIC => "erratic",
+        input_script::CIRCUIT => "circuit",
         _ => "flight60",
     };
     if json {

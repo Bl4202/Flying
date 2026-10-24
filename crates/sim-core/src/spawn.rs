@@ -30,8 +30,6 @@ pub struct SpawnTuning {
     pub heading_rad: f64,
     /// True airspeed, m/s.
     pub tas_mps: f64,
-    /// Fuel as a fraction of capacity.
-    pub fuel_fraction: f64,
     /// Angle of attack if the trim fails, rad.
     pub fallback_alpha_rad: f64,
     /// Throttle `tau` if the trim fails.
@@ -39,13 +37,12 @@ pub struct SpawnTuning {
 }
 
 /// The air spawn: 6 km south of the patch centre (the runway threshold), 2 000 m above the
-/// ground there, heading north at 200 m/s with 60 % fuel, gear and flaps up.
+/// ground there, heading north at 200 m/s, gear and flaps up (the fuel is the slot's).
 pub const AIR_SPAWN: SpawnTuning = SpawnTuning {
     south_m: airfield::THRESHOLD_SOUTH_M as f64,
     agl_m: 2_000.0,
     heading_rad: 0.0,
     tas_mps: 200.0,
-    fuel_fraction: 0.6,
     fallback_alpha_rad: 2.0 * core::f64::consts::PI / 180.0,
     fallback_throttle: 0.6,
 };
@@ -57,18 +54,15 @@ pub struct RunwayTuning {
     pub along_m: f64,
     /// Heading, rad: the runway's (000).
     pub heading_rad: f64,
-    /// Fuel as a fraction of capacity.
-    pub fuel_fraction: f64,
     /// Flap lever: 1 is the take-off detent.
     pub flap_detent: u8,
 }
 
 /// The runway spawn (GDD 48.2 "runway hot"): 150 m past the threshold on the centreline, nose
-/// north, 60 % fuel, engine at idle, parking brake on, gear down, take-off flaps.
+/// north, engine at idle, parking brake on, gear down, take-off flaps (the fuel is the slot's).
 pub const RUNWAY_SPAWN: RunwayTuning = RunwayTuning {
     along_m: 150.0,
     heading_rad: 0.0,
-    fuel_fraction: 0.6,
     flap_detent: 1,
 };
 
@@ -139,7 +133,7 @@ fn spawn_runway(
     let env = svc.flight_env();
     let (x, y) = (0.0, -(airfield::THRESHOLD_SOUTH_M as f64) + t.along_m);
     let ground = DVec3::new(x, y, svc.geo.ground_z_bf(x, y));
-    let fuel_kg = t.fuel_fraction * model.mass.capacity_kg();
+    let fuel_kg = slot.spawn_fuel * model.mass.capacity_kg();
     let Some((mut state, pose)) = model.static_state(
         fuel_kg,
         0.0,
@@ -183,7 +177,7 @@ pub fn spawn_trimmed(
     let ref_bf = DVec3::new(x, y, svc.geo.ground_z_bf(x, y) + tuning.agl_m);
     let fuel = model
         .mass
-        .load_for(tuning.fuel_fraction * model.mass.capacity_kg());
+        .load_for(slot.spawn_fuel * model.mass.capacity_kg());
     let level = attitude(
         svc.geo.up_bf(ref_bf),
         Euler {
