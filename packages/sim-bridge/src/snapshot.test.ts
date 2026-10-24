@@ -83,7 +83,7 @@ describe('SnapshotReader against the Rust reference snapshot', () => {
     expect(r.inputTimeMs()).toBe(d.input_t_ms);
   });
 
-  it('reads the ownship (the aircraft, in this vector)', () => {
+  it('reads the ownship (the aircraft rolling on the runway, in this vector)', () => {
     const r = new SnapshotReader(bytes());
     const o = d.ownship;
     const pos = new Float64Array(3);
@@ -130,7 +130,7 @@ describe('SnapshotReader against the Rust reference snapshot', () => {
       o.ab_stage,
       o.flags,
     ]);
-    expect(o.tas, 'the aircraft is flying').toBeGreaterThan(50);
+    expect(o.tas, 'the aircraft is rolling').toBeGreaterThan(5);
   });
 
   it('reads the v3 block: flight control, gear, wheels, g and aim', () => {
@@ -183,9 +183,24 @@ describe('SnapshotReader against the Rust reference snapshot', () => {
       o.crash_cause,
       o.gear_bits,
     ]);
-    // Until the flight control system lands the aircraft is flown directly.
-    expect(o.assist).toBe(4);
-    expect(o.agl, 'the aircraft is above the ground').toBeGreaterThan(100);
+    // The vector is a roll on the runway under Standard assist with the pilot working the
+    // pedals, the toe brakes, the flaps and the mouse, so that no field of the block is a zero a
+    // misplaced reader would also read.
+    expect(o.assist).toBe(2);
+    expect(o.fcs_mode, 'the ground law').toBe(1);
+    expect(o.flags2 & 1, 'weight on wheels').toBe(1);
+    expect(o.flags2 & 0x4000, 'mouse-aim in use').not.toBe(0);
+    expect(o.spawn_seq).toBe(1);
+    expect(o.flap_detent).toBe(2);
+    expect(o.gear_pos).toBe(1);
+    expect(o.tef).toBeGreaterThan(0);
+    expect(o.brake[0]).not.toBe(o.brake[1]);
+    expect(Math.abs(o.steer)).toBeGreaterThan(0.1);
+    expect(o.ground_speed).toBeGreaterThan(5);
+    expect(o.g_lagged).toBeGreaterThan(0.5);
+    expect(o.aim[0]).not.toBe(0);
+    expect(o.aim[1]).not.toBe(0);
+    expect(o.gear_bits & 0xc0, 'lever down, all down and locked').toBe(0xc0);
   });
 
   it('reads bodies (the vector lists the first three and the last)', () => {

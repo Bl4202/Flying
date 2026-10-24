@@ -2,6 +2,7 @@
 //! implementation (GDD 61.5); the defaults are the simple, real first implementations.
 
 use content::Registry;
+use fcs::FcsModel;
 use flight::aircraft::AircraftModel;
 use flight::atmosphere::NonStandardDay;
 use flight::env::FlightEnv;
@@ -29,6 +30,9 @@ pub struct Services {
     /// entry with the lowest handle (no ids in code, `AC-12.4`). `None` without aircraft content,
     /// and then the player is a spectator.
     pub aircraft: Option<AircraftModel>,
+    /// The control laws of that aircraft, built from the gains its entry refers to (ADR-34).
+    /// `Some` exactly when `aircraft` is.
+    pub fcs: Option<FcsModel>,
 }
 
 impl Services {
@@ -43,6 +47,7 @@ impl Services {
             strategic: Box::new(NoStrategicContext),
             registry: Registry::empty(),
             aircraft: None,
+            fcs: None,
         }
     }
 
@@ -98,8 +103,7 @@ impl FlightEnv for ServicesEnv<'_> {
             height_msl_m: self.geo.ground_height_msl_m(pos_bf),
             normal_bf: self.geo.terrain_normal(g.lat_rad, g.lon_rad),
             kind: surface_kind(self.geo.surface_class(g.lat_rad, g.lon_rad)),
-            // Dry until the weather seam carries runway wetness (ADR-35).
-            wetness: 0.0,
+            wetness: self.weather.runway_wetness().clamp(0.0, 1.0),
         }
     }
 
@@ -118,7 +122,7 @@ fn surface_kind(class: SurfaceClass) -> SurfaceKind {
         SurfaceClass::Water => SurfaceKind::Water,
         SurfaceClass::Land => SurfaceKind::Grass,
         SurfaceClass::Ice => SurfaceKind::Snow,
-        SurfaceClass::Urban => SurfaceKind::Paved,
+        SurfaceClass::Urban | SurfaceClass::Paved => SurfaceKind::Paved,
     }
 }
 
@@ -176,5 +180,6 @@ mod tests {
         assert_eq!(surface_kind(SurfaceClass::Land), SurfaceKind::Grass);
         assert_eq!(surface_kind(SurfaceClass::Ice), SurfaceKind::Snow);
         assert_eq!(surface_kind(SurfaceClass::Urban), SurfaceKind::Paved);
+        assert_eq!(surface_kind(SurfaceClass::Paved), SurfaceKind::Paved);
     }
 }

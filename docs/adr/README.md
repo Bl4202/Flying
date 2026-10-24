@@ -40,6 +40,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-33](0033-v0-1b-gates.md) | v0.1b gates: circuit, FCS handling, departure, mouse-aim and latency | Accepted |
 | [ADR-34](0034-flight-control-system.md) | The flight control system: assist levels, limiters, ground mode, mouse-aim | Proposed |
 | [ADR-35](0035-ground-model-and-test-airfield.md) | Ground model, touchdown criteria and the test airfield | Proposed |
+| [ADR-36](0036-session-config-abi-v3-input-snapshot.md) | Session config, ABI v3, input frame v3, snapshot v3 and the throttle hand-over | Proposed |
 | [ADR-38](0038-g-physiology-departure-and-structure.md) | G-physiology, departure diagnostics, structural limits and the onboard control model | Proposed |
 
 ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist before any tuning
@@ -48,4 +49,4 @@ ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist befor
 ADR-32 and ADR-33 were written first in v0.1b, before any gear or FCS code, for the same reason
 (AC-66.4). ADR-34 to ADR-38 (FCS, ground model and test airfield, session config / ABI v3 / input
 v3 / snapshot v3, controls stack, G-physiology and departure) are added with their work packages
-(ADR-34, 35 and 38 so far).
+(ADR-34, 35, 36 and 38 so far).

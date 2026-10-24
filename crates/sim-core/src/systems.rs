@@ -2,15 +2,16 @@
 //! they are still timed, at zero.
 
 use flight::aircraft::AircraftModel;
-use flight::controls::PilotControls;
+use flight::gear::{CrashCause, GroundEvents};
 
-use crate::input::InputState;
-use crate::layout::{axis, button, core_state};
-use crate::ownship::{AircraftSlot, CRASH_HEIGHT_M, Ownship, OwnshipView, RESPAWN_TICKS};
+use crate::layout::{button, core_state, crash_cause, spawn_request};
+use crate::ownship::{AircraftSlot, Ownship, OwnshipView, RESPAWN_TICKS};
+use crate::pilot;
 use crate::schedule::{Schedule, Stage, System, TickCtx};
 use crate::services::Services;
+use crate::session::Spawn;
 use crate::snapshot::SnapshotSource;
-use crate::spawn::{SPAWN, spawn_trimmed};
+use crate::spawn::spawn;
 use crate::time::sim_time;
 use crate::world::{Counters, World};
 
@@ -25,42 +26,39 @@ impl System for Ingest {
         Stage::Ingest
     }
     fn run(&mut self, ctx: &mut TickCtx<'_>) {
+        // A scripted pilot has no throttle lever to synchronise: it acknowledges every spawn.
+        if let Ownship::Aircraft(slot) = &ctx.world.ownship {
+            ctx.world.input.set_script_spawn_ack(slot.spawn_seq);
+        }
         ctx.world.input.ingest(ctx.tick);
     }
 }
 
-/// The pilot's controls from the validated input (no flap or airbrake controls yet).
-fn pilot_controls(input: &InputState) -> PilotControls {
-    PilotControls {
-        pitch: input.axis(axis::PITCH),
-        roll: input.axis(axis::ROLL),
-        yaw: input.axis(axis::YAW),
-        throttle: input.throttle_cmd(),
-        trim_nose_up: input.held(button::TRIM_NOSE_UP),
-        trim_nose_down: input.held(button::TRIM_NOSE_DOWN),
-        flaps: 0.0,
-        airbrake: 0.0,
-        gear: 0.0,
-        brake_l: input.axis(axis::BRAKE_L),
-        brake_r: input.axis(axis::BRAKE_R),
-    }
-}
-
-/// Respawns the aircraft in place, counting it.
+/// Respawns the aircraft in place at `kind`, counting it.
 pub(crate) fn respawn(
     model: &AircraftModel,
     svc: &Services,
+    kind: Spawn,
     slot: &mut AircraftSlot,
     counters: &mut Counters,
 ) {
-    if !spawn_trimmed(model, svc, &SPAWN, slot) {
+    if !spawn(model, svc, kind, slot) {
         counters.trim_failures = counters.trim_failures.wrapping_add(1);
     }
     counters.respawns = counters.respawns.wrapping_add(1);
 }
 
-/// Stage 5: the ownship flies. The aircraft: input, the Manual law, then the flight model's tick
-/// (two RK4 sub-steps); the spectator: its kinematic step.
+/// Where the RESET press respawns: the frame's request, or else the session's spawn.
+fn spawn_for_reset(request: u8, session: Spawn) -> Spawn {
+    match usize::from(request) {
+        spawn_request::RUNWAY => Spawn::Runway,
+        spawn_request::AIR => Spawn::Air,
+        _ => session,
+    }
+}
+
+/// Stage 5: the ownship flies. The aircraft: levers, controls, the flight control system, then
+/// the flight model's tick (two RK4 sub-steps); the spectator: its kinematic step.
 struct OwnshipDynamics;
 
 impl System for OwnshipDynamics {
@@ -79,18 +77,19 @@ impl System for OwnshipDynamics {
                 o.integrate(&w.input, &*svc.weather, &*svc.geo, t, ctx.dt);
             }
             Ownship::Aircraft(slot) => {
-                let Some(model) = svc.aircraft.as_ref() else {
+                let (Some(model), Some(fcs_model)) = (svc.aircraft.as_ref(), svc.fcs.as_ref())
+                else {
                     return;
                 };
                 if w.input.pressed(button::RESET) {
-                    respawn(model, svc, slot, &mut w.counters);
+                    let kind = spawn_for_reset(w.input.spawn_req(), slot.session.spawn);
+                    respawn(model, svc, kind, slot, &mut w.counters);
                 }
+                slot.events = GroundEvents::NONE;
                 if slot.crashed || slot.state.numerical_fault {
                     return;
                 }
-                let cmd = model.manual_commands(&mut slot.state, &pilot_controls(&w.input));
-                let out = model.step_tick(&mut slot.state, &cmd, &svc.flight_env(), t);
-                w.counters.fdm_faults = w.counters.fdm_faults.wrapping_add(out.faults);
+                pilot::fly(slot, model, fcs_model, svc, &w.input, &mut w.counters, t);
             }
         }
     }
@@ -111,9 +110,18 @@ impl System for ProbeDynamics {
     }
 }
 
-/// Stage 8: the aircraft against the terrain (no gear yet, so contact is a crash) and the
+/// Stage 8: what the ground did to the aircraft (touchdowns, hard landings, destruction) and the
 /// respawn countdown; the spectator's ground, boundary and sanity clamps.
 struct TerrainContact;
+
+/// An airframe with no gear and no contact points meets the ground when its reference point does.
+fn gearless_impact(model: &AircraftModel, svc: &Services, slot: &AircraftSlot) -> bool {
+    if !model.gear.is_empty() {
+        return false;
+    }
+    let r = model.ref_point_bf(&slot.state);
+    r.z < svc.geo.ground_z_bf(r.x, r.y)
+}
 
 impl System for TerrainContact {
     fn name(&self) -> &'static str {
@@ -132,11 +140,19 @@ impl System for TerrainContact {
                     return;
                 };
                 if !(slot.crashed || slot.state.numerical_fault) {
-                    let r = model.ref_point_bf(&slot.state);
-                    if r.z < svc.geo.ground_z_bf(r.x, r.y) + CRASH_HEIGHT_M {
+                    let ev = core::mem::replace(&mut slot.events, GroundEvents::NONE);
+                    let c = &mut w.counters;
+                    c.touchdowns = c.touchdowns.wrapping_add(ev.touchdowns);
+                    c.hard_landings = c.hard_landings.wrapping_add(ev.hard_landings);
+                    let cause = ev.destroyed.map(CrashCause::code).or_else(|| {
+                        gearless_impact(model, svc, slot)
+                            .then_some(crash_cause::AIRFRAME_IMPACT as u8)
+                    });
+                    if let Some(code) = cause {
                         slot.crashed = true;
+                        slot.crash_cause = code;
                         slot.respawn_ticks = RESPAWN_TICKS;
-                        w.counters.crashes = w.counters.crashes.wrapping_add(1);
+                        c.crashes = c.crashes.wrapping_add(1);
                     }
                     return;
                 }
@@ -146,7 +162,8 @@ impl System for TerrainContact {
                 }
                 slot.respawn_ticks -= 1;
                 if slot.respawn_ticks == 0 {
-                    respawn(model, svc, slot, &mut w.counters);
+                    let kind = slot.session.spawn;
+                    respawn(model, svc, kind, slot, &mut w.counters);
                 }
             }
         }
@@ -177,7 +194,7 @@ pub(crate) fn publish(world: &mut World, svc: &Services, ticks_done: u64, core_s
 /// Writes the snapshot for the state after `ticks_done` completed ticks. Used on its own for
 /// lifecycle changes, which are not part of the replay.
 pub(crate) fn write_snapshot(world: &mut World, svc: &Services, ticks_done: u64, core_state: u32) {
-    let ownship = OwnshipView::of(&world.ownship, svc, &world.input, sim_time(ticks_done));
+    let ownship = OwnshipView::of(&world.ownship, svc, sim_time(ticks_done));
     world.snapshot.write(&SnapshotSource {
         tick: ticks_done,
         core_state,

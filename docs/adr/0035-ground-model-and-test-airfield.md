@@ -99,9 +99,9 @@ The sideways peak equals the braking value (`// ALGO:`), so a wet runway corners
 `SphereSea::open()` has no ground (the airborne conformance points fly there so they measure the
 aircraft and not the ground, ADR-31). `FlatSea` is water. In `sim-core`, `ServicesEnv` maps the
 world's `SurfaceClass` to a kind: Paved to Paved, Land to Grass, Ice to Snow, Water to Water,
-Urban to Paved. Wetness is 0 until the weather seam carries runway wetness.
+Urban to Paved. Wetness comes from the weather seam's `runway_wetness()` (0, dry, by default).
 
-### The test airfield (`sim-core`; built in WP7)
+### The test airfield (`sim-core`, `seams/geo.rs`)
 
 - `ProceduralGeo` gains a **basin** and a **runway pad**. The runway is 3 000 m by 45 m, heading
   000, centre at BF (0, -4 500) m, threshold at (0, -6 000), elevation 40 m MSL.

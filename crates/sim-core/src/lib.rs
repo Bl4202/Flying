@@ -9,11 +9,14 @@
 #![deny(missing_docs)]
 
 pub mod frame_math;
+#[cfg(test)]
+mod ground_tests;
 pub mod hash;
 pub mod input;
 pub mod layout;
 pub mod observer;
 pub mod ownship;
+mod pilot;
 pub mod probe;
 pub mod profile;
 pub mod rng;
@@ -26,6 +29,8 @@ pub mod snapshot;
 pub mod spawn;
 mod systems;
 pub mod terrain;
+#[cfg(test)]
+mod test_support;
 pub mod time;
 pub mod world;
 

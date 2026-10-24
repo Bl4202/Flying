@@ -166,6 +166,8 @@ pub struct InputState {
     /// `t_ms` of the last applied frame, for latency measurement. Never hashed.
     last_applied_t_ms: f64,
     script: Option<Script>,
+    /// The spawn counter a scripted pilot acknowledges: it has no lever to hand over.
+    script_spawn_ack: u8,
 }
 
 impl Default for InputState {
@@ -193,12 +195,19 @@ impl InputState {
             pending_len: 0,
             last_applied_t_ms: 0.0,
             script: None,
+            script_spawn_ack: 0,
         }
     }
 
     /// Installs (or removes) the scripted pilot that stands in for a person.
     pub fn set_script(&mut self, script: Option<Script>) {
         self.script = script;
+    }
+
+    /// Sets the spawn counter that scripted frames acknowledge. A script has no throttle lever to
+    /// synchronise with the snapshot, so the core acknowledges each spawn on its behalf (ADR-36).
+    pub fn set_script_spawn_ack(&mut self, seq: u8) {
+        self.script_spawn_ack = seq;
     }
 
     /// Queues a frame for the next tick. Returns false if the queue is full.
@@ -224,7 +233,8 @@ impl InputState {
             // Exercise the real wire path: encode, then decode what a host would have sent.
             let mut wire = [0_u8; FRAME_BYTES];
             frame.encode(&mut wire);
-            if let Some(decoded) = InputFrame::decode(&wire) {
+            if let Some(mut decoded) = InputFrame::decode(&wire) {
+                decoded.spawn_ack = self.script_spawn_ack;
                 self.push(decoded);
             }
         }
@@ -523,6 +533,23 @@ mod tests {
 
     fn frame(seq: u32) -> InputFrame {
         InputFrame::neutral(seq)
+    }
+
+    #[test]
+    fn the_erratic_script_still_sends_the_frames_it_sent_in_v0_1a() {
+        // The digest of the first 2 000 encoded frames of the erratic pilot at the default seed,
+        // taken with the v0.1a code (tag `v0.1a`). Input frame v3 adds fields in bytes the script
+        // leaves zero, so the bytes are the same; if this fails the determinism suites no longer
+        // test the same pilot (ADR-36).
+        let rng = crate::rng::RngStreams::new(crate::DEFAULT_SEED);
+        let mut pilot = ErraticPilot::new(rng.stream("input/erratic"));
+        let mut h = StateHasher::new();
+        for tick in 0..2_000_u64 {
+            let mut wire = [0_u8; FRAME_BYTES];
+            pilot.next_frame(tick).encode(&mut wire);
+            h.write_bytes(&wire);
+        }
+        assert_eq!(format!("{:016x}", h.finish()), "a55807f25e5cb5d7");
     }
 
     #[test]
