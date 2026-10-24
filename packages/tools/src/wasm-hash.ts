@@ -3,7 +3,7 @@
  * JSON-lines format as `fg hash`, so the determinism check can compare native and WASM (ADR-10).
  *
  * Usage: node wasm-hash.ts --variant single|threads --seed HEX --at T1,T2,... [--dir wasm-out]
- *                           [--script none|erratic|flight60] [--content PATH.cpack]
+ *                           [--script none|erratic|flight60|circuit] [--content PATH.cpack]
  *                           [--spawn runway|air] [--assist full|standard|reduced|manual]
  *                           [--g off|reduced|full]
  */
@@ -48,10 +48,11 @@ const scripts: Record<string, number> = {
   none: INPUT_SCRIPT.NONE,
   erratic: INPUT_SCRIPT.ERRATIC,
   flight60: INPUT_SCRIPT.FLIGHT60,
+  circuit: INPUT_SCRIPT.CIRCUIT,
 };
 const script = scripts[scriptText];
 if (script === undefined) {
-  console.error('--script none|erratic|flight60');
+  console.error('--script none|erratic|flight60|circuit');
   process.exit(2);
 }
 const contentPath = arg('content');

@@ -9,11 +9,14 @@ import { describe, expect, it } from 'vitest';
 import { encodeInputFrame, neutralFrame } from './input-frame.ts';
 import {
   ABI,
+  ASSIST_LEVEL,
   AXIS,
   CORE_STATE,
+  G_EFFECTS,
   HASH_KIND,
   INPUT_FRAME,
   INPUT_SCRIPT,
+  SPAWN_KIND,
   TERRAIN,
 } from './layout.gen.ts';
 import { decodeProfile } from './profile.ts';
@@ -39,6 +42,25 @@ const readGolden = (name: string): Golden | undefined =>
     : undefined;
 const golden = readGolden('determinism.json');
 const flight60 = readGolden('flight60.json');
+const circuit = readGolden('circuit.json');
+
+// The sessions the determinism suites run under (`cargo xtask determinism`, ADR-36): a golden
+// is only reproduced by the session it was recorded under.
+const ERRATIC_SESSION = {
+  spawn: SPAWN_KIND.AIR,
+  assist: ASSIST_LEVEL.STANDARD,
+  gEffects: G_EFFECTS.FULL,
+};
+const FLIGHT60_SESSION = {
+  spawn: SPAWN_KIND.AIR,
+  assist: ASSIST_LEVEL.MANUAL,
+  gEffects: G_EFFECTS.OFF,
+};
+const CIRCUIT_SESSION = {
+  spawn: SPAWN_KIND.RUNWAY,
+  assist: ASSIST_LEVEL.STANDARD,
+  gEffects: G_EFFECTS.FULL,
+};
 
 async function load(variant: 'single' | 'threads', hostNow?: () => number): Promise<SimHandle> {
   const manifest = JSON.parse(readFileSync(new URL('wasm-manifest.json', wasmDir), 'utf8')) as {
@@ -82,6 +104,7 @@ describe.skipIf(!built).each(['single', 'threads'] as const)('sim handle (%s)', 
     const sim = await load(variant);
     sim.init(SEED);
     sim.loadContent(pack());
+    sim.configure(ERRATIC_SESSION);
     expect(sim.setInputScript(INPUT_SCRIPT.ERRATIC)).toBe(true);
     expect(sim.start()).toBe(true);
     sim.step(10_000);
@@ -95,11 +118,30 @@ describe.skipIf(!built).each(['single', 'threads'] as const)('sim handle (%s)', 
     const sim = await load(variant);
     sim.init(SEED);
     sim.loadContent(pack());
+    sim.configure(FLIGHT60_SESSION);
     expect(sim.setInputScript(INPUT_SCRIPT.FLIGHT60)).toBe(true);
     expect(sim.start()).toBe(true);
     for (const tick of [600, 3_600]) {
       sim.step(tick - Number(sim.tick()));
       const expected = flight60?.checkpoints.find((c) => c.tick === tick);
+      expect(expected).toBeDefined();
+      expect(hex(sim.hash(HASH_KIND.OWNSHIP))).toBe(expected?.ownship);
+      expect(hex(sim.hash(HASH_KIND.COMBINED))).toBe(expected?.combined);
+    }
+  });
+
+  it("flies the virtual tester's circuit to the golden hashes (ADR-33)", async () => {
+    const sim = await load(variant);
+    sim.init(SEED);
+    sim.loadContent(pack());
+    sim.configure(CIRCUIT_SESSION);
+    expect(sim.setInputScript(INPUT_SCRIPT.CIRCUIT)).toBe(true);
+    expect(sim.start()).toBe(true);
+    // Take-off, the first turn and the landing: 600 is on the roll, 6 000 in the circuit,
+    // 14 400 after the stop.
+    for (const tick of [600, 6_000, 14_400]) {
+      sim.step(tick - Number(sim.tick()));
+      const expected = circuit?.checkpoints.find((c) => c.tick === tick);
       expect(expected).toBeDefined();
       expect(hex(sim.hash(HASH_KIND.OWNSHIP))).toBe(expected?.ownship);
       expect(hex(sim.hash(HASH_KIND.COMBINED))).toBe(expected?.combined);
