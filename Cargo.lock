@@ -389,6 +389,7 @@ version = "0.1.0"
 dependencies = [
  "content",
  "content-bake",
+ "fcs",
  "flight",
  "simmath",
 ]

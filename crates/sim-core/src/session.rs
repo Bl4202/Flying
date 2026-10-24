@@ -45,6 +45,17 @@ impl Assist {
         }
     }
 
+    /// The control system's level of the same number.
+    #[must_use]
+    pub fn to_fcs(self) -> fcs::Assist {
+        match self {
+            Self::Full => fcs::Assist::Full,
+            Self::Standard => fcs::Assist::Standard,
+            Self::Reduced => fcs::Assist::Reduced,
+            Self::Manual => fcs::Assist::Manual,
+        }
+    }
+
     /// The level for an ABI number, or `None` if it is not one.
     #[must_use]
     pub const fn from_code(code: u32) -> Option<Self> {
@@ -68,6 +79,18 @@ pub enum GEffects {
     /// Blackout delays the controls and G-LOC zeroes them.
     #[default]
     Full,
+}
+
+impl GEffects {
+    /// The flight model's dial of the same name.
+    #[must_use]
+    pub fn to_flight(self) -> flight::physio::GEffects {
+        match self {
+            Self::Off => flight::physio::GEffects::Off,
+            Self::Reduced => flight::physio::GEffects::Reduced,
+            Self::Full => flight::physio::GEffects::Full,
+        }
+    }
 }
 
 /// The session: spawn, initial assist level and g-effects.
@@ -105,6 +128,22 @@ impl fmt::Display for ConfigError {
 impl std::error::Error for ConfigError {}
 
 impl SessionConfig {
+    /// The three settings as one number, for the state hash: the `spawn_kind`, `assist_level` and
+    /// `g_effects` codes in a byte each.
+    #[must_use]
+    pub fn hash_word(&self) -> u64 {
+        let spawn = match self.spawn {
+            Spawn::Runway => spawn_kind::RUNWAY,
+            Spawn::Air => spawn_kind::AIR,
+        };
+        let g = match self.g_effects {
+            GEffects::Off => g_effects::OFF,
+            GEffects::Reduced => g_effects::REDUCED,
+            GEffects::Full => g_effects::FULL,
+        };
+        spawn as u64 | u64::from(self.assist.code()) << 8 | (g as u64) << 16
+    }
+
     /// Builds a session from the numbers of `fg_configure` (`spawn_kind`, `assist_level`,
     /// `g_effects`).
     ///
@@ -173,5 +212,47 @@ mod tests {
             SessionConfig::from_codes(0, 2, 3),
             Err(ConfigError::Invalid)
         );
+    }
+
+    #[test]
+    fn the_levels_map_onto_the_control_systems_and_the_flight_models() {
+        for level in [
+            Assist::Full,
+            Assist::Standard,
+            Assist::Reduced,
+            Assist::Manual,
+        ] {
+            assert_eq!(level.to_fcs().code(), level.code());
+        }
+        assert_eq!(GEffects::Off.to_flight(), flight::physio::GEffects::Off);
+        assert_eq!(
+            GEffects::Reduced.to_flight(),
+            flight::physio::GEffects::Reduced
+        );
+        assert_eq!(GEffects::Full.to_flight(), flight::physio::GEffects::Full);
+    }
+
+    #[test]
+    fn every_session_hashes_to_its_own_word() {
+        let mut seen = Vec::new();
+        for spawn in [Spawn::Runway, Spawn::Air] {
+            for assist in [
+                Assist::Full,
+                Assist::Standard,
+                Assist::Reduced,
+                Assist::Manual,
+            ] {
+                for g_effects in [GEffects::Off, GEffects::Reduced, GEffects::Full] {
+                    let w = SessionConfig {
+                        spawn,
+                        assist,
+                        g_effects,
+                    }
+                    .hash_word();
+                    assert!(!seen.contains(&w));
+                    seen.push(w);
+                }
+            }
+        }
     }
 }

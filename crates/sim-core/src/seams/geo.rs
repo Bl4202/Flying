@@ -21,8 +21,30 @@ pub const MAX_TERRAIN_M: f64 = 9_000.0;
 pub const DEFAULT_ANCHOR_LAT_RAD: f64 = 36.2 * (core::f64::consts::PI / 180.0);
 /// Anchor longitude of the default battlefield, radians (121.8 W).
 pub const DEFAULT_ANCHOR_LON_RAD: f64 = -121.8 * (core::f64::consts::PI / 180.0);
-/// Data version of the procedural terrain. Bump when the height function changes.
-pub const TERRAIN_DATA_VERSION: u64 = 1;
+/// Data version of the procedural terrain. Bump when the height function changes. Version 2 adds
+/// the test airfield (ADR-35): a basin and a runway pad. The landscape's noise is still seeded from
+/// version 1, so away from the basin the heights are the ones version 1 gave.
+pub const TERRAIN_DATA_VERSION: u64 = 2;
+/// The version the landscape's noise is seeded from.
+const NOISE_SEED_VERSION: u64 = 1;
+
+/// Half the width of the runway, m. The runway runs north from its threshold, centreline east = 0
+/// (the snapshot's `airfield` group says where, so the renderer can mark it).
+pub const RUNWAY_HALF_WIDTH_M: f64 = crate::layout::airfield::WIDTH_M as f64 / 2.0;
+/// North coordinate of the runway's threshold (its south end), BF m.
+pub const RUNWAY_THRESHOLD_Y_M: f64 = -(crate::layout::airfield::THRESHOLD_SOUTH_M as f64);
+/// North coordinate of the runway's far end, BF m.
+pub const RUNWAY_END_Y_M: f64 = RUNWAY_THRESHOLD_Y_M + crate::layout::airfield::LENGTH_M as f64;
+/// Height of the runway above mean sea level, m.
+pub const RUNWAY_ELEVATION_M: f64 = crate::layout::airfield::ELEVATION_M as f64;
+/// Within this distance of the runway the land is a plain, m.
+const BASIN_PLAIN_M: f64 = 4_000.0;
+/// Over the next this many metres the plain blends into the landscape.
+const BASIN_BLEND_M: f64 = 4_000.0;
+/// The runway is levelled out to this distance, with a smooth skirt (GDD 10.7), m.
+const PAD_BLEND_M: f64 = 300.0;
+/// The plain's relief about the runway elevation, m.
+const PLAIN_AMPLITUDE_M: f64 = 3.0;
 
 const LOS_STEP_M: f64 = 100.0;
 const RAY_STEP_M: f64 = 50.0;
@@ -83,6 +105,8 @@ pub enum SurfaceClass {
     Ice,
     /// Built-up area.
     Urban,
+    /// A paved runway, taxiway or apron.
+    Paved,
 }
 
 /// Result of a line-of-sight query.
@@ -302,6 +326,14 @@ fn fbm(seed: u64, u: f64, v: f64) -> f64 {
     sum / norm
 }
 
+/// Distance from the runway rectangle, m (0 on it), at metre coordinates `(u, v)` east and north of
+/// the anchor. On the scale of the airfield these are the BF coordinates to a few centimetres.
+fn runway_distance_m(u: f64, v: f64) -> f64 {
+    let dx = (u.abs() - RUNWAY_HALF_WIDTH_M).max(0.0);
+    let dy = (RUNWAY_THRESHOLD_Y_M - v).max(v - RUNWAY_END_Y_M).max(0.0);
+    dmath::sqrt(dx * dx + dy * dy)
+}
+
 // ---------------------------------------------------------------------------------------------
 // Spherical procedural Earth.
 
@@ -335,7 +367,7 @@ impl ProceduralGeo {
         let up = DVec3::new(cp * cl, cp * sl, sp);
         Self {
             frame,
-            seed: TERRAIN_DATA_VERSION.wrapping_mul(0xA076_1D64_78BD_642F),
+            seed: NOISE_SEED_VERSION.wrapping_mul(0xA076_1D64_78BD_642F),
             anchor_ecef: up * frame.radius_m,
             east: DVec3::new(-sl, cl, 0.0),
             north: DVec3::new(-sp * cl, -sp * sl, cp),
@@ -368,7 +400,24 @@ impl ProceduralGeo {
         let v = (lat_rad - self.frame.anchor_lat_rad) * r;
         let n = fbm(self.seed, u, v);
         let ridge = 1.0 - (2.0 * n - 1.0).abs();
-        (1_300.0 * ridge * ridge + 80.0 * n).clamp(MIN_TERRAIN_M, MAX_TERRAIN_M)
+        let landscape = 1_300.0 * ridge * ridge + 80.0 * n;
+        // The test airfield (ADR-35): a plain round the runway that blends into the landscape,
+        // and the runway levelled on top of it.
+        let d = runway_distance_m(u, v);
+        let h = if d >= BASIN_PLAIN_M + BASIN_BLEND_M {
+            landscape
+        } else {
+            let plain = RUNWAY_ELEVATION_M + PLAIN_AMPLITUDE_M * (2.0 * n - 1.0);
+            let basin = 1.0 - smooth(((d - BASIN_PLAIN_M) / BASIN_BLEND_M).clamp(0.0, 1.0));
+            let land = landscape + (plain - landscape) * basin;
+            let pad = smooth((1.0 - d / PAD_BLEND_M).clamp(0.0, 1.0));
+            if pad >= 1.0 {
+                RUNWAY_ELEVATION_M
+            } else {
+                land + (RUNWAY_ELEVATION_M - land) * pad
+            }
+        };
+        h.clamp(MIN_TERRAIN_M, MAX_TERRAIN_M)
     }
 
     /// Height of the sphere surface below tangent-plane position `(x, y)`, relative to BF z = 0.
@@ -446,6 +495,14 @@ impl GeoService for ProceduralGeo {
     }
 
     fn surface_class(&self, lat_rad: f64, lon_rad: f64) -> SurfaceClass {
+        if lat_rad.is_finite() && lon_rad.is_finite() {
+            let r = self.frame.radius_m;
+            let u = (lon_rad - self.frame.anchor_lon_rad) * r * self.cos_lat0;
+            let v = (lat_rad - self.frame.anchor_lat_rad) * r;
+            if runway_distance_m(u, v) == 0.0 {
+                return SurfaceClass::Paved;
+            }
+        }
         if self.height_m(lat_rad, lon_rad) > 1_250.0 {
             SurfaceClass::Ice
         } else {
@@ -806,6 +863,102 @@ mod tests {
         }
         assert!(lo >= 0.0 && hi <= 1_500.0, "range {lo}..{hi}");
         assert!(hi - lo > 400.0, "there is relief to look at: {lo}..{hi}");
+    }
+
+    /// The ground height under BF `(x, y)`, m above mean sea level.
+    fn ground_at(g: &ProceduralGeo, x: f64, y: f64) -> f64 {
+        g.ground_height_msl_m(DVec3::new(x, y, g.sphere_z(x, y)))
+    }
+
+    /// The surface class under BF `(x, y)`.
+    fn class_at(g: &ProceduralGeo, x: f64, y: f64) -> SurfaceClass {
+        let p = g.bf_to_geo(DVec3::new(x, y, g.sphere_z(x, y)));
+        g.surface_class(p.lat_rad, p.lon_rad)
+    }
+
+    #[test]
+    fn the_runway_is_level_paved_and_exactly_where_the_snapshot_says() {
+        let g = ProceduralGeo::default_frame();
+        assert_eq!(TERRAIN_DATA_VERSION, 2);
+        for i in 0..=40 {
+            for j in 0..=60 {
+                let x = -22.0 + f64::from(i) * 1.1;
+                let y = RUNWAY_THRESHOLD_Y_M + 1.0 + f64::from(j) * 49.9;
+                assert_eq!(
+                    ground_at(&g, x, y),
+                    RUNWAY_ELEVATION_M,
+                    "level at ({x}, {y})"
+                );
+                assert_eq!(
+                    class_at(&g, x, y),
+                    SurfaceClass::Paved,
+                    "paved at ({x}, {y})"
+                );
+            }
+        }
+        // Just off the edges and the ends it is land.
+        for (x, y) in [
+            (RUNWAY_HALF_WIDTH_M + 1.0, -4_500.0),
+            (-RUNWAY_HALF_WIDTH_M - 1.0, -4_500.0),
+            (0.0, RUNWAY_THRESHOLD_Y_M - 1.0),
+            (0.0, RUNWAY_END_Y_M + 1.0),
+        ] {
+            assert_eq!(class_at(&g, x, y), SurfaceClass::Land, "land at ({x}, {y})");
+        }
+        // The surface normal on the runway is the local vertical.
+        let p = g.bf_to_geo(DVec3::new(0.0, -4_500.0, g.sphere_z(0.0, -4_500.0)));
+        let n = g.terrain_normal(p.lat_rad, p.lon_rad);
+        let up = g.up_bf(DVec3::new(0.0, -4_500.0, 40.0));
+        assert!(n.dot(up) > 1.0 - 1.0e-9, "n . up = {}", n.dot(up));
+    }
+
+    #[test]
+    fn the_plain_blends_into_the_landscape_without_a_step() {
+        let g = ProceduralGeo::default_frame();
+        // The plain: within 4 km of the runway the land is within a few metres of its elevation.
+        for d in [0.0, 100.0, 299.0, 400.0, 1_000.0, 3_999.0] {
+            let h = ground_at(&g, RUNWAY_HALF_WIDTH_M + d, -4_500.0);
+            assert!(
+                (h - RUNWAY_ELEVATION_M).abs() <= PLAIN_AMPLITUDE_M + 1.0e-9,
+                "{d} m off the edge: {h}"
+            );
+        }
+        // No step anywhere along a line across the skirt, the plain and the blend: a metre of
+        // distance never moves the ground by more than 0.5 m.
+        let mut prev = ground_at(&g, RUNWAY_HALF_WIDTH_M, -4_500.0);
+        let mut x = RUNWAY_HALF_WIDTH_M;
+        let mut biggest = 0.0f64;
+        while x < RUNWAY_HALF_WIDTH_M + 9_000.0 {
+            x += 1.0;
+            let h = ground_at(&g, x, -4_500.0);
+            biggest = biggest.max((h - prev).abs());
+            prev = h;
+        }
+        assert!(biggest < 0.5, "the ground steps by {biggest} m in a metre");
+    }
+
+    #[test]
+    fn away_from_the_airfield_the_landscape_is_the_one_version_1_gave() {
+        let g = ProceduralGeo::default_frame();
+        let r = g.frame.radius_m;
+        for (x, y) in [
+            (12_000.0, 0.0),
+            (-15_000.0, 9_000.0),
+            (0.0, 6_000.0),
+            (30_000.0, -20_000.0),
+        ] {
+            assert!(
+                runway_distance_m(x, y) >= BASIN_PLAIN_M + BASIN_BLEND_M,
+                "({x}, {y}) is outside the basin"
+            );
+            let p = g.bf_to_geo(DVec3::new(x, y, g.sphere_z(x, y)));
+            let u = (p.lon_rad - g.frame.anchor_lon_rad) * r * g.cos_lat0;
+            let v = (p.lat_rad - g.frame.anchor_lat_rad) * r;
+            let n = fbm(1_u64.wrapping_mul(0xA076_1D64_78BD_642F), u, v);
+            let ridge = 1.0 - (2.0 * n - 1.0).abs();
+            let v1 = (1_300.0 * ridge * ridge + 80.0 * n).clamp(MIN_TERRAIN_M, MAX_TERRAIN_M);
+            assert_eq!(g.height_m(p.lat_rad, p.lon_rad), v1, "at ({x}, {y})");
+        }
     }
 
     #[test]

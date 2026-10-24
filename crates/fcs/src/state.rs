@@ -77,6 +77,10 @@ pub enum RecoverPhase {
 }
 
 /// The control system's memory.
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent latched conditions; the layout is the hashed word order"
+)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FcsState {
     /// The assist level.
@@ -130,11 +134,14 @@ pub struct FcsState {
     pub limiting: Limiting,
     /// Dynamic pressure at the last tick, Pa (for its rate of change).
     pub qbar_prev: f64,
+    /// The aircraft has departed from controlled flight (a fast yaw about the velocity vector or a
+    /// deep stall, [`crate::recover::departed`]) at the last tick.
+    pub departed: bool,
 }
 
 impl FcsState {
     /// The number of words [`FcsState::words`] returns.
-    pub const WORDS: usize = 31;
+    pub const WORDS: usize = 32;
 
     /// A system at an assist level, on the ground or in the air.
     #[must_use]
@@ -169,6 +176,7 @@ impl FcsState {
             recover: RecoverPhase::Idle,
             limiting: Limiting::default(),
             qbar_prev: 0.0,
+            departed: false,
         }
     }
 
@@ -219,6 +227,7 @@ impl FcsState {
             f(self.held[0]),
             f(self.held[1]),
             f(self.held[2]),
+            b(self.departed),
         ]
     }
 }

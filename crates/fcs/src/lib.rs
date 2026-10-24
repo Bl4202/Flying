@@ -117,6 +117,8 @@ impl FcsModel {
         let s = Sensed::of(model, ac, &sense, env);
         ground::update_blend(self, fs, ac.ground.wow);
         fs.limiting = Limiting::default();
+        // On the wheels a fast yaw is a turn, not a departure.
+        fs.departed = !ac.ground.wow && !fs.on_ground && recover::departed(&s);
 
         let mut commands = if fs.assist == Assist::Manual {
             if fs.init_pending {

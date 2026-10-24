@@ -17,7 +17,7 @@ const RULES: &[(&str, &[&str])] = &[
         "flight-test",
         &["content", "flight", "serde_json", "simmath"],
     ),
-    ("sim-core", &["content", "flight", "simmath"]),
+    ("sim-core", &["content", "fcs", "flight", "simmath"]),
     ("protocol", &[]),
     ("content", &[]),
     (
@@ -137,7 +137,7 @@ mod tests {
                 "flight-test",
                 &["content", "flight", "serde_json", "simmath"],
             ),
-            ("sim-core", &["content", "flight", "simmath"]),
+            ("sim-core", &["content", "fcs", "flight", "simmath"]),
             ("protocol", &[]),
             ("content", &[]),
             ("content-bake", &["content", "serde_json", "sha2"]),
