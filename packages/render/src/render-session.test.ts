@@ -250,7 +250,9 @@ describe('RenderSession', () => {
     const t = session();
     await t.s.start(40, 30);
     const summary = await t.s.pixelSummary();
-    expect(summary).toEqual({ width: 40, height: 30, distinctColours: 1, skyFraction: 1 });
+    expect(summary).toMatchObject({ width: 40, height: 30, distinctColours: 1, skyFraction: 1 });
+    expect(summary.meanLuma).toBeGreaterThan(0);
+    expect(summary.meanLuma).toBeLessThanOrEqual(1);
   });
 
   it('rebuilds a lost WebGPU device once on the same canvas', async () => {

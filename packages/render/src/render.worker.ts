@@ -62,6 +62,7 @@ async function handle(command: RenderCommand): Promise<void> {
         height: 0,
         distinctColours: 0,
         skyFraction: 0,
+        meanLuma: 0,
       };
       post({ type: 'pixels', id: command.id, ...summary });
       break;

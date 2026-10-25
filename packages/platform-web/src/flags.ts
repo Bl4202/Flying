@@ -17,6 +17,7 @@
  * | `spawn` | `runway` (default) or `air`: where the aircraft starts |
  * | `assist` | `full`, `standard` (default), `reduced` or `manual` |
  * | `g` | `off`, `reduced` or `full` (default): the g-effects dial |
+ * | `script` | `circuit`: the virtual tester flies the circuit instead of the player (a test aid) |
  */
 
 export type RendererChoice = 'auto' | 'webgpu' | 'webgl2' | 'null';
@@ -46,6 +47,8 @@ export interface Flags {
   assist: AssistChoice | undefined;
   /** The g-effects dial, if the URL says. */
   g: GEffectsChoice | undefined;
+  /** A scripted pilot in place of the player (the circuit the exit gate flies), if the URL says. */
+  script: false | 'circuit';
   /** Problems found while parsing, in order. */
   warnings: string[];
 }
@@ -67,6 +70,7 @@ const KNOWN = new Set([
   'spawn',
   'assist',
   'g',
+  'script',
 ]);
 
 export function defaultFlags(): Flags {
@@ -85,6 +89,7 @@ export function defaultFlags(): Flags {
     spawn: undefined,
     assist: undefined,
     g: undefined,
+    script: false,
     warnings: [],
   };
 }
@@ -193,6 +198,13 @@ export function parseFlags(search: string): Flags {
     const choice = G_DIALS.find((d) => d === g);
     if (choice === undefined) bad('g', g, G_DIALS.join(', '));
     else flags.g = choice;
+  }
+
+  const script = params.get('script');
+  if (script === 'circuit') {
+    flags.script = 'circuit';
+  } else if (script !== null) {
+    bad('script', script, 'circuit');
   }
 
   return flags;

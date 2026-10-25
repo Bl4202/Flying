@@ -77,5 +77,6 @@ export type RenderEvent =
       height: number;
       distinctColours: number;
       skyFraction: number;
+      meanLuma: number;
     }
   | { type: 'error'; message: string };

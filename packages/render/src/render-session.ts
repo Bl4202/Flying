@@ -183,18 +183,21 @@ export class RenderSession {
     height: number;
     distinctColours: number;
     skyFraction: number;
+    meanLuma: number;
   }> {
     const loop = this.#loop;
-    if (!loop) return { width: 0, height: 0, distinctColours: 0, skyFraction: 0 };
+    if (!loop) return { width: 0, height: 0, distinctColours: 0, skyFraction: 0, meanLuma: 0 };
     const px = await loop.renderer.debugReadPixels();
     const sky = CLEAR_COLOUR.map((c) => Math.round(c * 255));
     const seen = new Set<number>();
     let skyPixels = 0;
+    let luma = 0;
     for (let i = 0; i < px.length; i += 4) {
       const r = px[i] ?? 0;
       const g = px[i + 1] ?? 0;
       const b = px[i + 2] ?? 0;
       seen.add((r << 16) | (g << 8) | b);
+      luma += 0.2126 * r + 0.7152 * g + 0.0722 * b; // Rec. 709 weights
       if (
         Math.abs(r - (sky[0] ?? 0)) <= 1 &&
         Math.abs(g - (sky[1] ?? 0)) <= 1 &&
@@ -209,6 +212,7 @@ export class RenderSession {
       height: loop.height,
       distinctColours: seen.size,
       skyFraction: skyPixels / total,
+      meanLuma: luma / total / 255,
     };
   }
 
