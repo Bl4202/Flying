@@ -9,6 +9,7 @@
  * an `undefined` three calls later.
  */
 import type { Variant } from '@flying/platform-web/wasm-loader';
+import type { AircraftStatus } from './aircraft-status.ts';
 import type { InputEndpoint } from './input-channel.ts';
 import type { SessionConfig } from './sim-handle.ts';
 import type { SnapshotEndpoint } from './snapshot-channel.ts';
@@ -76,6 +77,19 @@ export interface SimStats {
   /** From the controls being sampled to the snapshot that reflects them being published. */
   inputLatency: Quantiles;
   inputLatencyRun: Quantiles;
+  /**
+   * Control latency (AC-58.3, ADR-33): from the source event of a control change (the key press,
+   * the pointer move, the pad sample) to the end of the tick that acted on the frame carrying it.
+   * Measured on frames flagged CHANGED only. `pollLatency` is the part of it before the frame was
+   * written (waiting for the page to poll the device), `tickLatency` the part after (waiting for
+   * the tick). The `Run` quantiles cover the time since `reset-run`.
+   */
+  controlLatency: Quantiles;
+  controlLatencyRun: Quantiles;
+  pollLatency: Quantiles;
+  pollLatencyRun: Quantiles;
+  tickLatency: Quantiles;
+  tickLatencyRun: Quantiles;
   inputsDropped: number;
   snapshotsDropped: number;
   coreState: number;
@@ -115,6 +129,11 @@ export interface SimStats {
     /** Sequence number of the newest input frame the core had applied. */
     inputSeq: number;
   };
+  /**
+   * The ownship's assist, flight control, wheel and g state as of the newest snapshot, for a page
+   * that cannot read the snapshot itself (the message channel). Four times a second.
+   */
+  status: AircraftStatus;
   /** The core's own stage timings, while profiling is on. */
   profile: {
     tickMsLast: number;

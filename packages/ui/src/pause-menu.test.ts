@@ -155,6 +155,14 @@ describe('PauseMenu', () => {
     expect(q('pause-strength-value').textContent).toBe('35%');
   });
 
+  it('says that the g-effects setting is used at the next start (the core takes it only when idle)', () => {
+    const { menu, q } = setup();
+    menu.open();
+    expect(q('pause-g-note').textContent).toBe(
+      'The g-effects setting is used when the game next starts.',
+    );
+  });
+
   it('leaves out the ground-collision option unless it exists, and offers it when it does', () => {
     const none = setup();
     none.menu.open();

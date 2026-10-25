@@ -846,6 +846,46 @@ describe('InputPump: simulation requests', () => {
   });
 });
 
+describe("InputPump: presses on the page's behalf", () => {
+  it('presses a button for one frame, as a tap would', () => {
+    const r = rig();
+    r.pump.update();
+    r.pump.pressOnce(BUTTON.RESET);
+    r.advance(1);
+    expect(r.pump.update()).toBe(true);
+    expect(r.last().buttons).toBe(bit(BUTTON.RESET));
+    expect(r.last().flags & INPUT_FLAG.CHANGED).toBe(INPUT_FLAG.CHANGED);
+    r.advance(1);
+    r.pump.update();
+    expect(r.last().buttons).toBe(0n);
+  });
+
+  it('keeps the press until a frame carries it, however many are refused', () => {
+    const r = rig();
+    r.pump.update();
+    r.pump.pressOnce(BUTTON.RESET);
+    r.setAccept(false);
+    r.advance(1);
+    r.pump.update();
+    r.advance(1);
+    r.pump.update();
+    r.setAccept(true);
+    r.advance(1);
+    expect(r.pump.update()).toBe(true);
+    expect(r.last().buttons).toBe(bit(BUTTON.RESET));
+  });
+
+  it('can be pressed with the menu open', () => {
+    const r = rig();
+    r.pump.setContext('menu');
+    r.pump.update();
+    r.pump.pressOnce(BUTTON.RESET);
+    r.advance(1);
+    r.pump.update();
+    expect(r.last().buttons).toBe(bit(BUTTON.RESET));
+  });
+});
+
 describe('InputPump: the menu context', () => {
   it('silences the flight controls and keeps the throttle', () => {
     const r = rig();
@@ -943,6 +983,18 @@ describe('InputPump: the mouse', () => {
     const az = (r.last().axes[AXIS.CURSOR_X] ?? 0) * Math.PI;
     expect(Math.abs(az - 0.5)).toBeLessThan((36 * Math.PI) / 180);
     expect(Math.abs(az - 0.5)).toBeGreaterThan((30 * Math.PI) / 180);
+  });
+
+  it('starts the aim from the new nose at every spawn', () => {
+    const r = rig({ mouse: true });
+    r.pump.observe({ spawnSeq: 1, throttle: 0, assist: 2, noseAzRad: 0.5, noseElRad: 0.1 });
+    r.pump.setMouseMode('aim');
+    r.mouse?.push(300, 0);
+    r.run(8);
+    r.pump.observe({ spawnSeq: 2, throttle: 0, assist: 2, noseAzRad: -1.2, noseElRad: 0.05 });
+    r.run(8);
+    expect(r.last().axes[AXIS.CURSOR_X]).toBeCloseTo(-1.2 / Math.PI, 5);
+    expect(r.last().axes[AXIS.CURSOR_Y]).toBeCloseTo(0.05 / (Math.PI / 2), 5);
   });
 
   it('sends no aim when the pointer is not locked or the mode is off', () => {

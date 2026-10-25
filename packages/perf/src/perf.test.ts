@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RenderStats } from '@flying/render/messages';
-import type { Quantiles, SimStats } from '@flying/sim-bridge';
+import { newAircraftStatus, type Quantiles, type SimStats } from '@flying/sim-bridge';
 import { evaluateGates, PS0_LIMITS, verdictOf } from './gates.ts';
 import { describeMachine } from './machine.ts';
 import { isPerfReport, type PerfMetrics } from './report.ts';
@@ -64,6 +64,13 @@ function world(b: Partial<Behaviour> = {}) {
       stepRun: q({ count: Math.round(sinceRunS * beh.hz), avg: beh.stepAvg, p99: beh.stepP99 }),
       inputLatency: q(),
       inputLatencyRun: q(),
+      controlLatency: q(),
+      controlLatencyRun: q(),
+      pollLatency: q(),
+      pollLatencyRun: q(),
+      tickLatency: q(),
+      tickLatencyRun: q(),
+      status: newAircraftStatus(),
       inputsDropped: 0,
       snapshotsDropped: 0,
       coreState: 2,

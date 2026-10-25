@@ -116,6 +116,7 @@ export class PauseMenu {
       current: () => V,
       pick: (value: V) => void,
       marker?: () => V | undefined,
+      note?: StringKey,
     ): HTMLElement => {
       const legend = h(doc, 'legend', { text: t(title) });
       const buttons = choices.map((c) =>
@@ -159,7 +160,7 @@ export class PauseMenu {
       });
       this.#sync.push(refresh);
       refresh();
-      return h(
+      const fieldset = h(
         doc,
         'fieldset',
         { class: 'group', testid: `pause-${id}` },
@@ -167,6 +168,10 @@ export class PauseMenu {
         ...buttons,
         preview,
       );
+      if (note !== undefined) {
+        fieldset.append(h(doc, 'p', { class: 'note', testid: `pause-${id}-note`, text: t(note) }));
+      }
+      return fieldset;
     };
 
     const slider = (
@@ -282,6 +287,8 @@ export class PauseMenu {
         (gEffects) => {
           this.#d.onChange({ gEffects });
         },
+        undefined,
+        'pause.g.restart',
       ),
       slider(
         'strength',

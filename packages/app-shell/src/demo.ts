@@ -1,26 +1,21 @@
 /**
- * The v0.0b demo: the empty loop. Starts the Sim Worker and the renderer, connects the channels
- * between them, feeds the keyboard and gamepad into the input channel, and attaches the debug
- * overlay. Nothing here is game logic; it only wires the parts together (the composition root's
- * composition root).
+ * The game's wiring: starts the Sim Worker and the renderer, connects the channels between them,
+ * feeds the keyboard, mouse and pads into the input channel, reads the aircraft's state back for
+ * the warning strip and the throttle, opens the menus, and attaches the debug overlay. Nothing
+ * here is game logic; it only wires the parts together (the composition root's composition root).
  */
 import { NullAudioBackend, resumeOnFirstGesture } from '@flying/audio';
-import {
-  GamepadHub,
-  InputPump,
-  KeyboardState,
-  attachInput,
-  builtinProfiles,
-  chooseProfile,
-} from '@flying/input';
+import type { ActionId, PumpStats } from '@flying/input';
 import { RenderClient, type PixelSummary } from '@flying/render';
 import { SHADERS } from '@flying/render/shader-sources';
 import type { RenderEvent, RenderStats } from '@flying/render/messages';
-import { monotonicMs, sharedNowMs, type DeepFeatures, type Flags } from '@flying/platform-web';
+import { monotonicMs, type DeepFeatures, type Flags, type Kv } from '@flying/platform-web';
 import {
+  type AircraftStatus,
   makeInputChannel,
   makeSnapshotChannel,
   openInputSink,
+  openSnapshotSource,
   type SimStats,
 } from '@flying/sim-bridge';
 import { INPUT_SCRIPT } from '@flying/sim-bridge/layout';
@@ -36,19 +31,26 @@ import {
 import simWorkerUrl from '@flying/sim-host/sim.worker?worker&url';
 import renderWorkerUrl from '@flying/render/render.worker?worker&url';
 import {
+  ControlsStore,
   DebugOverlay,
   installOverlayHotkey,
-  isOverlayChord,
+  SettingsStore,
   t,
   ToastHost,
+  WarningStrip,
   type CompatReport,
+  type DemoMenu,
   type FatalSource,
   type FlowEvent,
   type OverlayModel,
+  type StringKey,
 } from '@flying/ui';
+import { FlightControls } from './controls.ts';
+import { MenuController } from './menus.ts';
 import { coreContentUrl, runSelfTestWorker, selfTestRequest, wasmUrl } from './selftest.ts';
 import { judgeSelfTest, goldenCheckpoint, SEED } from './selftest-judge.ts';
-import { sessionFromFlags } from './session.ts';
+import { sessionFromFlags, sessionOverrides } from './session.ts';
+import { StatusFeed } from './status-feed.ts';
 import { Supervisor } from './supervisor.ts';
 
 export interface DemoRoots {
@@ -56,11 +58,17 @@ export interface DemoRoots {
   stage: HTMLElement;
   overlay: HTMLElement;
   toast: HTMLElement;
+  /** The warning strip. */
+  strip: HTMLElement;
+  /** The pause menu and the binding editor. */
+  menu: HTMLElement;
 }
 
 export interface DemoContext {
   flags: Flags;
-  /** A performance run: the scripted pilot flies, and the keyboard and gamepad are left alone. */
+  /** Where the settings and the control profiles are kept. */
+  kv: Kv;
+  /** A performance run: the scripted pilot flies, and the keyboard, mouse and pads are left alone. */
   perf: boolean;
   /** The stored benchmark result as `profile / preset`, for the overlay. */
   benchmarkSummary: string | undefined;
@@ -94,7 +102,39 @@ export interface TestHooks {
   stats(): { sim: SimStats | undefined; render: RenderStats | undefined };
   host(): 'worker' | 'main';
   backend(): string;
+  /** The aircraft as the newest snapshot says (undefined before the first one). */
+  status(): AircraftStatus | undefined;
+  /** What the input pump is doing now. */
+  input(): TestInput | undefined;
+  /** Which menu is open. */
+  menu(): DemoMenu;
 }
+
+export interface TestInput {
+  mouseMode: string;
+  context: string;
+  profile: string;
+  throttle: number;
+  assistRequest: number;
+  stats: PumpStats;
+}
+
+const MOUSE_LABELS: Record<string, StringKey> = {
+  off: 'pause.mouse.off',
+  aim: 'pause.mouse.aim',
+  stick: 'pause.mouse.stick',
+};
+/** Indexed by `ASSIST_LEVEL`. */
+const ASSIST_LABELS: (StringKey | undefined)[] = [
+  undefined,
+  'assist.full',
+  'assist.standard',
+  'assist.reduced',
+  'assist.manual',
+];
+
+/** The strip is redrawn this often at most, milliseconds. */
+const STRIP_MS = 100;
 
 /** The first `SYS-nnn` in a message, or `fallback`. */
 export function codeOf(message: string, fallback: string): string {
@@ -114,9 +154,20 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   const inputs = makeInputChannel(modes.inputChannel);
   const terrain = new MessageChannel();
 
+  // What the player chose last time, and the sortie it makes with the URL laid over it.
+  const settings = new SettingsStore(ctx.kv);
+  const controlsStore = new ControlsStore(ctx.kv);
+  await Promise.all([settings.load(), controlsStore.load()]);
+  const session = sessionFromFlags(flags, ctx.perf, settings.value);
+  const overrides = ctx.perf ? {} : sessionOverrides(session, settings.value);
+
   let latestSim: SimStats | undefined;
   let latestRender: RenderStats | undefined;
+  /** Held by the person (the overlay, a test) or by the page being hidden. */
   let paused = false;
+  /** Held because a menu is open. */
+  let menuHold = false;
+  let simHeld = false;
   let readyEvents = 0;
 
   const onRenderEvent = (event: RenderEvent): void => {
@@ -151,7 +202,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
         contentUrl: coreContentUrl,
         seed: SEED,
         script: ctx.perf ? INPUT_SCRIPT.ERRATIC : INPUT_SCRIPT.NONE,
-        session: sessionFromFlags(flags, ctx.perf),
+        session,
         snapshot: snapshots.sink,
         input: inputs.source,
         terrainPort: terrain.port1,
@@ -178,50 +229,118 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     }),
   ]);
 
-  // Input: keyboard and gamepad -> shaping -> the channel the Sim Worker drains each tick.
-  const sink = openInputSink(inputs.sink);
-  const keyboard = new KeyboardState();
-  const pads = new GamepadHub();
-  const profiles = builtinProfiles();
-  const pump = new InputPump({
-    sink,
-    keyboard,
-    pads,
-    nowMs: monotonicMs,
-    sharedNowMs,
-    minIntervalMs: modes.inputChannel === 'shared' ? 8 : 33,
-  });
-  // The profile follows the devices that are connected (a device plugged in or out re-binds).
-  let profileRevision = -1;
-  const followDevices = (): void => {
-    pads.poll();
-    if (pads.revision === profileRevision) return;
-    profileRevision = pads.revision;
-    const chosen = chooseProfile(profiles, pads.deviceNames());
-    if (chosen.id !== pump.profile.id) pump.setProfile(chosen);
+  /** The simulation runs unless the person, the page being hidden, or a menu holds it. */
+  const syncHold = (): void => {
+    const want = paused || menuHold;
+    if (want === simHeld) return;
+    simHeld = want;
+    if (want) sim.pause();
+    else sim.resume();
   };
-  followDevices();
-  const watchDevices = window.setInterval(followDevices, 250);
-  // A performance run flies the scripted pilot; frames from the keyboard would fight it.
-  // The overlay's Ctrl+Shift+D chord is the page's, not a roll command.
-  const detachInput = ctx.perf
-    ? () => undefined
-    : attachInput(
-        { window, document },
-        {
-          keyboard,
-          pump,
-          swallow: (e) =>
-            isOverlayChord({
-              code: e.code,
-              ctrlKey: e.ctrlKey === true,
-              shiftKey: e.shiftKey === true,
-              altKey: e.altKey === true,
-              metaKey: e.metaKey === true,
-              repeat: e.repeat,
-            }),
-        },
-      );
+
+  // Input: keyboard, mouse and pads -> profile -> shaping -> the channel the Sim Worker drains
+  // each tick. A performance run flies the scripted pilot; the devices would fight it.
+  const sink = openInputSink(inputs.sink);
+  let controls: FlightControls | undefined;
+  let menus: MenuController | undefined;
+  let strip: WarningStrip | undefined;
+  let feed: StatusFeed | undefined;
+
+  /** What the pump hands to the page: the keys only the page can act on. */
+  const onAction = (id: ActionId): void => {
+    if (id === 'system.pause') {
+      menus?.toggle();
+    } else if (id === 'flight.mouse_mode' && controls && menus) {
+      const mode = controls.pump.mouseMode;
+      menus.persist({ mouseMode: mode });
+      controls.syncMouseLock();
+      toasts.show(t('toast.mouse-mode', { mode: t(MOUSE_LABELS[mode] ?? 'pause.mouse.off') }));
+    } else if (id === 'flight.assist_cycle' && controls && menus) {
+      const level = controls.pump.assistRequest;
+      menus.persist({ assist: level });
+      const label = ASSIST_LABELS[level];
+      if (label !== undefined) toasts.show(t('toast.assist', { name: t(label) }));
+    }
+  };
+
+  if (!ctx.perf) {
+    const c = new FlightControls({
+      window,
+      document,
+      stage: roots.stage,
+      sink,
+      store: controlsStore,
+      minIntervalMs: modes.inputChannel === 'shared' ? 8 : 33,
+      onAction,
+      onMouseWarning: () => {
+        toasts.show(t('toast.mouse-raw'), 'warn');
+      },
+      onPointerLost: () => {
+        if (menus && !menus.isOpen && c.pump.mouseMode !== 'off') menus.openPause();
+      },
+    });
+    controls = c;
+    const m = new MenuController({
+      root: roots.menu,
+      settings,
+      store: controlsStore,
+      pads: c.pads,
+      pump: c.pump,
+      overrides,
+      assistInForce: () => feed?.status?.assist ?? 0,
+      hold: (on) => {
+        menuHold = on;
+        syncHold();
+      },
+      setMenu: (menu) => {
+        ctx.flow.dispatch({ type: 'menu', menu });
+      },
+      releaseMouse: () => {
+        c.releaseMouse();
+      },
+      syncMouseLock: () => {
+        c.syncMouseLock();
+      },
+      onProfile: (profile) => {
+        c.useProfile(profile);
+      },
+      onSettings: (patch, next) => {
+        c.applyChange(patch, next);
+        if (patch.gfxStrength !== undefined) render.setSettings({ gfxStrength: patch.gfxStrength });
+      },
+      nowMs: monotonicMs,
+    });
+    menus = m;
+    render.setSettings({ gfxStrength: m.settings().gfxStrength });
+    const s = new WarningStrip(roots.strip);
+    strip = s;
+
+    let appliedStart = false;
+    let lastStrip = Number.NEGATIVE_INFINITY;
+    feed = new StatusFeed({
+      source: modes.snapshotChannel === 'shared' ? openSnapshotSource(snapshots.source) : undefined,
+      reported: () => latestSim?.status,
+      requestFrame: (callback) => requestAnimationFrame(callback),
+      cancelFrame: (id) => {
+        cancelAnimationFrame(id);
+      },
+      onStatus: (status, observation) => {
+        c.pump.observe(observation);
+        if (!appliedStart) {
+          // The mouse aim starts from where the nose points, so wait for the first snapshot.
+          appliedStart = true;
+          c.applySettings(m.settings());
+        }
+        const now = monotonicMs();
+        if (now - lastStrip >= STRIP_MS) {
+          lastStrip = now;
+          s.update(status);
+        }
+      },
+    });
+    c.start();
+    feed.start();
+  }
 
   // Audio waits for a gesture; the null backend only records that it was asked.
   const audio = new NullAudioBackend();
@@ -232,8 +351,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   const setPaused = (value: boolean, quiet = false): void => {
     if (value === paused) return;
     paused = value;
-    if (value) sim.pause();
-    else sim.resume();
+    syncHold();
     ctx.flow.dispatch({ type: value ? 'pause' : 'resume' });
     if (!quiet) toasts.show(t(value ? 'toast.paused' : 'toast.resumed'));
   };
@@ -262,12 +380,20 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     adapter: features.adapterInfo,
     sim: latestSim,
     render: latestRender,
-    paused,
-    input: { sent: pump.stats.sent, refused: pump.stats.refused },
+    paused: paused || menuHold,
+    input: controls
+      ? { sent: controls.pump.stats.sent, refused: controls.pump.stats.refused }
+      : undefined,
     benchmark: ctx.benchmarkSummary,
-    // Read from the snapshot and the control-latency stats by the wiring work package.
-    flight: undefined,
-    latency: undefined,
+    flight: feed?.status ?? latestSim?.status,
+    latency:
+      latestSim === undefined
+        ? undefined
+        : {
+            control: latestSim.controlLatency,
+            poll: latestSim.pollLatency,
+            tick: latestSim.tickLatency,
+          },
   });
 
   const overlay = new DebugOverlay(roots.overlay, {
@@ -336,6 +462,19 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       stats: () => ({ sim: latestSim, render: latestRender }),
       host: () => render.host,
       backend: () => latestRender?.backend ?? '',
+      status: () => feed?.status ?? latestSim?.status,
+      input: () =>
+        controls === undefined
+          ? undefined
+          : {
+              mouseMode: controls.pump.mouseMode,
+              context: controls.pump.context,
+              profile: controls.pump.profile.id,
+              throttle: controls.pump.throttle,
+              assistRequest: controls.pump.assistRequest,
+              stats: controls.pump.stats,
+            },
+      menu: () => menus?.current ?? null,
     };
     (window as unknown as { __flying?: TestHooks }).__flying = hooks;
   }
@@ -345,8 +484,10 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     window.clearInterval(watchdog);
     removeHotkey();
     document.removeEventListener('visibilitychange', onVisibility);
-    detachInput();
-    window.clearInterval(watchDevices);
+    feed?.stop();
+    controls?.destroy();
+    menus?.destroy();
+    strip?.destroy();
     cancelAudio();
     overlay.destroy();
     sink.close();

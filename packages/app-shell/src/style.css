@@ -413,3 +413,327 @@ td[data-state='warn'] {
   gap: 0.5rem;
   margin-top: 0.75rem;
 }
+
+/* The warning strip: one line at the top of the picture. Text and a shape glyph carry the
+   meaning; the colour only backs them up. */
+.strip-root {
+  position: fixed;
+  top: 0.75rem;
+  left: 50%;
+  z-index: 12;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 2rem);
+  pointer-events: none;
+}
+
+.warning-strip {
+  padding: 0.25rem 0.8rem;
+  border: 2px solid #4a525a;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.72);
+  color: #e8eaec;
+  font:
+    600 15px/1.4 ui-monospace,
+    monospace;
+  letter-spacing: 0.02em;
+  white-space: pre;
+}
+
+.warning-strip[hidden] {
+  display: none;
+}
+
+.warning-strip[data-severity='caution'] {
+  border-color: #f0b25a;
+  color: #ffd699;
+}
+
+.warning-strip[data-severity='warning'] {
+  border-color: #ff8a80;
+  color: #ffd0cc;
+}
+
+/* The pause menu and the binding editor sit centred over the dimmed picture. */
+.menu-root {
+  position: fixed;
+  inset: 0;
+  z-index: 18;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 1rem;
+  pointer-events: none;
+}
+
+.menu-root:has(.pause-menu, .binding-editor) {
+  background: var(--backdrop);
+  pointer-events: auto;
+}
+
+.pause-menu,
+.binding-editor {
+  box-sizing: border-box;
+  max-height: 100%;
+  overflow: auto;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.pause-menu {
+  width: min(100%, 34rem);
+}
+
+.binding-editor {
+  width: min(100%, 60rem);
+}
+
+.pause-menu h2,
+.binding-editor h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.2rem;
+}
+
+.pause-menu button,
+.binding-editor button,
+.binding-editor select,
+.binding-editor input[type='text'],
+.binding-editor input[type='search'] {
+  min-height: 36px;
+  padding: 0 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.pause-menu button,
+.binding-editor button {
+  cursor: pointer;
+}
+
+.pause-menu button:disabled,
+.binding-editor button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pause-menu .group {
+  margin: 0 0 0.9rem;
+  padding: 0;
+  border: 0;
+}
+
+.pause-menu legend {
+  padding: 0;
+  margin-bottom: 0.3rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.pause-menu .chip {
+  margin: 0 0.35rem 0.35rem 0;
+}
+
+.pause-menu .chip[aria-pressed='true'],
+.binding-editor .chip[aria-pressed='true'] {
+  border-color: var(--focus);
+  border-width: 2px;
+  font-weight: 600;
+}
+
+/* The level the aircraft is flying under now, when it is not the one chosen. */
+.pause-menu .chip[data-flying='true']::before {
+  content: '✈ ';
+}
+
+.pause-menu .preview,
+.pause-menu .note {
+  min-height: 1.5em;
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.pause-menu .note {
+  min-height: 0;
+}
+
+.pause-menu .slider {
+  display: grid;
+  grid-template-columns: 11rem 1fr 4rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.6rem;
+}
+
+.pause-menu .check {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+
+.pause-menu .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.pause-menu [data-testid='pause-resume'] {
+  margin-bottom: 1rem;
+  border-color: var(--focus);
+  font-weight: 600;
+}
+
+/* Binding editor. */
+.binding-editor header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.binding-editor .profile-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.binding-editor .profile-bar label {
+  display: grid;
+  gap: 0.15rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.binding-editor .import-errors,
+.binding-editor .conflicts {
+  margin: 0.5rem 0;
+  color: var(--bad);
+}
+
+.binding-editor .import-errors[hidden],
+.binding-editor .conflicts:empty {
+  display: none;
+}
+
+.binding-editor .devices,
+.binding-editor .live {
+  margin: 0.5rem 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.binding-editor .live-device {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
+.binding-editor .group {
+  margin: 0.75rem 0;
+  padding: 0;
+  border: 0;
+}
+
+.binding-editor legend {
+  margin-bottom: 0.25rem;
+  padding: 0;
+  font-weight: 600;
+}
+
+.binding-editor .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.binding-editor .row .label {
+  flex: 0 0 13rem;
+}
+
+.binding-editor .chips {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.binding-editor .chip {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.1rem 0.2rem 0.1rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.binding-editor .chip button {
+  min-height: 24px;
+  padding: 0 0.4rem;
+  border: 0;
+}
+
+.binding-editor .chip[data-conflict='true'] {
+  border-color: var(--warn);
+  border-style: dashed;
+}
+
+.binding-editor .chip[data-reserved='true'] {
+  border-color: var(--bad);
+}
+
+.binding-editor .tag {
+  color: var(--warn);
+  font-size: 0.8rem;
+}
+
+.binding-editor .slider {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.binding-editor .shape,
+.binding-editor .calibration {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.binding-editor .capture {
+  position: sticky;
+  bottom: 0;
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--focus);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.binding-editor .capture[hidden] {
+  display: none;
+}
+
+@media (max-width: 40rem) {
+  .pause-menu .slider {
+    grid-template-columns: 1fr;
+  }
+
+  .binding-editor .row .label {
+    flex-basis: 100%;
+  }
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ABI,
+  INPUT_FLAG,
   INPUT_FRAME,
   PROFILE,
   SNAPSHOT,
@@ -82,6 +83,15 @@ function rig(opts: { profiling?: boolean } = {}) {
     new DataView(f.buffer).setFloat64(INPUT_FRAME.T_MS, tMs, true);
     return f;
   };
+  /** A frame as the pump writes it: source event time, write time, flags. */
+  const controlFrame = (sourceMs: number, sentMs: number, flags: number): Uint8Array => {
+    const f = new Uint8Array(INPUT_FRAME.SIZE);
+    const dv = new DataView(f.buffer);
+    dv.setFloat64(INPUT_FRAME.T_MS, sourceMs, true);
+    dv.setFloat64(INPUT_FRAME.T_SENT_MS, sentMs, true);
+    dv.setUint32(INPUT_FRAME.FLAGS, flags, true);
+    return f;
+  };
   return {
     log,
     loop,
@@ -89,6 +99,7 @@ function rig(opts: { profiling?: boolean } = {}) {
     published,
     queue,
     frameSampledAt,
+    controlFrame,
     advance: (ms: number) => {
       mono += ms;
       shared += ms;
@@ -154,6 +165,89 @@ describe('SimLoop', () => {
     expect(s.inputLatency.count).toBe(1);
     expect(s.inputLatency.max).toBeCloseTo(7, 6);
     expect(s.inputLatencyRun.count).toBe(1);
+  });
+
+  it('measures control latency on frames that carry a change: from the event to the end of the tick', () => {
+    const r = rig();
+    r.loop.start();
+    r.advance(SIM_DT_MS + 0.1);
+    const now = r.shared();
+    // The event was 11 ms ago and the frame was written 4 ms ago: 7 ms waiting for the poll, 4 for
+    // the tick (the step costs nothing in this rig).
+    r.queue.push(r.controlFrame(now - 11, now - 4, INPUT_FLAG.CHANGED));
+    r.loop.iterate();
+    const s = r.loop.report();
+    expect(s.controlLatency.count).toBe(1);
+    expect(s.controlLatency.max).toBeCloseTo(11, 0);
+    expect(s.pollLatency.max).toBeCloseTo(7, 0);
+    expect(s.tickLatency.max).toBeCloseTo(4, 0);
+    expect(s.controlLatencyRun.count).toBe(1);
+  });
+
+  it('leaves out heartbeats, neutral frames and frames the host did not stamp', () => {
+    const r = rig();
+    r.loop.start();
+    r.advance(SIM_DT_MS + 0.1);
+    const now = r.shared();
+    r.queue.push(
+      r.controlFrame(now - 10, now - 5, 0), // a heartbeat
+      r.controlFrame(now - 10, now - 5, INPUT_FLAG.NEUTRAL),
+      r.controlFrame(0, now - 5, INPUT_FLAG.CHANGED), // no source time
+      r.controlFrame(now - 10, 0, INPUT_FLAG.CHANGED), // no write time
+    );
+    r.loop.iterate();
+    expect(r.loop.report().controlLatency.count).toBe(0);
+  });
+
+  it('counts every changed frame in a batch, not just the newest', () => {
+    const r = rig();
+    r.loop.start();
+    r.advance(SIM_DT_MS + 0.1);
+    const now = r.shared();
+    r.queue.push(
+      r.controlFrame(now - 9, now - 8, INPUT_FLAG.CHANGED),
+      r.controlFrame(now - 5, now - 4, INPUT_FLAG.CHANGED | INPUT_FLAG.MOUSE_AIM),
+      r.controlFrame(now - 3, now - 2, 0),
+    );
+    r.loop.iterate();
+    const s = r.loop.report();
+    expect(s.controlLatency.count).toBe(2);
+    expect(s.controlLatency.max).toBeCloseTo(9, 0);
+  });
+
+  it('never records a negative latency (a source time a little after the tick, from clock skew)', () => {
+    const r = rig();
+    r.loop.start();
+    r.advance(SIM_DT_MS + 0.1);
+    const now = r.shared();
+    r.queue.push(r.controlFrame(now + 5, now + 6, INPUT_FLAG.CHANGED));
+    r.loop.iterate();
+    expect(r.loop.report().controlLatency.max).toBe(0);
+  });
+
+  it('starts each interval afresh but keeps the run until reset', () => {
+    const r = rig();
+    r.loop.start();
+    r.advance(SIM_DT_MS + 0.1);
+    r.queue.push(r.controlFrame(r.shared() - 6, r.shared() - 3, INPUT_FLAG.CHANGED));
+    r.loop.iterate();
+    r.loop.report();
+    const again = r.loop.report();
+    expect(again.controlLatency.count).toBe(0);
+    expect(again.pollLatency.count).toBe(0);
+    expect(again.controlLatencyRun.count).toBe(1);
+    r.loop.resetRun();
+    expect(r.loop.report().controlLatencyRun.count).toBe(0);
+  });
+
+  it('reports the aircraft status read from the snapshot', () => {
+    const r = rig();
+    r.snapshotBytes.fill(0);
+    new DataView(r.snapshotBytes.buffer).setUint8(SNAPSHOT.O_ASSIST, 3);
+    new DataView(r.snapshotBytes.buffer).setUint8(SNAPSHOT.O_SPAWN_SEQ, 5);
+    const s = r.loop.report();
+    expect(s.status.assist).toBe(3);
+    expect(s.status.spawnSeq).toBe(5);
   });
 
   it('ignores frames with no sample time', () => {

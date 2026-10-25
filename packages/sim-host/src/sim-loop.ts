@@ -7,7 +7,10 @@ import { Histogram } from '@flying/platform-web/metrics';
 import {
   ABI,
   decodeProfile,
+  INPUT_FLAG,
   INPUT_FRAME,
+  newAircraftStatus,
+  readAircraftStatus,
   SnapshotReader,
   stampPublishTime,
   type InputSource,
@@ -57,6 +60,13 @@ export class SimLoop {
   readonly #stepRun = new Histogram(20, 400);
   readonly #latency = new Histogram(100, 400);
   readonly #latencyRun = new Histogram(100, 400);
+  // Control latency (AC-58.3): 0.25 ms bins up to 100 ms, split at the moment the frame was written.
+  readonly #control = new Histogram(100, 400);
+  readonly #controlRun = new Histogram(100, 400);
+  readonly #poll = new Histogram(100, 400);
+  readonly #pollRun = new Histogram(100, 400);
+  readonly #tickWait = new Histogram(100, 400);
+  readonly #tickWaitRun = new Histogram(100, 400);
   #windowStartMs: number;
   #windowStartTick = 0;
   #profiling: boolean;
@@ -94,6 +104,9 @@ export class SimLoop {
   resetRun(): void {
     this.#stepRun.reset();
     this.#latencyRun.reset();
+    this.#controlRun.reset();
+    this.#pollRun.reset();
+    this.#tickWaitRun.reset();
   }
 
   /** Throws away queued input while nothing is stepping, so resuming starts fresh. */
@@ -131,10 +144,36 @@ export class SimLoop {
     const spent = d.nowMs() - t0;
     this.#step.record(spent);
     this.#stepRun.record(spent);
+    const end = d.sharedNowMs();
     if (frames > 0 && sampledAt > 0) {
-      const latency = d.sharedNowMs() - sampledAt;
+      const latency = end - sampledAt;
       this.#latency.record(latency);
       this.#latencyRun.record(latency);
+    }
+    this.#measureControlLatency(frames, end);
+  }
+
+  /**
+   * AC-58.3: for every drained frame that carries a control change, the time from the source event
+   * to the end of this tick, and where it went: before the frame was written, and after.
+   */
+  #measureControlLatency(frames: number, end: number): void {
+    const view = this.#scratchView;
+    for (let i = 0; i < frames; i++) {
+      const at = i * INPUT_FRAME.SIZE;
+      if ((view.getUint32(at + INPUT_FRAME.FLAGS, true) & INPUT_FLAG.CHANGED) === 0) continue;
+      const source = view.getFloat64(at + INPUT_FRAME.T_MS, true);
+      const sent = view.getFloat64(at + INPUT_FRAME.T_SENT_MS, true);
+      if (!(source > 0) || !(sent > 0)) continue; // a host that does not stamp its frames
+      const control = Math.max(0, end - source);
+      this.#control.record(control);
+      this.#controlRun.record(control);
+      const poll = Math.max(0, sent - source);
+      const wait = Math.max(0, end - sent);
+      this.#poll.record(poll);
+      this.#pollRun.record(poll);
+      this.#tickWait.record(wait);
+      this.#tickWaitRun.record(wait);
     }
   }
 
@@ -151,6 +190,8 @@ export class SimLoop {
     snap.ownshipPos(pos);
     snap.ownshipQuat(quat);
     snap.ownshipSurfaces(surfaces);
+    const status = newAircraftStatus();
+    readAircraftStatus(snap, status);
     const stats: SimStats = {
       atMs: d.sharedNowMs(),
       tick,
@@ -161,6 +202,13 @@ export class SimLoop {
       stepRun: quantiles(this.#stepRun),
       inputLatency: quantiles(this.#latency),
       inputLatencyRun: quantiles(this.#latencyRun),
+      controlLatency: quantiles(this.#control),
+      controlLatencyRun: quantiles(this.#controlRun),
+      pollLatency: quantiles(this.#poll),
+      pollLatencyRun: quantiles(this.#pollRun),
+      tickLatency: quantiles(this.#tickWait),
+      tickLatencyRun: quantiles(this.#tickWaitRun),
+      status,
       inputsDropped: d.inputs.dropped(),
       snapshotsDropped: d.snapshots.dropped(),
       coreState: d.sim.coreState(),
@@ -198,6 +246,9 @@ export class SimLoop {
     }
     this.#step.reset();
     this.#latency.reset();
+    this.#control.reset();
+    this.#poll.reset();
+    this.#tickWait.reset();
     this.#windowStartMs = now;
     this.#windowStartTick = tick;
     return stats;
