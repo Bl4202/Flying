@@ -191,6 +191,10 @@ const EN = {
   'toast.renderer-fallback': 'Switched to the {backend} renderer.',
   'toast.renderer-lost': 'The graphics device was lost: {reason}',
   'toast.sim-silent': 'The simulation has not reported for {seconds} seconds.',
+  'toast.assist': 'Flight assist: {name}',
+  'toast.mouse-mode': 'Mouse: {mode}',
+  'toast.mouse-raw':
+    'Your browser would not give raw mouse motion, so the mouse may feel accelerated.',
   'toast.paused': 'Paused',
   'toast.resumed': 'Resumed',
 
@@ -248,6 +252,7 @@ const EN = {
     'Reduced: the screen greys and darkens, but you keep control, and you can take 1.5 g more.',
   'pause.g.full.preview':
     'Full: sustained g greys the screen, then blacks it out and delays your controls, and past that you pass out.',
+  'pause.g.restart': 'The g-effects setting is used when the game next starts.',
   'pause.strength': 'Screen effect strength',
   'pause.autogcas': 'Automatic ground-collision avoidance (Full assist)',
   'pause.controls': 'Controls…',

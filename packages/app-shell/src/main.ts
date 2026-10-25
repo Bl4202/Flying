@@ -176,9 +176,16 @@ async function main(): Promise<void> {
       benchmarkSummary: stored
         ? `${stored.classification.profile} / ${stored.classification.preset}`
         : undefined,
+      kv,
       features,
       report,
-      roots: { stage, overlay: element('overlay-root'), toast: element('toast-root') },
+      roots: {
+        stage,
+        overlay: element('overlay-root'),
+        toast: element('toast-root'),
+        strip: element('strip-root'),
+        menu: element('menu-root'),
+      },
       flow: { dispatch },
       fail,
     });

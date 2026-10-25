@@ -1,7 +1,8 @@
 import { defaultFlags, type Flags } from '@flying/platform-web';
 import { ASSIST_LEVEL, G_EFFECTS, SPAWN_KIND } from '@flying/sim-bridge/layout';
 import { describe, expect, it } from 'vitest';
-import { sessionFromFlags } from './session.ts';
+import { DEFAULT_SETTINGS } from '@flying/ui';
+import { sessionFromFlags, sessionOverrides } from './session.ts';
 
 const flags = (over: Partial<Flags>): Flags => ({ ...defaultFlags(), ...over });
 
@@ -33,5 +34,44 @@ describe('sessionFromFlags', () => {
       assist: ASSIST_LEVEL.STANDARD,
       gEffects: G_EFFECTS.FULL,
     });
+  });
+
+  it("takes the player's settings over the defaults, and the URL over the settings", () => {
+    const settings = {
+      spawn: SPAWN_KIND.AIR,
+      assist: ASSIST_LEVEL.REDUCED,
+      gEffects: G_EFFECTS.OFF,
+    };
+    expect(sessionFromFlags(defaultFlags(), false, settings)).toEqual(settings);
+    expect(sessionFromFlags(flags({ assist: 'full' }), false, settings)).toEqual({
+      ...settings,
+      assist: ASSIST_LEVEL.FULL,
+    });
+    // A performance run ignores both.
+    expect(sessionFromFlags(flags({ assist: 'full' }), true, settings)).toEqual({
+      spawn: SPAWN_KIND.AIR,
+      assist: ASSIST_LEVEL.STANDARD,
+      gEffects: G_EFFECTS.FULL,
+    });
+  });
+});
+
+describe('sessionOverrides', () => {
+  it('is empty when the session is the stored settings', () => {
+    const session = sessionFromFlags(defaultFlags(), false, DEFAULT_SETTINGS);
+    expect(sessionOverrides(session, DEFAULT_SETTINGS)).toEqual({});
+  });
+
+  it('lists only what the URL changed', () => {
+    const session = sessionFromFlags(flags({ spawn: 'air', assist: 'manual' }), false);
+    expect(sessionOverrides(session, DEFAULT_SETTINGS)).toEqual({
+      spawn: SPAWN_KIND.AIR,
+      assist: ASSIST_LEVEL.MANUAL,
+    });
+  });
+
+  it('lists the scripted session of a performance run', () => {
+    const session = sessionFromFlags(defaultFlags(), true, DEFAULT_SETTINGS);
+    expect(sessionOverrides(session, DEFAULT_SETTINGS).spawn).toBe(SPAWN_KIND.AIR);
   });
 });

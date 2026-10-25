@@ -198,6 +198,8 @@ export class InputPump {
   /** Press-type buttons that were already down at a resync: ignored until let go. */
   readonly #suppress = new Uint8Array(ACTION_COUNT);
   #buttons = 0;
+  /** Buttons the page presses for one frame (a respawn from the menu), until a frame carries them. */
+  #oneShot = 0;
   #lastButtons = 0;
   #lastFlags = 0;
   #lastAssist = -1;
@@ -353,6 +355,15 @@ export class InputPump {
     return this.#assistReq;
   }
 
+  /**
+   * Presses `button` (a `BUTTON` constant) for one frame, as if the key were pressed and let go:
+   * for what the page does on the player's behalf, like the menu's respawn. It is sent with the
+   * next frame that goes out.
+   */
+  pressOnce(button: number): void {
+    this.#oneShot |= 1 << button;
+  }
+
   /** The spawn a respawn goes to: 0 the session's, 1 the runway, 2 in the air. */
   setRespawnKind(kind: number): void {
     this.#spawnReq = kind >= 0 && kind <= 2 ? kind : 0;
@@ -372,6 +383,10 @@ export class InputPump {
       this.#lever.set(clamp01(o.throttle));
       this.#spawnAck = o.spawnSeq & 0xff;
       this.#absSync = true;
+      // A new aircraft points somewhere else: the aim starts from its nose again.
+      if (this.#mouseMode === 'aim' && this.#context === 'flight') {
+        this.#aim.enable(o.noseAzRad, o.noseElRad);
+      }
     }
     this.#assistSeen = o.assist;
     this.#r[R_NOSE_AZ] = o.noseAzRad;
@@ -418,7 +433,7 @@ export class InputPump {
     this.#applyResync();
 
     this.#cur.fill(0);
-    this.#buttons = 0;
+    this.#buttons = this.#oneShot;
     let flags = 0;
     if (this.#context === 'flight') {
       flags = this.#flight(dt);
@@ -431,6 +446,7 @@ export class InputPump {
     const result = this.#emit(now, flags, false);
     // A refused frame leaves its change unsent, and with it the time of the event.
     if (result !== REFUSED) this.#r[R_PENDING] = Number.POSITIVE_INFINITY;
+    if (result === SENT) this.#oneShot = 0;
     return result === SENT;
   }
 
