@@ -10,7 +10,7 @@ describe('parseFlags', () => {
 
   it('reads every documented flag', () => {
     const f = parseFlags(
-      '?debug=perf&renderer=webgl2&flags=transfer,mainrender,timer,stall&compat=1&selftest=renderer&perf=ps0&seconds=120&bench=quick&spawn=air&assist=reduced&g=off',
+      '?debug=perf&renderer=webgl2&flags=transfer,mainrender,timer,stall&compat=1&selftest=renderer&perf=ps0&seconds=120&bench=quick&spawn=air&assist=reduced&g=off&script=circuit',
     );
     expect(f).toEqual({
       debug: 'perf',
@@ -27,6 +27,7 @@ describe('parseFlags', () => {
       spawn: 'air',
       assist: 'reduced',
       g: 'off',
+      script: 'circuit',
       warnings: [],
     });
   });
@@ -42,7 +43,7 @@ describe('parseFlags', () => {
 
   it('ignores bad values, keeps the default, and says so', () => {
     const f = parseFlags(
-      'debug=yes&renderer=vulkan&flags=transfer,bogus&compat=2&seconds=0&bench=slow&perf=ps9&selftest=2&spawn=moon&assist=auto&g=huge',
+      'debug=yes&renderer=vulkan&flags=transfer,bogus&compat=2&seconds=0&bench=slow&perf=ps9&selftest=2&spawn=moon&assist=auto&g=huge&script=bot',
     );
     expect(f.debug).toBe(false);
     expect(f.renderer).toBe('auto');
@@ -56,7 +57,8 @@ describe('parseFlags', () => {
     expect(f.spawn).toBeUndefined();
     expect(f.assist).toBeUndefined();
     expect(f.g).toBeUndefined();
-    expect(f.warnings).toHaveLength(11);
+    expect(f.script).toBe(false);
+    expect(f.warnings).toHaveLength(12);
     expect(f.warnings.join('\n')).toMatch(/renderer=vulkan/);
   });
 

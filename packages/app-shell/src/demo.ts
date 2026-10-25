@@ -158,8 +158,10 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   const settings = new SettingsStore(ctx.kv);
   const controlsStore = new ControlsStore(ctx.kv);
   await Promise.all([settings.load(), controlsStore.load()]);
+  /** A scripted pilot flies (a performance run, or the circuit): the devices are left alone. */
+  const scripted = ctx.perf || flags.script !== false;
   const session = sessionFromFlags(flags, ctx.perf, settings.value);
-  const overrides = ctx.perf ? {} : sessionOverrides(session, settings.value);
+  const overrides = scripted ? {} : sessionOverrides(session, settings.value);
 
   let latestSim: SimStats | undefined;
   let latestRender: RenderStats | undefined;
@@ -201,7 +203,11 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
         threadsInitialPages: __THREADS_INITIAL_PAGES__,
         contentUrl: coreContentUrl,
         seed: SEED,
-        script: ctx.perf ? INPUT_SCRIPT.ERRATIC : INPUT_SCRIPT.NONE,
+        script: ctx.perf
+          ? INPUT_SCRIPT.ERRATIC
+          : flags.script === 'circuit'
+            ? INPUT_SCRIPT.CIRCUIT
+            : INPUT_SCRIPT.NONE,
         session,
         snapshot: snapshots.sink,
         input: inputs.source,
@@ -263,7 +269,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     }
   };
 
-  if (!ctx.perf) {
+  if (!scripted) {
     const c = new FlightControls({
       window,
       document,
@@ -280,7 +286,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       },
     });
     controls = c;
-    const m = new MenuController({
+    menus = new MenuController({
       root: roots.menu,
       settings,
       store: controlsStore,
@@ -310,11 +316,15 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       },
       nowMs: monotonicMs,
     });
-    menus = m;
-    render.setSettings({ gfxStrength: m.settings().gfxStrength });
+    c.start();
+  }
+
+  // The warning strip and the state the pump needs come from the aircraft's snapshot. A scripted
+  // pilot (not a performance run) gets the strip too, so the circuit can be watched.
+  if (!ctx.perf) {
+    render.setSettings({ gfxStrength: settings.value.gfxStrength });
     const s = new WarningStrip(roots.strip);
     strip = s;
-
     let appliedStart = false;
     let lastStrip = Number.NEGATIVE_INFINITY;
     feed = new StatusFeed({
@@ -325,11 +335,11 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
         cancelAnimationFrame(id);
       },
       onStatus: (status, observation) => {
-        c.pump.observe(observation);
-        if (!appliedStart) {
+        controls?.pump.observe(observation);
+        if (!appliedStart && controls && menus) {
           // The mouse aim starts from where the nose points, so wait for the first snapshot.
           appliedStart = true;
-          c.applySettings(m.settings());
+          controls.applySettings(menus.settings());
         }
         const now = monotonicMs();
         if (now - lastStrip >= STRIP_MS) {
@@ -338,7 +348,6 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
         }
       },
     });
-    c.start();
     feed.start();
   }
 
@@ -390,9 +399,9 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       latestSim === undefined
         ? undefined
         : {
-            control: latestSim.controlLatency,
-            poll: latestSim.pollLatency,
-            tick: latestSim.tickLatency,
+            control: latestSim.controlLatencyRun,
+            poll: latestSim.pollLatencyRun,
+            tick: latestSim.tickLatencyRun,
           },
   });
 

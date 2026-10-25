@@ -45,6 +45,8 @@ export interface PixelSummary {
   height: number;
   distinctColours: number;
   skyFraction: number;
+  /** Mean luminance of the frame, 0 (black) to 1 (white). */
+  meanLuma: number;
 }
 
 function newCanvas(): HTMLCanvasElement {
@@ -261,6 +263,7 @@ export class RenderClient {
         height: event.height,
         distinctColours: event.distinctColours,
         skyFraction: event.skyFraction,
+        meanLuma: event.meanLuma,
       });
       return;
     }

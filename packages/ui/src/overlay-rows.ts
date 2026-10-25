@@ -215,7 +215,7 @@ export function buildOverlayRows(m: OverlayModel): OverlayRow[] {
   add(
     'ctl',
     'Control ms',
-    `${fixed(q(m.latency?.control, 'p95'), 2, ' p95')} · poll ${fixed(q(m.latency?.poll, 'p95'), 1)} · tick ${fixed(q(m.latency?.tick, 'p95'), 1)} · age ${fixed(q(s?.inputLatency, 'p95'), 1)}`,
+    `${fixed(q(m.latency?.control, 'p95'), 2, ' p95')} · poll ${fixed(q(m.latency?.poll, 'p95'), 1)} · tick ${fixed(q(m.latency?.tick, 'p95'), 1)} · age ${fixed(q(s?.inputLatencyRun, 'p95'), 1)}`,
   );
   add(
     'input',
