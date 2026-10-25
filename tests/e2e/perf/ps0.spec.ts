@@ -44,7 +44,7 @@ test('PS-0 produces a valid report, and the sim holds its rate', async ({ page }
     mkdirSync(REPORT_DIR, { recursive: true });
     writeFileSync(`${REPORT_DIR}/perf-ps0.json`, `${JSON.stringify(report, null, 2)}\n`);
   }
-  expect(report.build.abi).toBe(2);
+  expect(report.build.abi).toBe(3);
   expect(report.build.contentHash).toMatch(/^[0-9a-f]{16}$/);
   expect(report.modes.variant).toBe('threads');
   expect(report.machine.hardwareConcurrency).toBeGreaterThan(0);

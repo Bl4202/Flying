@@ -22,7 +22,7 @@ test.describe('no isolation: no headers and no Service Worker', () => {
   test('runs the single build over copied messages, and the loop and input still work', async ({
     page,
   }) => {
-    await openGame(page, `${PAGES_BASE}?debug=1`);
+    await openGame(page, `${PAGES_BASE}?debug=1&spawn=air`);
     // Transfer mode: the single WASM build, snapshots and inputs by message, timer-driven ticks.
     await expect(byId(page, 'ov-mode')).toHaveAttribute('data-value', 'single · message · timer');
 

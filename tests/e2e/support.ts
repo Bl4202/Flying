@@ -92,6 +92,63 @@ export function simSample(page: Page) {
   });
 }
 
+/** The ownship as the page's test hook reports it (`AircraftStatus` in `sim-bridge`). */
+export interface FlyingStatus {
+  spawnSeq: number;
+  assist: number;
+  fcsMode: number;
+  flags: number;
+  flags2: number;
+  throttle: number;
+  tas: number;
+  cas: number;
+  mach: number;
+  alpha: number;
+  nz: number;
+  gearPos: number;
+  flapDetent: number;
+  airbrake: number;
+  brakeL: number;
+  brakeR: number;
+  groundSpeed: number;
+  vs: number;
+  agl: number;
+  gLagged: number;
+  gStress: number;
+  redout: number;
+  nCmd: number;
+  gearBits: number;
+  crashCause: number;
+  noseAz: number;
+  noseEl: number;
+}
+
+/** `OWNSHIP_FLAG2` bits, as the status reports them. */
+export const FLAG2 = {
+  WOW: 1,
+  PARKING_BRAKE: 2,
+  ALPHA_LIMIT: 4,
+  G_LIMIT: 8,
+  OVERSPEED: 16,
+  OVERSTRESS: 32,
+  BLACKOUT: 64,
+  GLOC: 128,
+  REDOUT: 256,
+  HARD_LANDING: 512,
+  MOUSE_AIM: 16384,
+  THROTTLE_HELD: 32768,
+} as const;
+
+export const ASSIST = { FULL: 1, STANDARD: 2, REDUCED: 3, MANUAL: 4 } as const;
+
+export interface LatencyQuantiles {
+  count: number;
+  avg: number;
+  p95: number;
+  p99: number;
+  max: number;
+}
+
 /** What the page believes about the test hooks, for `page.evaluate` typing. */
 declare global {
   interface Window {
@@ -106,6 +163,7 @@ declare global {
         height: number;
         distinctColours: number;
         skyFraction: number;
+        meanLuma: number;
       }>;
       stats(): {
         sim:
@@ -131,8 +189,51 @@ declare global {
       };
       host(): 'worker' | 'main';
       backend(): string;
+      status(): FlyingStatus | undefined;
+      input():
+        | {
+            mouseMode: string;
+            context: string;
+            profile: string;
+            throttle: number;
+            assistRequest: number;
+            stats: { sent: number; refused: number; heartbeats: number; changed: number };
+          }
+        | undefined;
+      menu(): null | 'pause' | 'controls';
     };
   }
+}
+
+/** The aircraft's state from the page's test hook (waits until there is one). */
+export async function flightStatus(page: Page): Promise<FlyingStatus> {
+  let latest: FlyingStatus | undefined;
+  await expect
+    .poll(
+      async () => {
+        latest = await page.evaluate(() => window.__flying?.status());
+        return latest !== undefined;
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(true);
+  if (latest === undefined) throw new Error('no aircraft status');
+  return latest;
+}
+
+/** The newest status, without waiting (for polling inside `expect.poll`). */
+export const statusNow = (page: Page): Promise<FlyingStatus | undefined> =>
+  page.evaluate(() => window.__flying?.status());
+
+/** The control latency since the last `resetRun`, from the sim's report (AC-58.3). */
+export function controlLatencyRun(page: Page): Promise<LatencyQuantiles | undefined> {
+  return page.evaluate(
+    () =>
+      (
+        window.__flying?.stats().sim as unknown as
+          { controlLatencyRun?: LatencyQuantiles } | undefined
+      )?.controlLatencyRun,
+  );
 }
 
 /** Both threads' newest reports, with the numbers the independence tests compare. */
