@@ -2,9 +2,11 @@ import { expect, test } from '@playwright/test';
 import { byId, HEADERS_BASE, openGame, overlayNumber, overlaySurfaces } from './support.ts';
 
 const value = overlayNumber;
+/** These specs fly in the air, where the stick has something to push against. */
+const AIR = `${HEADERS_BASE}?debug=1&spawn=air`;
 
 test('holding S pulls the nose up and loads the airframe', async ({ page }) => {
-  await openGame(page, `${HEADERS_BASE}?debug=1`);
+  await openGame(page, AIR);
   const pitch0 = await value(page, 'ov-pitch');
   await page.keyboard.down('KeyS');
   await expect.poll(() => value(page, 'ov-nz'), { timeout: 5_000 }).toBeGreaterThan(1.3);
@@ -13,7 +15,7 @@ test('holding S pulls the nose up and loads the airframe', async ({ page }) => {
 });
 
 test('R respawns the aircraft: level, heading north, at 200 m/s', async ({ page }) => {
-  await openGame(page, `${HEADERS_BASE}?debug=1`);
+  await openGame(page, AIR);
   const spawnPitch = await value(page, 'ov-pitch');
   await page.keyboard.down('KeyW');
   await expect.poll(() => value(page, 'ov-pitch'), { timeout: 10_000 }).toBeLessThan(-20);
@@ -32,7 +34,7 @@ test('R respawns the aircraft: level, heading north, at 200 m/s', async ({ page 
 test('losing focus sends a neutral frame: the stick centres while the throttle holds', async ({
   page,
 }) => {
-  await openGame(page, `${HEADERS_BASE}?debug=1`);
+  await openGame(page, AIR);
   const [trim] = await overlaySurfaces(page);
   await page.keyboard.down('KeyW');
   // Stick forward: elevator trailing edge down, well away from the trim.
@@ -52,15 +54,16 @@ test('losing focus sends a neutral frame: the stick centres while the throttle h
 });
 
 test('input latency is measured and reported', async ({ page }) => {
-  await openGame(page, `${HEADERS_BASE}?debug=1`);
+  await openGame(page, AIR);
   await page.keyboard.down('KeyW');
   await page.waitForTimeout(1000);
   await page.keyboard.up('KeyW');
   const latency = await page.evaluate(() => window.__flying?.stats().sim);
   expect(latency).toBeDefined();
-  await expect(byId(page, 'ov-latency')).toHaveAttribute('data-value', /^\d+\.\d{2} p95$/);
+  // The Control row: source event to the end of the tick that acted on it (AC-58.3, ADR-33).
+  await expect(byId(page, 'ov-ctl')).toHaveAttribute('data-value', /^\d+\.\d{2} p95 · poll/);
   // Reported for the record, with a very loose bound: these runs share a CI machine with the browser.
-  const p95 = await value(page, 'ov-latency');
-  console.log(`input latency p95: ${String(p95)} ms`);
+  const p95 = await value(page, 'ov-ctl');
+  console.log(`control latency p95: ${String(p95)} ms`);
   expect(p95).toBeLessThan(100);
 });
