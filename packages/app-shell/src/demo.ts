@@ -265,6 +265,9 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     paused,
     input: { sent: pump.stats.sent, refused: pump.stats.refused },
     benchmark: ctx.benchmarkSummary,
+    // Read from the snapshot and the control-latency stats by the wiring work package.
+    flight: undefined,
+    latency: undefined,
   });
 
   const overlay = new DebugOverlay(roots.overlay, {

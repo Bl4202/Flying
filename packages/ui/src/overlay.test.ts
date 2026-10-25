@@ -1,6 +1,16 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
-import { OWNSHIP_FLAG, PROFILE, STAGE, type SimStats } from '@flying/sim-bridge';
+import {
+  type AircraftStatus,
+  ASSIST_LEVEL,
+  FCS_MODE,
+  newAircraftStatus,
+  OWNSHIP_FLAG,
+  OWNSHIP_FLAG2,
+  PROFILE,
+  STAGE,
+  type SimStats,
+} from '@flying/sim-bridge';
 import type { RenderStats } from '@flying/render/messages';
 import {
   DebugOverlay,
@@ -21,6 +31,22 @@ import {
 } from './overlay-rows.ts';
 
 const Q = { count: 10, avg: 0.5, p50: 0.4, p95: 0.9, p99: 1.2, max: 2 };
+
+function flight(over: Partial<AircraftStatus> = {}): AircraftStatus {
+  return {
+    ...newAircraftStatus(),
+    assist: ASSIST_LEVEL.STANDARD,
+    fcsMode: FCS_MODE.GROUND,
+    nCmd: 1,
+    gearPos: 1,
+    flapDetent: 1,
+    groundSpeed: 0,
+    agl: -0.12,
+    gLagged: 1,
+    flags2: OWNSHIP_FLAG2.WOW | OWNSHIP_FLAG2.PARKING_BRAKE,
+    ...over,
+  };
+}
 
 function sim(over: Partial<SimStats> = {}): SimStats {
   return {
@@ -106,6 +132,8 @@ function model(over: Partial<OverlayModel> = {}): OverlayModel {
     paused: false,
     input: { sent: 100, refused: 0 },
     benchmark: undefined,
+    flight: undefined,
+    latency: undefined,
     ...over,
   };
 }
@@ -140,22 +168,88 @@ describe('buildOverlayRows', () => {
     expect(get('sim-hz')).toBe('60.01');
     expect(get('fps')).toBe('59.9');
     expect(get('core')).toBe('running');
-    expect(get('build')).toBe('abcdef012345');
+    expect(get('build')).toBe('abcdef012345 · ABI 2');
     expect(get('mode')).toBe('threads · shared · atomics');
     expect(get('renderer')).toBe('webgl2 on worker');
     expect(get('content')).toBe('0123456789abcdef');
     expect(get('alt')).toBe('2934 m at E 10 N -6000');
     expect(get('pitch')).toBe('0.0° / 0.0°');
-    expect(get('tas')).toBe('180.0 m/s / 300 kn');
-    expect(get('mach')).toBe('0.550');
+    expect(get('tas')).toBe('180.0 m/s / 300 kn · M 0.550');
     expect(get('alpha')).toBe('2.9° / -0.1°');
     expect(get('nz')).toBe('1.02 g');
-    expect(get('throttle')).toBe('0.90 AB 2');
-    expect(get('thrust')).toBe('101.5 kN');
+    expect(get('throttle')).toBe('0.90 AB 2 · 101.5 kN');
     expect(get('fuel')).toBe('1860 kg / 10260 kg');
     expect(get('surfaces')).toBe('e -2.9 a 0.6 r 0.0°');
     expect(get('status')).toBe('ok');
     expect(get('input')).toBe('100 (0 refused), core at 9');
+  });
+
+  it('shows the assist level, what the control system is doing, and the load factor it asks for', () => {
+    const get = (f: AircraftStatus | undefined) =>
+      buildOverlayRows(model({ flight: f })).find((r) => r.id === 'assist')?.value;
+    expect(get(undefined)).toBe('–');
+    expect(get(flight())).toBe('Standard · ground · n cmd 1.00 g');
+    expect(get(flight({ assist: ASSIST_LEVEL.MANUAL, fcsMode: FCS_MODE.FLIGHT, nCmd: 4.5 }))).toBe(
+      'Manual · flight · n cmd 4.50 g',
+    );
+    expect(get(flight({ fcsMode: FCS_MODE.GLOC }))).toMatch(/g-loc/);
+  });
+
+  it('shows the ground state: speed first, then gear, flaps, airbrake, brakes and the wheels', () => {
+    const get = (f: AircraftStatus | undefined) =>
+      buildOverlayRows(model({ flight: f })).find((r) => r.id === 'ground')?.value;
+    expect(get(undefined)).toBe('–');
+    expect(get(flight())).toBe(
+      '0 kn · gear 100% · flaps TO · airbrake 0% · brakes 0/0% · on wheels · parking',
+    );
+    expect(
+      get(
+        flight({
+          groundSpeed: 60,
+          gearPos: 0.5,
+          flapDetent: 2,
+          airbrake: 1,
+          brakeL: 1,
+          brakeR: 0.25,
+          agl: 123.4,
+          flags2: 0,
+        }),
+      ),
+    ).toBe('117 kn · gear 50% · flaps LDG · airbrake 100% · brakes 100/25% · AGL 123 m');
+  });
+
+  it('shows the g state: the lagged g first, then the stress and the red-out', () => {
+    const get = (f: AircraftStatus | undefined) =>
+      buildOverlayRows(model({ flight: f })).find((r) => r.id === 'g')?.value;
+    expect(get(undefined)).toBe('–');
+    expect(get(flight({ gLagged: 7.5, gStress: 0.42, redout: 0 }))).toBe(
+      '7.50 g · S 0.42 · R 0.00',
+    );
+  });
+
+  it('shows the control latency split three ways, and the old input age', () => {
+    const get = (m: OverlayModel) => buildOverlayRows(m).find((r) => r.id === 'ctl')?.value;
+    expect(get(model())).toBe('– · poll – · tick – · age 0.9');
+    const lat = {
+      control: { ...Q, p95: 12.345 },
+      poll: { ...Q, p95: 3.21 },
+      tick: { ...Q, p95: 8.76 },
+    };
+    expect(get(model({ latency: lat }))).toBe('12.35 p95 · poll 3.2 · tick 8.8 · age 0.9');
+    expect(get(model({ latency: { ...lat, control: { ...Q, count: 0 } } }))).toMatch(
+      /^– · poll 3\.2/,
+    );
+  });
+
+  it('puts the new flags in the status row', () => {
+    const get = (f: AircraftStatus | undefined) =>
+      buildOverlayRows(model({ flight: f })).find((r) => r.id === 'status')?.value;
+    expect(get(flight({ flags2: OWNSHIP_FLAG2.WOW }))).toBe('ok');
+    expect(
+      get(
+        flight({ flags2: OWNSHIP_FLAG2.ALPHA_LIMIT | OWNSHIP_FLAG2.G_LIMIT | OWNSHIP_FLAG2.GLOC }),
+      ),
+    ).toBe('alpha limit, g limit, g-loc');
   });
 
   it('leads every shared row with the number its id names (the e2e specs parse that one)', () => {
@@ -165,7 +259,11 @@ describe('buildOverlayRows', () => {
   });
 
   it('stays within its share of the DOM budget (AC-53.4: two nodes a row)', () => {
-    expect(buildOverlayRows(model()).length).toBeLessThanOrEqual(44);
+    // The page measured 147 nodes with 44 rows (104 in the overlay): 40 rows and the warning strip
+    // (two nodes) leave it at 141, under 150, with room for v0.1c's HUD.
+    const rows = buildOverlayRows(model({ flight: flight() }));
+    expect(rows.length).toBeLessThanOrEqual(40);
+    expect(new Set(rows.map((r) => r.id)).size).toBe(rows.length);
   });
 
   it('says what is wrong with the ownship', () => {
@@ -173,6 +271,10 @@ describe('buildOverlayRows', () => {
     expect(flagsText(OWNSHIP_FLAG.SPECTATOR)).toBe('spectator');
     expect(flagsText(OWNSHIP_FLAG.CRASHED | OWNSHIP_FLAG.STALL_WARN)).toBe('crashed, stall');
     expect(flagsText(OWNSHIP_FLAG.FLAMEOUT)).toBe('flameout');
+    expect(flagsText(0, OWNSHIP_FLAG2.OVERSTRESS | OWNSHIP_FLAG2.DEPARTED)).toBe(
+      'overstress, departed',
+    );
+    expect(flagsText(OWNSHIP_FLAG.STALL_WARN, OWNSHIP_FLAG2.BLACKOUT)).toBe('stall, blackout');
   });
 
   it('never shows a heading of 360', () => {
@@ -190,8 +292,8 @@ describe('buildOverlayRows', () => {
 
   it('shows the renderer device, cut to a sane length', () => {
     const m = model({ render: { ...render(), description: 'x'.repeat(200) } });
-    const device = buildOverlayRows(m).find((r) => r.id === 'device')?.value;
-    expect(device).toHaveLength(60);
+    const adapter = buildOverlayRows(m).find((r) => r.id === 'adapter')?.value;
+    expect(adapter).toBe(`test gpu · ${'x'.repeat(60)}`);
   });
 
   it('shows the stored benchmark result, or a dash', () => {
@@ -393,7 +495,7 @@ describe('DebugOverlay', () => {
     const { overlay, q, root } = setup({ model: () => model({ adapter: '<b>gpu</b>' }) });
     overlay.show();
     expect(root.querySelector('b')).toBeNull();
-    expect(q('ov-adapter')?.dataset['value']).toBe('<b>gpu</b>');
+    expect(q('ov-adapter')?.dataset['value']).toBe('<b>gpu</b> · WebGL2 test');
   });
 });
 

@@ -23,13 +23,17 @@ describe('gameflow', () => {
 
   it('goes BOOT -> COMPAT_CHECK -> DEMO when the screen is not needed', () => {
     expect(run([BEGIN])).toEqual({ name: 'COMPAT_CHECK', phase: 'probing' });
-    expect(run([BEGIN, OK_SILENT])).toEqual({ name: 'DEMO', paused: false });
+    expect(run([BEGIN, OK_SILENT])).toEqual({ name: 'DEMO', paused: false, menu: null });
   });
 
   it('waits for the person when the screen is shown', () => {
     const waiting = run([BEGIN, OK_SCREEN]);
     expect(waiting).toEqual({ name: 'COMPAT_CHECK', phase: 'waiting' });
-    expect(flowReducer(waiting, { type: 'acknowledge' })).toEqual({ name: 'DEMO', paused: false });
+    expect(flowReducer(waiting, { type: 'acknowledge' })).toEqual({
+      name: 'DEMO',
+      paused: false,
+      menu: null,
+    });
   });
 
   it('goes to FATAL, with the code, when the check finds a missing required feature', () => {
@@ -47,11 +51,47 @@ describe('gameflow', () => {
   it('pauses and resumes in DEMO only', () => {
     const demo = run([BEGIN, OK_SILENT]);
     const paused = flowReducer(demo, { type: 'pause' });
-    expect(paused).toEqual({ name: 'DEMO', paused: true });
+    expect(paused).toEqual({ name: 'DEMO', paused: true, menu: null });
     expect(flowReducer(paused, { type: 'pause' })).toBe(paused);
-    expect(flowReducer(paused, { type: 'resume' })).toEqual({ name: 'DEMO', paused: false });
+    expect(flowReducer(paused, { type: 'resume' })).toEqual({
+      name: 'DEMO',
+      paused: false,
+      menu: null,
+    });
     expect(flowReducer(demo, { type: 'resume' })).toBe(demo);
     expect(flowReducer(INITIAL_FLOW, { type: 'pause' })).toBe(INITIAL_FLOW);
+  });
+
+  it('opens and closes a menu over the flight, in DEMO only, independently of the pause', () => {
+    const demo = run([BEGIN, OK_SILENT]);
+    const paused = flowReducer(demo, { type: 'menu', menu: 'pause' });
+    expect(paused).toEqual({ name: 'DEMO', paused: false, menu: 'pause' });
+    expect(flowReducer(paused, { type: 'menu', menu: 'pause' })).toBe(paused);
+    const controls = flowReducer(paused, { type: 'menu', menu: 'controls' });
+    expect(controls).toEqual({ name: 'DEMO', paused: false, menu: 'controls' });
+    // The overlay's pause and the menu do not undo each other.
+    const both = flowReducer(controls, { type: 'pause' });
+    expect(both).toEqual({ name: 'DEMO', paused: true, menu: 'controls' });
+    expect(flowReducer(both, { type: 'menu', menu: null })).toEqual({
+      name: 'DEMO',
+      paused: true,
+      menu: null,
+    });
+    expect(flowReducer(both, { type: 'resume' })).toEqual({
+      name: 'DEMO',
+      paused: false,
+      menu: 'controls',
+    });
+    // Not in the other states.
+    for (const s of [
+      INITIAL_FLOW,
+      run([BEGIN]),
+      run([BEGIN, OK_SCREEN]),
+      run([BEGIN, FATAL_CHECK]),
+    ]) {
+      expect(flowReducer(s, { type: 'menu', menu: 'pause' })).toBe(s);
+    }
+    expect(flowReducer(demo, { type: 'menu', menu: null })).toBe(demo);
   });
 
   it('a runtime failure ends in FATAL from any live state, and nothing leaves it', () => {
@@ -93,6 +133,7 @@ describe('gameflow', () => {
       { type: 'acknowledge' },
       { type: 'pause' },
       { type: 'resume' },
+      { type: 'menu', menu: 'pause' },
       FATAL_RUNTIME,
     ];
     const names = new Set(['BOOT', 'COMPAT_CHECK', 'DEMO', 'FATAL']);

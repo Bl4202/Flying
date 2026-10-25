@@ -34,12 +34,15 @@ export interface ActionDef {
   readonly label: string;
 }
 
-const def = (
-  id: string,
+/** An action definition that remembers its literal id, so `ActionId` is the union of the ids. */
+type Def<I extends string> = ActionDef & { readonly id: I };
+
+const def = <const I extends string>(
+  id: I,
   kind: ActionKind,
   group: ActionDef['group'],
   extra: { range?: 'bipolar' | 'unipolar'; context?: ActionContext } = {},
-): ActionDef => ({
+): Def<I> => ({
   id,
   kind,
   group,

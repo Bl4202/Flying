@@ -74,11 +74,16 @@ export function sameSource(a: Source, b: Source): boolean {
   return sourceKey(a) === sourceKey(b);
 }
 
+/** A key code as a person reads it: `KeyW` is W, `Digit4` is 4, `BracketLeft` stays as it is. */
+export function keyName(code: string): string {
+  return code.replace(/^Key/, '').replace(/^Digit/, '');
+}
+
 /** What the player sees for a source: a short label for the editor (not translated text). */
 export function describeSource(s: Source): string {
   switch (s.kind) {
     case 'key':
-      return s.code.replace(/^Key/, '').replace(/^Digit/, '');
+      return keyName(s.code);
     case 'mouse-button':
       return `Mouse ${String(s.button + 1)}`;
     case 'wheel':

@@ -531,7 +531,7 @@ function parseBinding(v: unknown, ptr: string, r: Reader): Binding | undefined {
   if (typeof o['action'] !== 'string') {
     r.add(`${ptr}/action`, 'expected an action id');
   } else if (!isActionId(o['action'])) {
-    r.add(`${ptr}/action`, `unknown action "${String(o['action'])}"`);
+    r.add(`${ptr}/action`, `unknown action "${o['action']}"`);
   } else {
     action = o['action'];
   }

@@ -1,15 +1,23 @@
 /**
- * The application state machine (GDD 53.3), as a pure reducer. v0.0b has the states that exist
- * before there is a menu:
+ * The application state machine (GDD 53.3), as a pure reducer. v0.1b has the states that exist
+ * before there is a main menu:
  *
  *     BOOT -> COMPAT_CHECK -> DEMO
  *                  \-> FATAL  <- DEMO
+ *
+ * `DEMO` carries two things that are independent: whether the simulation is `paused` (the debug
+ * overlay's button, or the tab being hidden), and which `menu` is open over the flight: none, the
+ * pause menu, or the controls editor opened from it. The page holds the simulation while a menu is
+ * open.
  *
  * `COMPAT_CHECK` lasts from the first probe until the check has passed and, when the screen is
  * shown, the person has continued. `FATAL` is final. Events that make no sense in a state are
  * ignored, returning the same state object, so callers can dispatch without checking first.
  */
 import type { CompatCode, Verdict } from './compat.ts';
+
+/** The menu open over the flight, if any. */
+export type DemoMenu = null | 'pause' | 'controls';
 
 export type FlowState =
   | { name: 'BOOT' }
@@ -18,7 +26,7 @@ export type FlowState =
       /** `probing` until the report arrives, then `waiting` for the person to continue. */
       phase: 'probing' | 'waiting';
     }
-  | { name: 'DEMO'; paused: boolean }
+  | { name: 'DEMO'; paused: boolean; menu: DemoMenu }
   | {
       name: 'FATAL';
       /** `compat`: the browser cannot run the game; `runtime`: something died while running. */
@@ -40,6 +48,8 @@ export type FlowEvent =
   | { type: 'acknowledge' }
   | { type: 'pause' }
   | { type: 'resume' }
+  /** Open a menu over the flight, or close it (`null`). */
+  | { type: 'menu'; menu: DemoMenu }
   | { type: 'fatal'; code: string; message: string };
 
 export const INITIAL_FLOW: FlowState = { name: 'BOOT' };
@@ -65,15 +75,19 @@ export function flowReducer(state: FlowState, event: FlowEvent): FlowState {
       }
       return event.showScreen
         ? { name: 'COMPAT_CHECK', phase: 'waiting' }
-        : { name: 'DEMO', paused: false };
+        : { name: 'DEMO', paused: false, menu: null };
     case 'acknowledge':
       return state.name === 'COMPAT_CHECK' && state.phase === 'waiting'
-        ? { name: 'DEMO', paused: false }
+        ? { name: 'DEMO', paused: false, menu: null }
         : state;
     case 'pause':
-      return state.name === 'DEMO' && !state.paused ? { name: 'DEMO', paused: true } : state;
+      return state.name === 'DEMO' && !state.paused ? { ...state, paused: true } : state;
     case 'resume':
-      return state.name === 'DEMO' && state.paused ? { name: 'DEMO', paused: false } : state;
+      return state.name === 'DEMO' && state.paused ? { ...state, paused: false } : state;
+    case 'menu':
+      return state.name === 'DEMO' && state.menu !== event.menu
+        ? { ...state, menu: event.menu }
+        : state;
     case 'fatal':
       return { name: 'FATAL', reason: 'runtime', code: event.code, message: event.message };
   }
