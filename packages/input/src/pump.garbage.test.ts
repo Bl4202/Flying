@@ -17,8 +17,10 @@ describe('InputPump: garbage', () => {
   // inline (16 bytes each, gone at the next young-generation collection), and a browser clock read
   // boxes its result before the pump sees it. So the test has three parts: a pump at rest, with
   // whole-number clocks, makes exactly nothing, which catches anything added to the path every
-  // update takes; a pump under load, with fractional clocks, stays under a generous ceiling; and
-  // the frame buffer is the one buffer.
+  // update takes; a pump under load, with fractional clocks, stays under a generous ceiling (304
+  // bytes on the development machine, 605 on the Linux CI runner, whose compiler boxes about twice
+  // as many numbers; an object or array made per call would add a multiple of that, and the first
+  // two tests would catch it at under 1 byte); and the frame buffer is the one buffer.
   function loaded(options: { fractional: boolean; held: string[]; pad: boolean; aim: boolean }) {
     const profile = builtinProfile('gamepad-standard');
     const keyboard = new KeyboardState();
@@ -102,7 +104,7 @@ describe('InputPump: garbage', () => {
     });
     const bytes = await bytesPerCall(r.step);
     expect(r.sent()).toBeGreaterThan(1000);
-    expect(bytes).toBeLessThan(512);
+    expect(bytes).toBeLessThan(1024);
   }, 30_000);
 
   it('hands the sink the same buffer every time', () => {
