@@ -24,6 +24,8 @@ let session: RenderSession | undefined;
 let allowStall = false;
 let stopped = false;
 let canvas: OffscreenCanvas | undefined;
+/** Settings that arrive before the session exists are applied to it when it does. */
+let settings: { gfxStrength: number } | undefined;
 let waitingForCanvas: ((c: OffscreenCanvas) => void) | undefined;
 
 function post(event: RenderEvent): void {
@@ -49,6 +51,10 @@ async function handle(command: RenderCommand): Promise<void> {
       break;
     case 'resize':
       session?.resize(command.width, command.height);
+      break;
+    case 'settings':
+      settings = { gfxStrength: command.gfxStrength };
+      session?.setSettings(settings);
       break;
     case 'read-pixels': {
       const summary = (await session?.pixelSummary()) ?? {
@@ -117,6 +123,7 @@ async function init(cmd: RenderInit): Promise<void> {
       else patch = event.data.patch;
     };
   }
+  if (settings) s.setSettings(settings);
   await s.start(cmd.width, cmd.height);
   session = s;
   if (patch !== undefined) s.setTerrain(patch);

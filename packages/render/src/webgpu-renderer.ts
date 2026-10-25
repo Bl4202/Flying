@@ -25,9 +25,8 @@ import {
   type Renderer,
   type ShaderSources,
 } from './renderer.ts';
-import { FRAME_UNIFORM_BYTES, type FrameData } from './scene.ts';
+import { FRAME_UNIFORM_BYTES, type FrameData, MARKER_INSTANCE_CAPACITY } from './scene.ts';
 import { VERTEX_BYTES, type TerrainMesh } from './terrain-mesh.ts';
-import { SNAPSHOT } from '@flying/sim-bridge/layout';
 
 const DEPTH_FORMAT = 'depth32float';
 const INSTANCE_BYTES = MARKER_INSTANCE_FLOATS * 4;
@@ -45,6 +44,7 @@ export class WebGpuRenderer implements Renderer {
   readonly #bindGroup: GPUBindGroup;
   readonly #terrainPipeline: GPURenderPipeline;
   readonly #markerPipeline: GPURenderPipeline;
+  readonly #fxPipeline: GPURenderPipeline;
   readonly #markerVertices: GPUBuffer;
   readonly #markerInstances: GPUBuffer;
   readonly #lost: ((reason: string) => void)[] = [];
@@ -65,6 +65,7 @@ export class WebGpuRenderer implements Renderer {
     description: string;
     terrainPipeline: GPURenderPipeline;
     markerPipeline: GPURenderPipeline;
+    fxPipeline: GPURenderPipeline;
     layout: GPUBindGroupLayout;
   }) {
     this.#canvas = args.canvas;
@@ -74,6 +75,7 @@ export class WebGpuRenderer implements Renderer {
     this.description = args.description;
     this.#terrainPipeline = args.terrainPipeline;
     this.#markerPipeline = args.markerPipeline;
+    this.#fxPipeline = args.fxPipeline;
 
     const device = args.device;
     this.#uniform = device.createBuffer({
@@ -94,7 +96,7 @@ export class WebGpuRenderer implements Renderer {
     device.queue.writeBuffer(this.#markerVertices, 0, mesh);
     this.#markerInstances = device.createBuffer({
       label: 'marker instances',
-      size: SNAPSHOT.BODY_CAPACITY * INSTANCE_BYTES,
+      size: MARKER_INSTANCE_CAPACITY * INSTANCE_BYTES,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
 
@@ -194,7 +196,8 @@ export class WebGpuRenderer implements Renderer {
       code: shaders.terrainWgsl,
     });
     const markerModule = device.createShaderModule({ label: 'marker', code: shaders.markerWgsl });
-    const [terrainPipeline, markerPipeline] = await Promise.all([
+    const fxModule = device.createShaderModule({ label: 'screen fx', code: shaders.fxWgsl });
+    const [terrainPipeline, markerPipeline, fxPipeline] = await Promise.all([
       device.createRenderPipelineAsync({
         label: 'terrain patch',
         layout: pipelineLayout,
@@ -236,6 +239,7 @@ export class WebGpuRenderer implements Renderer {
               attributes: [
                 { shaderLocation: 2, offset: 0, format: 'float32x4' },
                 { shaderLocation: 3, offset: 16, format: 'float32x4' },
+                { shaderLocation: 4, offset: 32, format: 'float32x4' },
               ],
             },
           ],
@@ -243,6 +247,32 @@ export class WebGpuRenderer implements Renderer {
         fragment: { module: markerModule, entryPoint: 'fs_main', targets: [{ format }] },
         primitive,
         depthStencil,
+      }),
+      // The pilot's g and red-out, over the finished picture: one triangle, alpha blended, no
+      // depth test or write. A pipeline used in a pass with a depth attachment has to name it.
+      device.createRenderPipelineAsync({
+        label: 'screen fx',
+        layout: pipelineLayout,
+        vertex: { module: fxModule, entryPoint: 'vs_main' },
+        fragment: {
+          module: fxModule,
+          entryPoint: 'fs_main',
+          targets: [
+            {
+              format,
+              blend: {
+                color: {
+                  srcFactor: 'src-alpha',
+                  dstFactor: 'one-minus-src-alpha',
+                  operation: 'add',
+                },
+                alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              },
+            },
+          ],
+        },
+        primitive: { topology: 'triangle-list', cullMode: 'none' },
+        depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: false, depthCompare: 'always' },
       }),
     ]);
 
@@ -259,6 +289,7 @@ export class WebGpuRenderer implements Renderer {
       description,
       terrainPipeline,
       markerPipeline,
+      fxPipeline,
       layout,
     });
   }
@@ -353,6 +384,10 @@ export class WebGpuRenderer implements Renderer {
       pass.setVertexBuffer(0, this.#markerVertices);
       pass.setVertexBuffer(1, this.#markerInstances);
       pass.draw(MARKER_VERTEX_COUNT, frame.instanceCount);
+    }
+    if (frame.fx) {
+      pass.setPipeline(this.#fxPipeline);
+      pass.draw(3);
     }
     pass.end();
   }

@@ -50,6 +50,8 @@ export class RenderLoop {
   #windowStart: number;
   #windowFrames = 0;
   #aspect = 1;
+  /** How strongly the pilot's g and red-out show on the screen, 0 to 100 per cent. */
+  #gfxStrength = 100;
   width = 1;
   height = 1;
   frames = 0;
@@ -87,6 +89,11 @@ export class RenderLoop {
     this.#renderer.resize(this.width, this.height);
   }
 
+  /** Applies the player's rendering settings. */
+  setSettings(settings: { gfxStrength: number }): void {
+    this.#gfxStrength = Math.min(Math.max(settings.gfxStrength, 0), 100);
+  }
+
   resetRun(): void {
     this.#intervalRun.reset();
     this.#cpuRun.reset();
@@ -117,6 +124,7 @@ export class RenderLoop {
       timeS: now / 1000,
       patchOriginBf: this.#terrain?.originBf ?? null,
       spacingM: this.#terrain?.spacingM ?? 1,
+      gfxStrength: this.#gfxStrength,
     });
     const t0 = d.monoMs();
     this.#renderer.render(frame);

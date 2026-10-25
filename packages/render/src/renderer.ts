@@ -42,8 +42,8 @@ export interface Renderer {
 export interface GlslProgram {
   vertex: string;
   fragment: string;
-  /** The uniform block name in each stage. */
-  blocks: { vertex: string; fragment: string };
+  /** The uniform block name in each stage, or null for a stage that reads no uniforms. */
+  blocks: { vertex: string | null; fragment: string | null };
 }
 
 /** Everything the backends compile. */
@@ -52,6 +52,9 @@ export interface ShaderSources {
   markerWgsl: string;
   terrainGlsl: GlslProgram;
   markerGlsl: GlslProgram;
+  /** The screen-effect pass (the pilot's g and red-out), drawn over the finished picture. */
+  fxWgsl: string;
+  fxGlsl: GlslProgram;
 }
 
 /** What a backend draws onto. */

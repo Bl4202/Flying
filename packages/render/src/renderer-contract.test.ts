@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { quatRotate } from '@flying/sim-bridge/frame-math';
 import { NullRenderer } from './null-renderer.ts';
 import { runRendererContract } from './renderer-contract.ts';
-import { LOOKING_UP } from './snapshot-fixture.ts';
-import { SceneBuilder } from './scene.ts';
+import { LOOKING_DOWN, LOOKING_UP } from './snapshot-fixture.ts';
+import { airfieldShifted, SceneBuilder } from './scene.ts';
 import { SnapshotInterpolator } from './interp.ts';
 import { makeSnapshot } from './snapshot-fixture.ts';
 import { buildTerrainMesh } from './terrain-mesh.ts';
@@ -45,12 +45,26 @@ describe('the renderer contract', () => {
     expect(names).toContain('the same scene moved 400 km draws the same picture (relative-to-eye)');
     expect(names).toContain('looking at the sky shows only the sky colour');
     expect(names).toContain('many patch instances draw without breaking the frame');
+    expect(names).toContain('a pilot at full g stress sees a dark picture');
+    expect(names).toContain('a pilot in red-out sees a red picture');
+    expect(names).toContain('the effect strength setting switches the effects off');
+    expect(names).toContain('over the runway the picture shows asphalt and paint');
+    expect(names).toContain('mouse-aim draws the aim and nose cues');
     // The null renderer cannot draw, so it must fail the pictures it is asked about.
     expect(checks.find((c) => c.name.startsWith('looking at the world'))?.ok).toBe(false);
   });
 });
 
 describe('the scene the contract draws', () => {
+  it('LOOKING_DOWN points the nose at the ground with the right wing east', () => {
+    const nose = quatRotate(LOOKING_DOWN, [1, 0, 0]);
+    const right = quatRotate(LOOKING_DOWN, [0, 1, 0]);
+    const down = quatRotate(LOOKING_DOWN, [0, 0, 1]);
+    expect(nose.map((x) => Math.round(x) + 0)).toEqual([0, 0, -1]);
+    expect(right.map((x) => Math.round(x) + 0)).toEqual([1, 0, 0]);
+    expect(down.map((x) => Math.round(x) + 0)).toEqual([0, -1, 0]); // the body's down is south
+  });
+
   it('LOOKING_UP points the nose at the sky with the right wing east', () => {
     const nose = quatRotate(LOOKING_UP, [1, 0, 0]);
     const right = quatRotate(LOOKING_UP, [0, 1, 0]);
@@ -80,6 +94,8 @@ describe('the scene the contract draws', () => {
           timeS: 0,
           patchOriginBf: mesh.originBf,
           spacingM: mesh.spacingM,
+          // The airfield moves with the rest of the scene.
+          airfield: airfieldShifted(shift, shift),
         },
       );
       return {

@@ -150,4 +150,21 @@ describe('RenderLoop', () => {
     t.loop.resize(0, -5);
     expect([t.loop.width, t.loop.height]).toEqual([1, 1]);
   });
+
+  it('draws with the effect strength it was given, from 0 to 100 per cent', () => {
+    const t = rig();
+    t.publish(1, { ownship: { pos: [0, 0, 1000], gStress: 0.8 } });
+    t.loop.frame();
+    expect(t.renderer.lastFrame?.uniform[34]).toBe(1); // the default is full strength
+    expect(t.renderer.lastFrame?.fx).toBe(true);
+    t.loop.setSettings({ gfxStrength: 25 });
+    t.loop.frame();
+    expect(t.renderer.lastFrame?.uniform[34]).toBeCloseTo(0.25, 6);
+    t.loop.setSettings({ gfxStrength: 0 });
+    t.loop.frame();
+    expect(t.renderer.lastFrame?.fx).toBe(false);
+    t.loop.setSettings({ gfxStrength: 900 });
+    t.loop.frame();
+    expect(t.renderer.lastFrame?.uniform[34]).toBe(1);
+  });
 });

@@ -25,6 +25,8 @@ export type RenderCommand =
   /** A new canvas, sent in answer to `need-canvas`. */
   | { type: 'canvas'; canvas: OffscreenCanvas }
   | { type: 'resize'; width: number; height: number }
+  /** Rendering settings the player chose. */
+  | { type: 'settings'; gfxStrength: number }
   | { type: 'read-pixels'; id: number }
   | { type: 'reset-run' }
   | { type: 'stall'; ms: number }
