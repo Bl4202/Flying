@@ -8,6 +8,8 @@ struct Frame {
   sun_dir      : vec4<f32>,  // xyz: unit vector towards the sun in render space
   params       : vec4<f32>,  // x: time in seconds, y: terrain post spacing in metres, z: patch span in metres, w: reserved
   patch_offset : vec4<f32>,  // xyz: terrain patch origin minus eye, render axes, metres
+  runway       : vec4<f32>,  // x, y: runway threshold centre in patch-local east and south, metres; z: length (0: no runway); w: width
+  fx           : vec4<f32>,  // x: g stress S; y: red-out R; z: effect strength 0 to 1; w: reserved
 };
 
 @group(0) @binding(0) var<uniform> frame : Frame;

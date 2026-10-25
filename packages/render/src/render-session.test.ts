@@ -232,6 +232,20 @@ describe('RenderSession', () => {
     expect((t.s.renderer as Fake).terrain?.triangleCount).toBe(32_768);
   });
 
+  it('keeps the rendering settings from before it started, and applies later ones', async () => {
+    const t = session();
+    t.s.setSettings({ gfxStrength: 30 });
+    await t.s.start(100, 100);
+    t.publish(1);
+    t.advance(16.7);
+    t.s.frame();
+    expect((t.s.renderer as Fake).lastFrame?.uniform[34]).toBeCloseTo(0.3, 6);
+    t.s.setSettings({ gfxStrength: 60 });
+    t.advance(16.7);
+    t.s.frame();
+    expect((t.s.renderer as Fake).lastFrame?.uniform[34]).toBeCloseTo(0.6, 6);
+  });
+
   it('summarises what was drawn', async () => {
     const t = session();
     await t.s.start(40, 30);

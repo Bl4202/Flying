@@ -28,6 +28,14 @@ export interface SceneState {
   /** True airspeed, m/s. */
   ownshipSpeed: number;
   ownshipThrottle: number;
+  /** `OWNSHIP_FLAG2` bits. */
+  ownshipFlags2: number;
+  /** The pilot's g stress `S` and red-out `R` (what the picture shows; zero with the dial off). */
+  gStress: number;
+  redout: number;
+  /** The mouse-aim direction in use: azimuth clockwise from north, elevation up, radians. */
+  aimAz: number;
+  aimEl: number;
   bodyCount: number;
   bodyPosBf: Float64Array;
   bodyQuat: Float32Array;
@@ -69,6 +77,11 @@ export class SnapshotInterpolator {
     ownshipQuat: new Float32Array([1, 0, 0, 0]),
     ownshipSpeed: 0,
     ownshipThrottle: 0,
+    ownshipFlags2: 0,
+    gStress: 0,
+    redout: 0,
+    aimAz: 0,
+    aimEl: 0,
     bodyCount: 0,
     bodyPosBf: new Float64Array(MAX_BODIES * 3),
     bodyQuat: new Float32Array(MAX_BODIES * 4),
@@ -89,6 +102,7 @@ export class SnapshotInterpolator {
   readonly #b3 = new Float64Array(3);
   readonly #a4 = new Float32Array(4);
   readonly #b4 = new Float32Array(4);
+  readonly #aim = new Float32Array(2);
 
   constructor(opts: InterpOptions = {}) {
     this.delayMs = opts.delayMs ?? 1000 / 60;
@@ -163,6 +177,13 @@ export class SnapshotInterpolator {
     s.inputTimeMs = cur.inputTimeMs();
     s.ownshipSpeed = cur.ownshipTas();
     s.ownshipThrottle = cur.ownshipThrottle();
+    // What the pilot's body does to the picture changes slowly and is not blended.
+    s.ownshipFlags2 = cur.ownshipFlags2();
+    s.gStress = cur.ownshipGStress();
+    s.redout = cur.ownshipRedout();
+    cur.ownshipAim(this.#aim);
+    s.aimAz = this.#aim[0] ?? 0;
+    s.aimEl = this.#aim[1] ?? 0;
     s.bodyCount = Math.min(cur.bodyCount(), MAX_BODIES);
 
     // The ownship.

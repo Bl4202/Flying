@@ -11,6 +11,12 @@
       "wgsl": "marker.wgsl",
       "vertex": "vs_main",
       "fragment": "fs_main"
+    },
+    {
+      "name": "screen_fx",
+      "wgsl": "screen_fx.wgsl",
+      "vertex": "vs_main",
+      "fragment": "fs_main"
     }
   ]
 }

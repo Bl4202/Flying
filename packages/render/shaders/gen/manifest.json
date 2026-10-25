@@ -14,5 +14,13 @@
       "vertex": "Frame_block_0Vertex",
       "fragment": "Frame_block_0Fragment"
     }
+  },
+  "screen_fx": {
+    "vertex": "screen_fx.vert.glsl",
+    "fragment": "screen_fx.frag.glsl",
+    "blocks": {
+      "vertex": null,
+      "fragment": "Frame_block_0Fragment"
+    }
   }
 }

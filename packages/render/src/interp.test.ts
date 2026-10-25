@@ -166,4 +166,30 @@ describe('SnapshotInterpolator', () => {
     i.push(makeSnapshot({ tick: 2, publishMs: 0, ownship: { pos: [5, 0, 0] } }));
     expect(i.sample(100)?.ownshipPosBf[0]).toBe(5);
   });
+
+  it("passes on the pilot's state and the mouse-aim direction of the newest snapshot, unblended", () => {
+    const i = new SnapshotInterpolator();
+    i.push(
+      at(1, 0, {
+        ownship: { pos: [0, 0, 0], flags2: 0, gStress: 0.1, redout: 0, aim: [0, 0] },
+      }),
+    );
+    i.push(
+      at(2, 0, {
+        ownship: {
+          pos: [0, 0, 0],
+          flags2: 16384,
+          gStress: 0.8,
+          redout: 0.6,
+          aim: [1.25, -0.5],
+        },
+      }),
+    );
+    // Halfway between the two: what the pilot feels is not interpolated, it is the newest.
+    const s = i.sample(1000 + 2 * DT + DT / 2);
+    expect(s?.ownshipFlags2).toBe(16384);
+    expect(s?.gStress).toBeCloseTo(0.8, 6);
+    expect(s?.redout).toBeCloseTo(0.6, 6);
+    expect([s?.aimAz, s?.aimEl].map((x) => Math.round((x ?? 0) * 1e6) / 1e6)).toEqual([1.25, -0.5]);
+  });
 });

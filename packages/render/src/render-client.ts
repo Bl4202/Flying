@@ -298,6 +298,12 @@ export class RenderClient {
     });
   }
 
+  /** Tells the renderer the player's rendering settings. */
+  setSettings(settings: { gfxStrength: number }): void {
+    if (this.#worker) this.#send({ type: 'settings', gfxStrength: settings.gfxStrength });
+    else this.#mainHost?.session.setSettings(settings);
+  }
+
   resetRun(): void {
     if (this.#worker) this.#send({ type: 'reset-run' });
     else this.#mainHost?.session.resetRun();

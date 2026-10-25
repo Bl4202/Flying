@@ -25,9 +25,8 @@ import {
   type Renderer,
   type ShaderSources,
 } from './renderer.ts';
-import { FRAME_UNIFORM_BYTES, type FrameData } from './scene.ts';
+import { FRAME_UNIFORM_BYTES, type FrameData, MARKER_INSTANCE_CAPACITY } from './scene.ts';
 import { VERTEX_BYTES, type TerrainMesh } from './terrain-mesh.ts';
-import { SNAPSHOT } from '@flying/sim-bridge/layout';
 
 /** The one function and two constants this module uses from `EXT_clip_control`. */
 interface ClipControlExt {
@@ -41,6 +40,8 @@ const INSTANCE_BYTES = MARKER_INSTANCE_FLOATS * 4;
 interface Resources {
   terrainProgram: WebGLProgram;
   markerProgram: WebGLProgram;
+  fxProgram: WebGLProgram;
+  fxVao: WebGLVertexArrayObject;
   ubo: WebGLBuffer;
   terrainVao: WebGLVertexArrayObject;
   terrainVbo: WebGLBuffer;
@@ -87,6 +88,7 @@ function link(gl: WebGL2RenderingContext, glsl: GlslProgram, what: string): WebG
     ['vertex', glsl.blocks.vertex],
     ['fragment', glsl.blocks.fragment],
   ] as const) {
+    if (name === null) continue; // this stage reads no uniforms
     const index = gl.getUniformBlockIndex(program, name);
     if (index === gl.INVALID_INDEX) {
       throw new Error(`SYS-052: ${what} ${stage} shader has no uniform block named ${name}`);
@@ -171,6 +173,7 @@ export class WebGl2Renderer implements Renderer {
     };
     const terrainProgram = link(gl, this.#shaders.terrainGlsl, 'terrain');
     const markerProgram = link(gl, this.#shaders.markerGlsl, 'marker');
+    const fxProgram = link(gl, this.#shaders.fxGlsl, 'screen fx');
 
     const ubo = need(gl.createBuffer(), 'the uniform buffer');
     gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
@@ -203,14 +206,20 @@ export class WebGl2Renderer implements Renderer {
     gl.enableVertexAttribArray(1);
     gl.vertexAttribPointer(1, 3, gl.FLOAT, false, MARKER_VERTEX_FLOATS * 4, 12);
     gl.bindBuffer(gl.ARRAY_BUFFER, instanceVbo);
-    gl.bufferData(gl.ARRAY_BUFFER, SNAPSHOT.BODY_CAPACITY * INSTANCE_BYTES, gl.DYNAMIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, MARKER_INSTANCE_CAPACITY * INSTANCE_BYTES, gl.DYNAMIC_DRAW);
     gl.enableVertexAttribArray(2);
     gl.vertexAttribPointer(2, 4, gl.FLOAT, false, INSTANCE_BYTES, 0);
     gl.vertexAttribDivisor(2, 1);
     gl.enableVertexAttribArray(3);
     gl.vertexAttribPointer(3, 4, gl.FLOAT, false, INSTANCE_BYTES, 16);
     gl.vertexAttribDivisor(3, 1);
+    gl.enableVertexAttribArray(4);
+    gl.vertexAttribPointer(4, 4, gl.FLOAT, false, INSTANCE_BYTES, 32);
+    gl.vertexAttribDivisor(4, 1);
     gl.bindVertexArray(null);
+
+    // The screen-effect triangle has no vertex data: its corners come from the vertex index.
+    const fxVao = need(gl.createVertexArray(), 'the screen fx VAO');
 
     // State that never changes.
     if (this.#clip) {
@@ -227,6 +236,8 @@ export class WebGl2Renderer implements Renderer {
     this.#res = {
       terrainProgram,
       markerProgram,
+      fxProgram,
+      fxVao,
       ubo,
       terrainVao,
       terrainVbo,
@@ -298,6 +309,19 @@ export class WebGl2Renderer implements Renderer {
       gl.bindVertexArray(res.markerVao);
       gl.drawArraysInstanced(gl.TRIANGLES, 0, MARKER_VERTEX_COUNT, frame.instanceCount);
     }
+    if (frame.fx) {
+      // Over the finished picture, alpha blended, with no depth test and no culling.
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.CULL_FACE);
+      gl.enable(gl.BLEND);
+      gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.useProgram(res.fxProgram);
+      gl.bindVertexArray(res.fxVao);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.disable(gl.BLEND);
+      gl.enable(gl.CULL_FACE);
+      gl.enable(gl.DEPTH_TEST);
+    }
     gl.bindVertexArray(null);
   }
 
@@ -344,6 +368,8 @@ export class WebGl2Renderer implements Renderer {
       const gl = this.#gl;
       gl.deleteProgram(res.terrainProgram);
       gl.deleteProgram(res.markerProgram);
+      gl.deleteProgram(res.fxProgram);
+      gl.deleteVertexArray(res.fxVao);
       for (const b of [res.ubo, res.terrainVbo, res.terrainIbo, res.markerVbo, res.instanceVbo]) {
         gl.deleteBuffer(b);
       }

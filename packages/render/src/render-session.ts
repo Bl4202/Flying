@@ -104,6 +104,7 @@ export class RenderSession {
   #nextReport = 0;
   #webgpuLosses = 0;
   #stopped = false;
+  #settings: { gfxStrength: number } | undefined;
 
   constructor(options: RenderSessionOptions) {
     this.#o = options;
@@ -133,6 +134,7 @@ export class RenderSession {
       renderer,
     );
     loop.resize(widthPx, heightPx);
+    if (this.#settings) loop.setSettings(this.#settings);
     this.#loop = loop;
     this.#watch(renderer);
     this.#nextReport = o.monoMs() + 250;
@@ -151,6 +153,12 @@ export class RenderSession {
 
   resize(widthPx: number, heightPx: number): void {
     this.#loop?.resize(widthPx, heightPx);
+  }
+
+  /** Applies the player's rendering settings (before the renderer exists they are kept). */
+  setSettings(settings: { gfxStrength: number }): void {
+    this.#settings = settings;
+    this.#loop?.setSettings(settings);
   }
 
   resetRun(): void {

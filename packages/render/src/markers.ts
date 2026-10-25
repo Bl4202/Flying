@@ -8,8 +8,12 @@
 export const MARKER_SIZE_M = 300;
 /** Floats per vertex: position then normal. */
 export const MARKER_VERTEX_FLOATS = 6;
-/** Floats per instance: eye-relative position and size, then orientation as (x, y, z, w). */
-export const MARKER_INSTANCE_FLOATS = 8;
+/**
+ * Floats per instance: eye-relative position and size, then orientation as (x, y, z, w), then a
+ * tint (r, g, b, w). A tint with w = 0 leaves the colour to the shader (by index, for bodies); with
+ * w = 1 it is the flat colour to draw (the cue markers).
+ */
+export const MARKER_INSTANCE_FLOATS = 12;
 
 type V3 = [number, number, number];
 

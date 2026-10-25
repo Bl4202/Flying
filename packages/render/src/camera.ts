@@ -20,8 +20,13 @@ import {
 /** Anything that holds numbers and can be written to. */
 export type NumberArray = Float32Array | Float64Array | number[];
 
-/** Nearest visible distance, metres. Reverse-Z with an infinite far plane has no far limit. */
-export const NEAR_M = 5;
+/**
+ * Nearest visible distance, metres. Reverse-Z with an infinite far plane has no far limit, and its
+ * float depth keeps its precision however close the near plane is. It is half a metre because the
+ * eye now sits a couple of metres above a runway: a near plane of five metres would clip the
+ * ground under the nose.
+ */
+export const NEAR_M = 0.5;
 /** Vertical field of view, radians (70 degrees). */
 export const FOV_Y = (70 * Math.PI) / 180;
 

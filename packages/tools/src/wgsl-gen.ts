@@ -12,7 +12,8 @@
  * backend asks for the same with `EXT_clip_control`, or else uses a projection for -1..1.
  *
  * It also writes `gen/manifest.json`, which records the uniform block name naga gave each stage
- * so the backend does not have to guess it.
+ * (null for a stage that reads none: the screen-effect vertex shader) so the backend does not have
+ * to guess it.
  *
  * Usage: node wgsl-gen.ts [--check] [shaders-dir]
  */
@@ -32,8 +33,8 @@ export interface ShaderEntry {
 export interface GeneratedShader {
   vertex: string;
   fragment: string;
-  /** Uniform block names naga chose, by stage. */
-  blocks: { vertex: string; fragment: string };
+  /** Uniform block names naga chose, by stage; `null` for a stage that reads no uniforms. */
+  blocks: { vertex: string | null; fragment: string | null };
 }
 
 /** The uniform blocks declared in GLSL text. */
@@ -81,12 +82,12 @@ export function generate(shaderDir: string, outDir: string): void {
       const fText = readFileSync(f, 'utf8');
       const [vBlock] = uniformBlocks(vText);
       const [fBlock] = uniformBlocks(fText);
-      if (vBlock === undefined || fBlock === undefined) {
-        throw new Error(`${s.name}: expected a uniform block in both stages`);
+      if (vBlock === undefined && fBlock === undefined) {
+        throw new Error(`${s.name}: expected a uniform block in at least one stage`);
       }
       writeFileSync(join(outDir, out.vertex), vText);
       writeFileSync(join(outDir, out.fragment), fText);
-      result[s.name] = { ...out, blocks: { vertex: vBlock, fragment: fBlock } };
+      result[s.name] = { ...out, blocks: { vertex: vBlock ?? null, fragment: fBlock ?? null } };
     }
     writeFileSync(join(outDir, 'manifest.json'), `${JSON.stringify(result, null, 2)}\n`);
   } finally {
