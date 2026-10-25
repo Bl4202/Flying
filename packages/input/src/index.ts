@@ -14,3 +14,4 @@ export * from './pump.ts';
 export * from './shaping.ts';
 export * from './sources.ts';
 export * from './throttle.ts';
+export * from './profile-edit.ts';

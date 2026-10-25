@@ -3,7 +3,15 @@
  * labelled rows, and nothing here touches the DOM, so the formatting is easy to test.
  */
 import type { RenderStats } from '@flying/render/messages';
-import { OWNSHIP_FLAG, quatRotate, STAGE, type Quantiles, type SimStats } from '@flying/sim-bridge';
+import {
+  type AircraftStatus,
+  OWNSHIP_FLAG,
+  OWNSHIP_FLAG2,
+  quatRotate,
+  STAGE,
+  type Quantiles,
+  type SimStats,
+} from '@flying/sim-bridge';
 
 export interface OverlayModel {
   build: string;
@@ -24,6 +32,20 @@ export interface OverlayModel {
   input: { sent: number; refused: number } | undefined;
   /** The stored benchmark result as `profile / preset`, or undefined if none was run. */
   benchmark: string | undefined;
+  /** The ownship's flight control, wheel and g state from the newest snapshot, if read yet. */
+  flight: AircraftStatus | undefined;
+  /** Control latency, split by where the time goes (ADR-33), or undefined before it is measured. */
+  latency: ControlLatency | undefined;
+}
+
+/**
+ * From the source event of a control change to the end of the tick that acted on it (`control`),
+ * split into the wait for the next poll of the device (`poll`) and the wait for the tick (`tick`).
+ */
+export interface ControlLatency {
+  control: Quantiles;
+  poll: Quantiles;
+  tick: Quantiles;
 }
 
 export interface OverlayRow {
@@ -55,7 +77,7 @@ const DEG = 180 / Math.PI;
 const KNOTS = 3600 / 1852;
 
 /** The ownship's flags in words: `ok`, or what is wrong. */
-export function flagsText(flags: number): string {
+export function flagsText(flags: number, flags2 = 0): string {
   const words: string[] = [];
   const names: [number, string][] = [
     [OWNSHIP_FLAG.SPECTATOR, 'spectator'],
@@ -67,7 +89,50 @@ export function flagsText(flags: number): string {
   for (const [bit, word] of names) {
     if ((flags & bit) !== 0) words.push(word);
   }
+  const names2: [number, string][] = [
+    [OWNSHIP_FLAG2.ALPHA_LIMIT, 'alpha limit'],
+    [OWNSHIP_FLAG2.G_LIMIT, 'g limit'],
+    [OWNSHIP_FLAG2.OVERSPEED, 'overspeed'],
+    [OWNSHIP_FLAG2.OVERSTRESS, 'overstress'],
+    [OWNSHIP_FLAG2.BLACKOUT, 'blackout'],
+    [OWNSHIP_FLAG2.GLOC, 'g-loc'],
+    [OWNSHIP_FLAG2.REDOUT, 'redout'],
+    [OWNSHIP_FLAG2.HARD_LANDING, 'hard landing'],
+    [OWNSHIP_FLAG2.GEAR_OVERSPEED, 'gear overspeed'],
+    [OWNSHIP_FLAG2.FLAP_OVERSPEED, 'flap overspeed'],
+    [OWNSHIP_FLAG2.DEPARTED, 'departed'],
+    [OWNSHIP_FLAG2.GEAR_WARNING, 'gear warning'],
+  ];
+  for (const [bit, word] of names2) {
+    if ((flags2 & bit) !== 0) words.push(word);
+  }
   return words.length === 0 ? 'ok' : words.join(', ');
+}
+
+const ASSIST_NAMES = ['none', 'Full', 'Standard', 'Reduced', 'Manual'];
+const FCS_MODES = ['flight', 'ground', 'blend', 'recover', 'gcas', 'g-loc'];
+const FLAP_NAMES = ['up', 'TO', 'LDG'];
+
+/** The assist level, what the control system is doing, and the load factor it is commanding. */
+function assistText(f: AircraftStatus): string {
+  const assist = ASSIST_NAMES[f.assist] ?? String(f.assist);
+  const mode = FCS_MODES[f.fcsMode] ?? String(f.fcsMode);
+  return `${assist} · ${mode} · n cmd ${f.nCmd.toFixed(2)} g`;
+}
+
+/** Ground speed first, then the gear, flaps, airbrake and brakes, and the height or the wheels. */
+function groundText(f: AircraftStatus): string {
+  const wheels = (f.flags2 & OWNSHIP_FLAG2.WOW) !== 0;
+  const parts = [
+    `${(f.groundSpeed * KNOTS).toFixed(0)} kn`,
+    `gear ${(f.gearPos * 100).toFixed(0)}%`,
+    `flaps ${FLAP_NAMES[f.flapDetent] ?? String(f.flapDetent)}`,
+    `airbrake ${(f.airbrake * 100).toFixed(0)}%`,
+    `brakes ${(f.brakeL * 100).toFixed(0)}/${(f.brakeR * 100).toFixed(0)}%`,
+    wheels ? 'on wheels' : `AGL ${f.agl.toFixed(0)} m`,
+  ];
+  if ((f.flags2 & OWNSHIP_FLAG2.PARKING_BRAKE) !== 0) parts.push('parking');
+  return parts.join(' · ');
 }
 
 /**
@@ -78,12 +143,10 @@ const OWNSHIP_ROWS: [string, string][] = [
   ['alt', 'Altitude'],
   ['pitch', 'Pitch/roll'],
   ['heading', 'Heading'],
-  ['tas', 'TAS/CAS'],
-  ['mach', 'Mach'],
+  ['tas', 'TAS/CAS/Mach'],
   ['alpha', 'Alpha/beta'],
   ['nz', 'n_z'],
-  ['throttle', 'Throttle'],
-  ['thrust', 'Thrust'],
+  ['throttle', 'Throttle/thrust'],
   ['fuel', 'Fuel/mass'],
   ['surfaces', 'Surfaces'],
   ['status', 'Status'],
@@ -114,17 +177,19 @@ export function attitudeDegrees(quat: SimStats['aircraft']['quat']): {
 export function buildOverlayRows(m: OverlayModel): OverlayRow[] {
   const s = m.sim;
   const r = m.render;
+  const f = m.flight;
   const rows: OverlayRow[] = [];
   const add = (id: string, label: string, value: string): void => {
     rows.push({ id, label, value });
   };
 
-  add('build', 'Build', m.build.slice(0, 12));
-  add('abi', 'ABI', String(m.abi));
+  add('build', 'Build', `${m.build.slice(0, 12)} · ABI ${String(m.abi)}`);
   add('mode', 'Mode', `${m.variant} · ${m.snapshotChannel} · ${m.sleeper}`);
   add('renderer', 'Renderer', r === undefined ? DASH : `${r.backend} on ${m.renderHost}`);
-  add('adapter', 'Adapter', m.adapter === '' ? DASH : m.adapter);
-  add('device', 'Device', r === undefined ? DASH : r.description.slice(0, 60));
+  const gpu = [m.adapter, r === undefined ? '' : r.description.slice(0, 60)].filter(
+    (x) => x !== '',
+  );
+  add('adapter', 'Adapter', gpu.length === 0 ? DASH : gpu.join(' · '));
   add('content', 'Content', m.contentHash);
   add('bench', 'Benchmark', m.benchmark ?? DASH);
 
@@ -141,15 +206,16 @@ export function buildOverlayRows(m: OverlayModel): OverlayRow[] {
   add(
     'dropped',
     'Dropped',
-    s === undefined ? DASH : `${fixed(s.droppedMs, 1)} ms in ${String(s.droppedEvents)}`,
-  );
-  add('latency', 'Input ms', fixed(q(s?.inputLatency, 'p95'), 2, ' p95'));
-  add(
-    'queues',
-    'Queues',
     s === undefined
       ? DASH
-      : `inputs dropped ${String(s.inputsDropped)}, snapshots dropped ${String(s.snapshotsDropped)}`,
+      : `${fixed(s.droppedMs, 1)} ms in ${String(s.droppedEvents)} · inputs dropped ${String(s.inputsDropped)}, snapshots dropped ${String(s.snapshotsDropped)}`,
+  );
+  // Control latency (ADR-33): the source event to the end of the tick that acted on it, then the
+  // wait for the poll, the wait for the tick, and the older "input age" (sampled to published).
+  add(
+    'ctl',
+    'Control ms',
+    `${fixed(q(m.latency?.control, 'p95'), 2, ' p95')} · poll ${fixed(q(m.latency?.poll, 'p95'), 1)} · tick ${fixed(q(m.latency?.tick, 'p95'), 1)} · age ${fixed(q(s?.inputLatency, 'p95'), 1)}`,
   );
   add(
     'input',
@@ -161,15 +227,17 @@ export function buildOverlayRows(m: OverlayModel): OverlayRow[] {
   );
 
   add('fps', 'FPS', fixed(r?.fps, 1));
-  add('frame', 'Frame ms', fixed(q(r?.frameMs, 'p95'), 2, ' p95'));
-  add('render-cpu', 'Render ms', fixed(q(r?.renderCpuMs, 'avg'), 2, ' avg'));
-  add('age', 'Snap age', fixed(q(r?.snapshotAgeMs, 'p95'), 1, ' ms p95'));
   add(
-    'frames',
-    'Frames',
+    'frame',
+    'Frame ms',
+    `${fixed(q(r?.frameMs, 'p95'), 2, ' p95')} · render ${fixed(q(r?.renderCpuMs, 'avg'), 2, ' avg')}`,
+  );
+  add(
+    'age',
+    'Snap age',
     r === undefined
       ? DASH
-      : `${String(r.frames)} (${String(r.staleFrames)} stale, ${String(r.gappedFrames)} gapped)`,
+      : `${fixed(q(r.snapshotAgeMs, 'p95'), 1, ' ms p95')} · ${String(r.frames)} frames (${String(r.staleFrames)} stale, ${String(r.gappedFrames)} gapped)`,
   );
 
   if (s === undefined) {
@@ -188,8 +256,11 @@ export function buildOverlayRows(m: OverlayModel): OverlayRow[] {
     add('pitch', label('pitch'), `${fixed(a.pitch, 1, '°')} / ${fixed(a.roll, 1, '°')}`);
     // Rounded first, so 359.96 reads as 0.0 rather than 360.0.
     add('heading', label('heading'), fixed((Math.round(a.heading * 10) / 10) % 360, 1, '°'));
-    add('tas', label('tas'), `${fixed(o.tas, 1, ' m/s')} / ${fixed(o.cas * KNOTS, 0, ' kn')}`);
-    add('mach', label('mach'), fixed(o.mach, 3));
+    add(
+      'tas',
+      label('tas'),
+      `${fixed(o.tas, 1, ' m/s')} / ${fixed(o.cas * KNOTS, 0, ' kn')} · M ${fixed(o.mach, 3)}`,
+    );
     add(
       'alpha',
       label('alpha'),
@@ -199,17 +270,26 @@ export function buildOverlayRows(m: OverlayModel): OverlayRow[] {
     add(
       'throttle',
       label('throttle'),
-      `${fixed(o.throttle, 2)}${o.abStage > 0 ? ` AB ${String(o.abStage)}` : ''}`,
+      `${fixed(o.throttle, 2)}${o.abStage > 0 ? ` AB ${String(o.abStage)}` : ''} · ${fixed(o.thrust / 1000, 1, ' kN')}`,
     );
-    add('thrust', label('thrust'), fixed(o.thrust / 1000, 1, ' kN'));
     add('fuel', label('fuel'), `${fixed(o.fuel, 0, ' kg')} / ${fixed(o.mass, 0, ' kg')}`);
     add(
       'surfaces',
       label('surfaces'),
       `e ${fixed(o.surfaces[0] * DEG, 1)} a ${fixed(o.surfaces[1] * DEG, 1)} r ${fixed(o.surfaces[2] * DEG, 1)}°`,
     );
-    add('status', label('status'), flagsText(o.flags));
+    add('status', label('status'), flagsText(o.flags, f?.flags2 ?? 0));
   }
+
+  add('assist', 'Assist', f === undefined ? DASH : assistText(f));
+  add('ground', 'Ground', f === undefined ? DASH : groundText(f));
+  add(
+    'g',
+    'G state',
+    f === undefined
+      ? DASH
+      : `${fixed(f.gLagged, 2, ' g')} · S ${fixed(f.gStress, 2)} · R ${fixed(f.redout, 2)}`,
+  );
 
   const profile = s?.profile ?? null;
   STAGE_NAMES.forEach((name, i) => {
