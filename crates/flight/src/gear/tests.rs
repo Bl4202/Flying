@@ -826,6 +826,40 @@ fn ten_minutes_of_random_taxiing_stays_finite_and_on_the_ground() {
 }
 
 #[test]
+fn a_strut_is_damped_by_c_comp_while_it_compresses_and_by_c_ext_while_it_extends() {
+    // The sign convention (ADR-35): x is positive compressed, xdot > 0 is compressing. The Kestrel
+    // damps extension harder than compression, so swapping the two is not a symmetry.
+    let leg = GearLeg {
+        stroke_m: 0.3,
+        k_npm: 130_000.0,
+        c_comp_nspm: 9_000.0,
+        c_ext_nspm: 18_000.0,
+        ..GearLeg::UNUSED
+    };
+    let x = 0.1;
+    let at_rest = strut_normal(&leg, x, 0.0);
+    // The spring alone: progressive, k x (1 + (x / stroke)^2).
+    let u = x / leg.stroke_m;
+    assert!(
+        (at_rest - 130_000.0 * x * (1.0 + u * u)).abs() < 1e-6,
+        "{at_rest}"
+    );
+    let v = 0.5;
+    let compressing = strut_normal(&leg, x, v) - at_rest;
+    let extending = strut_normal(&leg, x, -v) - at_rest;
+    assert!(
+        (compressing - 9_000.0 * v).abs() < 1e-6,
+        "compressing adds c_comp v: {compressing}"
+    );
+    assert!(
+        (extending + 18_000.0 * v).abs() < 1e-6,
+        "extending takes c_ext v: {extending}"
+    );
+    // A strut never pulls: fast extension from a light compression gives no force, not a negative one.
+    assert_eq!(strut_normal(&leg, 0.001, -5.0), 0.0);
+}
+
+#[test]
 fn wheel_commands_are_sanitised() {
     let w = WheelCommands {
         brake: [f64::NAN, 2.0, -1.0, 0.5],
