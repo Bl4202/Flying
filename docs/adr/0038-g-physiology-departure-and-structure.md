@@ -1,6 +1,6 @@
 # ADR-38: G-physiology, departure diagnostics, structural limits and the onboard control model
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-10-22
 - **Affects:** GDD 11.14, 11.15, 57, 59, 11.21 (AC-11.9); `crates/flight` (`physio`, `structure`, `departure`, `aero`, `linearise`), `content/core/aero/` (lateral tables)
@@ -124,9 +124,9 @@ scalars (`dm_de`, `dl_da`, `dl_dr`, `dn_da`, `dn_dr`) are its main entries.
 
 ## Consequences
 
-- The physiology, structure and departure pieces are pure functions of `Copy` state. The state
-  joins the `ownship` hash when `sim-core` adopts it (`PhysioState`, `StructureState`, the delay
-  ring), and a re-bless of the determinism goldens covers it (WP9).
+- The physiology, structure and departure pieces are pure functions of `Copy` state. The state is
+  in the `ownship` hash (`PhysioState`, `StructureState`, the delay ring), covered by the one
+  re-bless of WP9.
 - `Limits::n_max_for` and `AircraftModel::structure_input` give `sim-core` and the FCS one reading
   of the configuration.
 - The departure table is a *target*; ADR-34's departure suite (Standard and Full protected; Reduced

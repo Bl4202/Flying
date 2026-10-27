@@ -10,14 +10,18 @@ and what each run only approximates, is ADR-28.
 | B | Mac M4, `renderer=webgl2`, 4x CPU throttle | Minimum, emulated | `m4-webgl2-throttled` | scripted by the maintainer |
 | C | Laptop, RTX 5060 | High | `rtx5060-webgpu` | project owner |
 | D | Laptop, Chrome forced onto the integrated GPU | Minimum-class GPU | `rtx5060-igpu` | project owner |
+| L | Mac M4, WebGPU, the control-latency gate | Recommended | `m4-latency` | scripted by the maintainer (v0.1b) |
 
-Reports go to `docs/exit/v0.0b/machines/<folder>/`.
+Reports go to `docs/exit/v0.0b/machines/<folder>/` for v0.0b, and to `docs/exit/v0.1b/machines/<folder>/`
+from v0.1b (the scripted route's default).
 
 ## Before any run
 
 - Current **stable** Chrome (not Canary, not a beta), up to date. Check `chrome://gpu`: for WebGPU
   runs, *WebGPU* must say "Hardware accelerated"; for WebGL2 runs, *WebGL2* must.
-- On a laptop: plugged in, the power mode on "best performance", display at its native refresh rate.
+- On a laptop: **plugged in** (a run on battery is not a reference run; at 10 % charge the machine
+  may also throttle or sleep), the power mode on "best performance", display at its native refresh
+  rate.
 - Close other tabs and heavy applications. Keep the game tab **visible** for the whole run: a hidden
   tab pauses the simulation by design, and the run would fail.
 - Run D only: Windows Settings, System, Display, Graphics, add Chrome, Options, **Power saving**
@@ -45,13 +49,17 @@ pnpm install --frozen-lockfile
 pnpm perf:local --name rtx5060-webgpu --class high
 pnpm perf:local --name rtx5060-igpu --class minimum          # run D, after the Windows setting
 pnpm perf:local --name m4-webgl2-throttled --class minimum --renderer webgl2 --throttle 4
+pnpm perf:local --name m4-latency --class recommended --latency 500   # the AC-58.3 gate (v0.1b)
 ```
 
-It opens real Chrome (headed), records the compat verdict, flies a scripted minute, runs the full
-benchmark and PS-0 for 120 s, and writes `compat.json`, `flight.json`, `flight.png`,
-`benchmark.json`, `perf-ps0.json` and `summary.md` under `docs/exit/v0.0b/machines/<name>/`. The
-summary lists each pass criterion. Options: `--base URL` (default the Pages build), `--seconds`,
-`--fly`, `--renderer`, `--throttle`, `--headless`, `--out`. Leave the machine alone while it runs.
+It opens real Chrome (headed), records the compat verdict, flies a scripted minute (from the air
+under Standard assist, `--spawn air`; the runway start is `--spawn runway`), takes the
+control-latency samples if `--latency N` is given, runs the full benchmark and PS-0 for 120 s, and
+writes `compat.json`, `flight.json`, `flight.png`, `latency.json`, `benchmark.json`,
+`perf-ps0.json` and `summary.md` under `docs/exit/v0.1b/machines/<name>/`. The summary lists each
+pass criterion. Options: `--base URL` (default the Pages build), `--seconds`, `--fly`, `--spawn`,
+`--latency`, `--renderer`, `--throttle`, `--headless`, `--out`. Leave the machine alone while it
+runs and keep the game tab visible.
 
 ## Pass criteria, per run
 
@@ -62,6 +70,11 @@ summary lists each pass criterion. Options: `--base URL` (default the Pages buil
   notice).
 - At least 30 FPS on Minimum-class runs (B, D); on the others, the display rate (95 % of what
   `requestAnimationFrame` runs at).
+
+- With `--latency N` (AC-58.3, ADR-33 section 7): at least N changes measured (500 for the gate) and
+  the control latency's p95 at most **25 ms**. The display rate is recorded in the summary; the
+  sim counts only frames that carry a change, from the key event to the end of the tick that acted
+  on it. Run it with the staging build, headed, on power.
 
 The benchmark's own classification is reported but is not a pass criterion: its thresholds are
 provisional and these reports are what they will be tuned against.
@@ -84,3 +97,22 @@ provisional and these reports are what they will be tuned against.
 | FPS is half the display rate | the page is on the wrong GPU, or the tab is throttled; read the `Device` row |
 | Compat verdict fatal, `SYS-103` | hardware acceleration is off, or the GPU is on the browser's blocklist (`chrome://gpu`) |
 | A "graphics device was lost" notice | note when it happened; the renderer rebuilds once, then falls back to WebGL2. Send the console log |
+
+## The owner's manual circuit (v0.1b, not blocking)
+
+The virtual tester gates the exit (`cargo xtask circuit`, ADR-33); the owner's own flights are
+recorded and do not block the tag. On the staging build with a keyboard and mouse, once per assist
+level (pause menu, `Esc`, then the level; or `?assist=full|standard|reduced|manual`), note what
+happened:
+
+1. Runway start: parking brake off (`P`), full afterburner (`Z`), keep the centreline with `Q`/`E`.
+2. Rotate at about 70 m/s, gear up (`L`) once climbing, flaps up (`V`) by 120 m/s.
+3. Fly a left-hand circuit at about 300 m above the field.
+4. Gear down (`L`), flaps to landing (`V` twice), airbrake (`N`), about 3 degrees on final.
+5. Flare, touch down, brake (`B`), stop on the runway.
+6. Also once: mouse-aim (`O`, click the picture), a hard pull until the screen greys out, and
+   rebinding one key in the pause menu's Controls and reloading.
+
+Record per level: whether it flew, anything that surprised you (a control too sensitive, a warning
+at the wrong moment, a crash and its cause), and the display rate. Gamepad and HOTAS are not
+hand-verified for v0.1b (no hardware).

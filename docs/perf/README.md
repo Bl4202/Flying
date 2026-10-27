@@ -67,20 +67,58 @@ Times the native core (`fg bench`, erratic pilot, core pack) and compares the me
 with `tests/perf/baseline.json`. Informational unless `--strict`, never compared across machine
 classes, and the 5 % budget is tight for a noisy laptop. Re-record with `--update` after an intended
 change and say why in the commit. The baseline was re-recorded at v0.1a, when the tick began to fly
-the 6-DOF aircraft (about 2 000 ns per tick before, about 4 200 after, on the M4).
+the 6-DOF aircraft (about 2 000 ns per tick before, about 4 200 after, on the M4), and is due again
+at v0.1b, when the erratic pilot began to fly through the Standard control system.
 
 ### Per-aircraft cost (T0)
 
 ```text
-fg bench --aircraft N --content content-out/core.cpack [--ticks N] [--json]
+fg bench --aircraft N --content content-out/core.cpack [--ticks N] [--assist full|standard|reduced|manual] [--ground] [--json]
 ```
 
-Times N copies of the spawned aircraft through the flight model alone, in the live world
-(procedural geo, still air), and reports ns per aircraft-tick: the cost of one T0 aircraft (GDD
-60.2). The aircraft fly gentle inputs on every axis and restart from the trimmed spawn every 20 s,
-so they stay in normal flight. Recorded at v0.1a on the M4: about 1 800 ns per aircraft-tick
-natively at N = 1 and N = 64, and about 4 300 ns in WASM (single build under Node, from timing
-`flight60` with and without the aircraft), against an informational budget of 20 µs.
+Times N copies of the spawned aircraft through the control system and the flight model, in the
+live world (procedural geo, still air), and reports ns per aircraft-tick: the cost of one T0
+aircraft (GDD 60.2). Since v0.1b each tick runs `FcsModel::step` (default `--assist standard`)
+before `step_tick`, so the number includes the control laws and the wheels' contact search. The
+aircraft fly gentle inputs on every axis and restart from the trimmed spawn every 20 s, so they
+stay in normal flight. `--ground` starts them on the runway with a taxi throttle (0.45), the brakes
+released and a light touch of both brakes (0.3) from 15 s to 16.7 s, which exercises the gear model, the friction
+and the ground law instead; it fails if an aircraft leaves the ground, since the number would then
+not be the ground's.
+
+| Where | v0.1a (manual law, no wheels) | v0.1b air, Standard | v0.1b ground |
+|---|---|---|---|
+| native, M4 | about 1 800 ns | about 6 300 ns | about 33 000 ns |
+| WASM single under Node, M4 | about 4 300 ns | about 16 000 to 20 000 ns (noisy) | not measured |
+
+The informational budget is 20 us per aircraft-tick in WASM. The air case is inside it with
+little margin, and the ground case is outside it natively, which does not matter for one player
+(it is 0.2 % of a 16.7 ms tick) but matters for the AI fleets of v0.1d. Where the time goes: the
+ground case evaluates eight terrain samples per wheel per RK4 stage plus the contact points
+(ADR-35); a cheaper pad normal would change the hashes, so it is deferred to a milestone that
+re-blesses anyway. A first version of the control system added about 7 us because every
+telemetry call took eight full surface samples for the wheels' height; `sense_light` and
+`telemetry_light` read the height only where it is used, which removed the cost without
+changing a single hash (`6c1e851`).
+
+## Control latency (AC-58.3)
+
+The definition is in ADR-33 section 7 and the stack in
+[controls.md](../architecture/controls.md): source event to the end of the sim tick that acted on
+it, on frames that carry a change, display latency excluded. Two ways to read it:
+
+```text
+tests/e2e/latency.spec.ts                       # CI, headless: at least 200 changes, p95 <= 33.3 ms
+pnpm perf:local --latency 500 --name m4-latency --class recommended
+                                                # reference machine, headed Chrome, on power:
+                                                # at least 500 changes, p95 <= 25 ms
+```
+
+The sim worker keeps three histograms per changed frame (control, poll, tick), per report
+interval and since `resetRun`; the overlay's `ctl` row shows the run-scoped ones. Headless CI
+measured p95 between 16.5 and 21 ms. `perf:local` records the display rate beside the result,
+since a 60 Hz display bounds how soon a frame can be written. Reports go to
+`docs/exit/v0.1b/machines/` (`docs/runbooks/reference-machines.md`).
 
 ## Reading a report
 

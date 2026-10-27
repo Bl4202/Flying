@@ -4,7 +4,7 @@
 | | |
 |---|---|
 | **Working Title** | TBD |
-| **Document Version** | 0.2.0 (Draft 2 — technical expansion of `GDD_Outline.md`, retargeted to run in a web browser) |
+| **Document Version** | 0.2.2 (Draft 2 — technical expansion of `GDD_Outline.md`, retargeted to run in a web browser) |
 | **Document Date** | 2026-10-07 |
 | **Primary Platform** | Desktop web browser (installable PWA). WebGPU renderer, WebAssembly simulation core. |
 | **Multiplayer** | LAN / VLAN / direct-connect co-op and 1v1 over WebRTC |
@@ -1740,6 +1740,8 @@ Gains are scheduled on `q̄` and Mach (2-D tables in the aircraft file) and are 
 | Overspeed | Pitch-up bias near Vne/Mne (soft "wall") |
 | Ground collision avoidance (opt-in) | Auto-GCAS: when predicted terrain contact < 4 s ahead at current g-capability, takes control briefly and rolls wings level + pulls up |
 
+*Clarified in 0.2.2 (ADR-34):* the loops above are built as **incremental dynamic inversion** and not as scheduled PIs. The control system asks for an angular acceleration and the surfaces move by the inverse of the airframe's own control power (the tables it flies on) applied to the difference from the acceleration it measures, so no gain schedule over `q̄` is needed. The classical structure is still visible: a load-factor loop (a PI on `n` whose integral collects only small errors, closing `n` as a first-order lag at every dynamic pressure), pitch-rate damping, an angle-of-attack limiter that acts in a 3° band below the limit and looks 0.4 s ahead along the true α rate, and the trim feed-forward that the inversion implies. Stick centre is 1 g, as the formulas read. The gains are scalar data (`fcs/1`, A.1) with schedules for the roll-rate authority only; the overspeed "wall" is a load-factor bias from 0.92 of `V_mo`/`M_mo`. The autotuner of §11.18, the auto-throttle and Auto-GCAS are not built in v0.1b; the handling suite of ADR-33 is the gate for the gains, and the timing of Auto-GCAS is noted at §54.9.
+
 ### 11.11.3 Assist presets (outline §107)
 
 | Preset | Pitch | Roll | Yaw | Limiters | Intended player |
@@ -1750,6 +1752,9 @@ Gains are scheduled on `q̄` and Mach (2-D tables in the aircraft file) and are 
 | **Manual** | Direct stabilator/aileron/rudder via actuators | — | — | None, except an inner-loop stability augmentation for statically unstable airframes (these cannot be flown without it; the tuning file marks `sas_required: true`) | Simulator |
 
 Mouse-aim control (a War-Thunder-style "fly to cursor") sits above the assist layer: it converts the aim error into stick commands (§58.4) and is available in Full and Standard.
+
+*Clarified in 0.2.2 (ADR-34):* **Full Assist is a bank-angle command**: the stick sideways commands a bank up to 60° and centred levels the wings; the stick back commands a flight-path rate (at most 10°/s) and centred holds the path. Its angle-of-attack limit is 2° tighter than Standard's, and in G-LOC it holds the wings level and a level or climbing path. The recovery button (`U`, held) rolls the wings level the short way and pulls to a 5° climb at 4 g in Full and Standard; in Reduced and Manual it flies anti-spin controls only if the aircraft has departed (a stability-axis yaw rate above 30°/s, or α above 35°). Switching the level in flight is bumpless (the surface command blends over 0.5 s). Manual is the stick moving the surfaces about the trim; the trim keys move the elevator in Manual only, as the other laws trim themselves. The Kestrel's `sas_required` is false.
+
 
 ## 11.12 Energy management
 
@@ -1786,6 +1791,9 @@ Each wheel assembly `i` has a contact point in BODY and a strut. Per wheel per s
 
 Surface friction coefficients: §10.4. Brake heat and tyre burst are optional (`P10`).
 
+*Clarified in 0.2.2 (ADR-35):* a sharp `sign(v)` chatters at rest and makes a parked aircraft creep, so every tangential term is regularised: rolling resistance and braking are `−μ N tanh(v / v_s)` with `v_s` 0.2 m/s and 0.05 m/s, the lateral force keeps the 0.5 m/s of the table, and rolling and braking **add** along the wheel. A friction circle of `μ_peak N` limits the tangential vector, and the sideways peak is the surface's braking coefficient. Steering is positive for the nose wheel turned right. The anti-skid factor (0.9), the lock-up factor (0.6) and the surface table are as written.
+
+
 ### 11.13.3 Touchdown and crash criteria (design targets)
 
 | Vertical speed at gear contact | Result |
@@ -1797,9 +1805,13 @@ Surface friction coefficients: §10.4. Brake heat and tyre burst are optional (`
 
 Carrier-arrested landings and catapult launches add external forces from the ship systems (§22.6): catapult as a constant-acceleration force along the deck (e.g. 85 m/s in 94 m ≈ 3.9 g, 2.2 s), arrestor wire as a force-vs-runout curve (e.g. 70 m/s stopped in ~100 m ≈ 2.5 g).
 
+*Clarified in 0.2.2 (ADR-35):* the table is read as follows. The vertical speed is the speed into the ground of the **first contact of a touchdown** (a leg that arrives later in the same landing, as the nose wheel does, is not judged a second hard landing, and a touchdown re-arms after 0.5 s in the air). Up to 3.0 m/s is normal; 3.0 to 4.5 m/s is a hard landing (counted, flagged for 3 s); 4.5 to 7.0 m/s collapses **that strut**, after which the airframe rests on it; above 7.0 m/s the aircraft is destroyed. Airframe contact (tail, wing tip, nose, belly) at a ground speed above 30 m/s, or a collapsed strut at that speed, destroys it; below that the aircraft skids at μ 0.5 and survives. A gear that is in transit when it meets the ground collapses. A CG more than 5 m below the ground is reported as a numerical failure, not a crash. §18.8.1 words the speed rule differently (normal speed component); **§11.13.3 governs until the damage chapter (§18) is built.**
+
 ### 11.13.4 Weight on wheels
 
 `WoW` is true when any main-gear `N > 0` and ground speed < 120 m/s; it switches flight-control gains, enables nose-wheel steering, disables certain sensors (radar standby), and enables parking brake.
+
+*Clarified in 0.2.2 (ADR-34):* the 0.1 s debounce belongs to the control system; the flight model reports the raw state. The control system switches every law but Manual to the ground law on weight on wheels, blending over 0.5 s at touchdown and 2.0 s after lift-off.
 
 ## 11.14 G-forces and pilot physiology
 
@@ -1823,12 +1835,16 @@ Negative G: `dR/dt = (−1 − n_z)/τ_r` for `n_z < −1` (`τ_r = 3 s`): red t
 
 Because `G_f` lags `n_z`, brief 9 g pulls are survivable while sustained pulls are not — a deliberate skill expression. Accessibility: effect strength 0–100 %, "never lose control" toggle (visual only), reduced screen shake (§57).
 
+*Clarified in 0.2.2 (ADR-38):* `n_z` is the accelerometer value at the CG; the rotational terms at the pilot's station (a pilot 5 m ahead of the CG feels `q̇` times the arm) are a recorded simplification. `S` integrates the **mean** `G_f` over a tick, which is exact for a held `n_z` and independent of the step. A 9 g pull from 1 g reaches `S` = 0.7 at 9.50 s and 1.0 at 11.93 s with fatigue frozen at 0 (AC-11.9's bands are 9.6 ± 0.5 and 12.0 ± 0.5), and at 9.42 s and 11.80 s with fatigue building; a 3 s pull peaks at 0.040. The accessibility choice is a three-way dial: **Full** (default) applies the grey-out, blackout (controls 300 ms late, 18 ticks) and G-LOC (zeroed 6 s, then a 4 s linear return); **Reduced** keeps the visuals and adds 1.5 g of tolerance, with no loss of control; **Off** applies nothing. The state advances in every mode. The strength of the picture (0 to 100 %) is the renderer's local setting. G-LOC cannot re-trigger while it runs and does again if the pilot is still above tolerance when it ends. The dial is a session setting, applied at the next start.
+
 ## 11.15 Stall, departure, and structural limits
 
 - **Stall** emerges from the table (`C_L,max`) and §11.6.3. Warnings: shaker/audio tone at `α = α_stall − 3°`, HUD flash.
 - **Departure criterion** (diagnostic): `C_nβ,dyn = C_nβ cosα − (I_z/I_x) C_lβ sinα`; negative values indicate directional divergence and are flagged by the tuning tools; the tables for Reduced/Manual intentionally preserve departure behaviour.
 - **Spins** emerge from yaw–roll coupling in the extended tables; the "Recover" button commands anti-spin controls through the FCS where equipped.
 - **Structural limits** per config: `n_max`, `n_min`, `V_ne`, `M_ne`, gear-extended speed (design target 154 m/s ≈ 300 kn), flap-extended speed. `|n| > 1.1 n_max` accumulates structural damage; `> 1.5 n_max` or `V > 1.2 V_ne` yields break-up chance per second (§18.7).
+
+*Clarified in 0.2.2 (ADR-38):* the lateral and directional derivatives are tables against α, equal to the C.5 values up to 15° and shaped above it, so the airborne points of C.9 do not move. `C_nβ,dyn` and the lateral control departure parameter are computed from them (the Kestrel's `C_nβ,dyn` turns negative at α = 34.05°, 8° above the 26° limiter, and the aileron loses its authority from about 25°). Over-stress (`|n|` above 1.1 of the configuration's limit; 4 g with the gear or flaps out), over-speed, and gear and flap overspeed are timed and raise warnings; **nothing breaks** before the damage chapter (§18.7).
 
 ## 11.16 Fuel, range, and aerial refuelling hooks
 
@@ -3183,6 +3199,8 @@ At `D ≥ 0.8` creaking/buffet cues and a 5 % per second failure chance; at `D =
 | Contact at speed or steep angle (normal speed component > 30 m/s, or sink rate > 7 m/s with fuselage) | **Destroyed** → crater/explosion |
 | Water ditching | Survivable if sink rate < 3 m/s and speed < 90 m/s and pitch within ±15°; else destroyed. Sinks in 15–60 s unless carrier-type flotation; pilot may eject earlier |
 | Terrain flyby (wingtip contact) | Damage to wingtip, then cartwheel or loss of control depending on speed |
+
+*Clarified in 0.2.2 (ADR-35):* until this chapter is built, the thresholds of §11.13.3 govern the wheels and the airframe on the ground (ground speed above 30 m/s, or sink above 7 m/s, destroys; below it a skid). The normal-speed wording above applies to terrain contact in flight and to water.
 
 ### 18.8.2 Aircraft-to-aircraft
 
@@ -7320,6 +7338,8 @@ Missing feature data: roads/buildings are simply absent (terrain remains); the m
 | **Alert scramble** | In the alert shelter or on the alert pad, engine off, crew in the cockpit | ≈ 2.5–4.5 min to wheels-up (§48.3) | QRA missions |
 | **Carrier cold / hot** | On the deck (§22.6) | cat-ready ≈ 60–120 s | Launch bar, catapult |
 
+*Clarified in 0.2.2 (ADR-36):* the sandbox default is **Runway hot** from v0.1b, on the test airfield of the procedural world: 150 m past the threshold of a 3 000 m by 45 m runway (heading 000, 40 m MSL), at rest on the gear (pitch about 3°), engine idling, parking brake set, gear down, take-off flaps, 60 % fuel, under Standard Assist. `?spawn=air` starts airborne; the player's respawn choice (pause menu) and the reset key's request override the session's start. The host hands its throttle lever over at every spawn (the core holds the spawn throttle until the host acknowledges) so a respawn never launches the aircraft from a stale lever.
+
 **Engine start sequence (Standard Assist: one key "Auto-start"; Realistic: stepwise):** battery → fuel pumps → APU/ground air → engine spool (idle reached 30–45 s, Kestrel class) → generators → avionics align (INS ≈ 90 s full, 25 s "fast"; skippable in Standard) → flight controls check → canopy closed. Auto-start runs the entire sequence in ~50 s of game time; a "skip to ready" option is available in any mode with cost 0 (sandbox) or a time penalty (campaign scoring has none; time matters only for scramble pressure).
 
 **Takeoff distance** uses the ground model (§11.13) with the planner in §10.4; **taxi** speed limits 15 m/s straight, 5 m/s on turns > 45°, 3 m/s on apron; the taxi graph (§10.5) provides a visual **taxi guide line** (opt-in) and the tower voice gives routing in plain brevity ("Kestrel Two, taxi runway two seven via Alpha, hold short").
@@ -8213,6 +8233,9 @@ Message rules: priority queue; maximum 3 simultaneous visible messages (the rest
 - **Radar altimeter low-altitude alert:** audible tone and bug when AGL < the set minimum (default 150 m); changes with phases (landing config).
 - **Ground-collision auto-recovery (Full Assist only):** pull-up manoeuvre takes control when `t_to_impact < 1.5 s` (optional "Auto-GCAS"), disabled by realism dial.
 
+*Clarified in 0.2.2 (ADR-34):* this line (1.5 s) and §11.11.2 (4 s at the current g-capability) disagree. Auto-GCAS is not built in v0.1b; the opt-in flag in the input frame (§58.2) and the `gcas` block of `fcs/1` are kept, the pause menu leaves the option out, and the timing is decided when the feature is built. The warning strip's PULL UP is a time-to-impact rule (under 5 s at the present sink and below 400 m, silent on the wheels and in the landing configuration).
+
+
 ## 54.10 Cockpit and MFD system
 
 - **Cockpit model:** each aircraft (that has one) provides a 3D cockpit mesh with named nodes for HUD glass, MFD screens, switches (visual state only), canopy, mirrors, instruments (analogue backup: airspeed, altitude, attitude, compass), pilot arms/hands (optional) and a canopy frame occluder. Minimum content per outline §95: HUD, speed, altitude, heading, radar, weapon, ammunition, fuel, target information. "More advanced aircraft can have additional displays": the `cockpit_layout.json` declares MFD count (0–3), page assignments, and softkeys.
@@ -8712,6 +8735,8 @@ x₆  = invert/offset (trim)
 - **Throttle** modes: absolute (physical lever), incremental (buttons/rocker), detents (idle, mil, AB gate) with soft stops; **AB detent** via a configurable position (default 0.92) or a button.
 - **Hat/POV** decoding for both `axes[9]`-style encodings and button-based hats.
 
+*Clarified in 0.2.2 (ADR-36, ADR-37):* **InputFrame v3** keeps the 96 bytes and the layout above and gives meaning to the reserved bytes: `flags` bit 0 neutral, bit 1 **changed** (a control actually changed, the frames the latency of AC-58.3 is measured on), bit 2 mouse-aim (the cursor axes carry a direction: `cursor_x = azimuth / π`, `cursor_y = elevation / (π / 2)`), bit 3 auto-GCAS; `t_ms` is the time of the **source event** on the shared clock and `t_sent_ms` (offset 80) the time the frame was written, neither of them hashed; byte 74 `assist_req` (0 keep, 1 to 4 an absolute level), byte 75 `spawn_ack` (the snapshot's spawn counter the host has synchronised its throttle lever with) and byte 76 `spawn_req` (read on the reset press: 0 the session's spawn, 1 runway, 2 air). Buttons: 0 reset, 1 and 2 trim nose up and down (held), 3 gear (toggles the lever), 4 and 5 flaps down and up, 6 airbrake (held), 7 parking brake (toggles), 8 recover (held), 9 trim reset, 10 flap cycle. The input is polled each animation frame and on a 4 ms timer, and a device event writes its frame at once, so the polling wait in the budget above applies only to devices that raise no events (pads). The `controls/1` profile (§58.6) and the bindings are in ADR-37.
+
 ## 58.3 Browser specifics (gesture, pointer lock, fullscreen, reserved keys)
 
 | Topic | Rule |
@@ -8745,6 +8770,8 @@ throttle  unchanged (separate axis)
 2. **Mouse-as-joystick (virtual stick).** Mouse deltas move a virtual stick (sensitivity 0–3×, recentre spring 0–1) producing pitch/roll commands; wheel = throttle increments.
 
 Free-look (hold `C`/mouse button) moves the camera independently; padlock (hold) points the camera at the selected target (disabled in Realistic). In Reduced Assist and Manual, mouse-aim is **unavailable** (only mouse-as-joystick); the first-run flow explains this.
+
+*Clarified in 0.2.2 (ADR-34, ADR-37):* mouse-aim runs **in the simulator** (so that AC-58.4 is tested headless and deterministically); the page keeps the world-frame aim direction, limited to a 35° cone around the latest nose, and sends it in the cursor axes. In place of the bank-and-pull of the listing, the controller asks the nose to close on the target at a rate proportional to the error (looking ahead along the rate it already closes at), builds the lift needed (the turn toward the target plus the lift that holds the path against gravity), and uses its **direction as the roll stick** and its part along the lift axis as the pitch stick through the load-factor loop. The listing's gains (`K_φ` 1.6, `K_p`, the 3 /s ramp) did not survive the test (none of 500 runs passed with them); the structure did, and the numbers are `fcs/1` data (`content/core/fcs/README.md`). Mouse-as-joystick stays on the page.
 
 ## 58.5 Action catalogue and default bindings
 
@@ -8843,6 +8870,12 @@ Gamepad rumble (`vibrationActuator.playEffect("dual-rumble", …)`) provides: gu
 - `AC-58.5` Binding editor: conflicts are detected for 100 % of duplicate bindings in the same context; profile export/import round-trips identically; unknown devices can be fully bound via the wizard.
 - `AC-58.6` Hot-plug test: unplug/replug of stick, throttle and pedals during flight never crashes, never leaves stuck inputs, and restores the profile within 2 s.
 - `AC-58.7` Head tracking filter: step input settles within 150 ms with overshoot < 5 %; jitter at rest < 0.15° rms.
+
+*Clarified in 0.2.2 (ADR-33 section 7 and Amendment 1):*
+
+- `AC-58.3` is measured from the **source event** (`event.timeStamp` of a key or pointer event, the Gamepad API `timestamp` or the poll time of a pad), mapped to the shared clock, to the **end of the sim tick** that applied the frame, on frames flagged *changed* only; display latency is excluded. The instrumented test is the sim's own histogram: at least 500 such changes at random phases of the tick on the reference machine (headed Chrome, the staging build, the display rate recorded), p95 at most 25.0 ms; CI runs the same with a bound of two ticks (33.3 ms).
+- `AC-58.4` is scaled to the aircraft: the aircraft must be within 1° of the commanded direction **no later than** `t_max = 1.0 s + θ / ω_lim`, where `θ` is the aim error and `ω_lim` the aircraft's own instantaneous α-limited turn rate at the start (`g √(n_lim² − 1) / V`, never below 1.5 g), **and then stay within 1° for the next 0.5 s** (the dwell shows it arrived and is not part of the time budget). The pilot holds full throttle. Everything else is as written: Standard assist, M 0.6, 5 km, random attitude, 10° to 120°, 500 runs, at least 95 %, no stall (α at most the limit + 2°) and no g violation (`n` at most `n_max` + 0.3). The 4 s of the listing cannot be met by a turn of 120° at about 17°/s, and as first scaled (the dwell inside the time, throttle as trimmed) the criterion passes 79 % and cannot pass 95 % for targets high above the nose. The owner chose this reading on 2026-10-24. Full assist is not held to it (its path rate is limited to 10°/s).
+
 
 ---
 
@@ -10674,6 +10707,7 @@ This appendix is the normative index of data formats. Schemas are written in a T
 | Schema | Defined in | Notes |
 |---|---|---|
 | `aircraft/1` | A.2, §12, §62.2 | Includes hardpoints (§12.4) |
+| `fcs/1` | A.2 (`fcs.gains_ref`), ADR-34 | Control-law gains (v0.1b); `content/core/fcs/` |
 | `engine/1` | A.3 | Thrust/fuel decks |
 | `weapon/1` | §15.2, A.4 | Class blocks in A.4 |
 | `sensor/1` (radar, irst, rwr, esm, pod) | A.5, §16 | |
@@ -10751,6 +10785,13 @@ normative for the fields that exist; the interface above remains the target. Dif
 - `fcs.gains_ref` is absent until the FCS (v0.1b). `fcs.actuators` is keyed by surface (`stab`,
   `aileron`, `rudder`, `lef`, `tef`, `airbrake`), each with `range_deg`, `rate_dps` and a first-order
   `tau_s` instead of `bandwidth_hz`; the airbrake uses `rate_per_s` over 0 to 1.
+
+*Clarified in 0.2.2 (ADR-34, ADR-35): what v0.1b adds to `aircraft/1`.*
+
+- `geometry.gear` is present: per leg `id`, `pos_m` (the contact point at full extension, BODY), `stroke_m`, `k_npm`, **`c_comp_nspm` and `c_ext_nspm`** in place of the single `c_nspm` (damping is asymmetric, §11.13.1), `steer_max_deg` (0 for a fixed leg), `brake` and `main` (a main leg counts for weight on wheels). `geometry.contacts` lists the airframe contact points (`id`, `pos_m`: nose tip, tail, wing tips, belly). The baker checks the nose leg's share of the load, static compression, strut bounce, tail clearance at the touchdown attitude, tip-back, the contacts inside `bbox_m`, at least one braked leg and at most one steerable leg (ADR-35).
+- `aero.n_max_by_config` is present (`gear` and `flaps`, the limit with either out).
+- `fcs.gains_ref` is present and names an `fcs/1` entry (A.1); `fcs.actuators.gear` carries `transit_s` (the gear moves at that rate, with no lag).
+- Envelope points with `requires: "gear"` are no longer deferred: `to_roll` and `ldg_roll` are flown (C.8). A model without a braked main leg still defers them.
 
 ## A.3 `engine/1`
 
@@ -11329,6 +11370,12 @@ The take-off and landing integrations use the same polar with ground `C_L` of 0.
   conformance test measures a continuous Mach, so it reads about +0.7 % against `vmax_sl` by
   construction.
 
+*Clarified in 0.2.2 (ADR-32):*
+
+- **The ground rolls are initialised ground-roll segments, as the paragraph above defines them.** `to_roll` runs from brake release at steady maximum afterburner, on the gear at its static attitude (about 3°) with the stick neutral, to the ground speed `V_LOF` = 1.2 `V_s,TO`, with no rotation (a 6-DOF aircraft whose mains are 0.62 m behind the CG cannot rotate below about 64 m/s, so a run that must lift off needs about 245 m). `ldg_roll` runs from `V_TD` = 1.15 `V_s,LDG` on all wheels at the static attitude, idle, airbrake out, landing flaps, full brakes with anti-skid from t = 0, to a ground speed under 2 m/s. The world is paved, dry, at sea level. Lift-off and the flare are covered by the virtual tester's circuit, not by the envelope.
+- **The landing target stays 322 m, and C.7's figure sits 3.1 % below what C.8's own text produces.** With C.8's rolling resistance of 0.02 added to a braking μ of 0.55 on the lift-relieved load and no thrust, the integration gives **332 m**. The Kestrel's F129 idles at 4.7 kN, which C.8 does not model, and that would add about 13 %; the model meets 322 m with a **braked nose wheel** (`brake: true` on every leg; with the nose wheel unbraked the roll grows by 42 %), the §10.4 dry-asphalt μ_b of 0.70 under the 0.9 anti-skid factor, and the idle fraction as authored. Measured: `to_roll` 195.72 m (+0.37 %) and `ldg_roll` 322.23 m (+0.07 %). The target and tolerance are not changed.
+- The wet-runway landing of C.7 (420 m) is not gated: the same landing at wetness 1 (μ_b 0.40) rolls 569.8 m (informational).
+
 ## C.9 Authored envelope block (conformance test input)
 
 ```json
@@ -11834,7 +11881,7 @@ Each template has ≥ 6 weighted variants and urgency variants (calm/urgent/pani
 | Format | Single Markdown file (`GDD.md`), headings per the table of contents; Appendices A–I |
 | Roadmap companion | `roadmap.md` (version plan v0.0 → v1.0) |
 | Version scheme | `MAJOR.MINOR.PATCH`: MAJOR = change of vision/platform; MINOR = new or changed chapters/ADRs; PATCH = corrections/clarifications |
-| Current version | 0.2.1 (v0.1a flight-model clarifications) |
+| Current version | 0.2.2 (v0.1b control and ground clarifications) |
 
 ## I.2 Change log
 
@@ -11843,6 +11890,7 @@ Each template has ≥ 6 weighted variants and urgency variants (calm/urgent/pani
 | 0.1.x | First draft, engine-agnostic/desktop assumptions (superseded) |
 | 0.2.0 | Browser-native specification: WebGPU/WebGL2 renderer, Rust→WASM Sim Core, worker topology, WebRTC networking, OPFS/IndexedDB storage; all 71 chapters and Appendices A–I written; replay decision aligned with ADR-09 (snapshot-based); Kestrel reference data computed |
 | 0.2.1 | Clarifications from building the v0.1a flight model (ADR-29, ADR-30, ADR-31): §11.2.4 sign of the side-force term of `Z`; §11.6.3 post-stall blend is a data-driven smoothstep; §11.19 sustained load factor is wind-axis, `mach` and `requires` on envelope points; §61.5 Aero seam wired; A.2 and A.3 notes on what `aircraft/1` and `engine/1` implement now; C.3 spool figures against §11.8.2; C.7 rate of climb is the maximum 1 g P_s; C.8 altitude datum and 0.01 Mach floor; C.9 envelope fields; OQ-01 closed. No gate or target changed |
+| 0.2.2 | Clarifications from building the v0.1b control and ground work (ADR-32 to ADR-38): §11.11.2 the control laws are incremental dynamic inversion; §11.11.3 Full Assist is a bank-angle command and the recovery button's behaviour; §11.13.2 tanh-regularised, additive friction; §11.13.3 how the touchdown thresholds are judged, and that they govern over §18.8.1; §11.13.4 the debounce; §11.14 `n_z` at the CG, the dial, the AC-11.9 figures; §11.15 lateral tables against α, `C_nβ,dyn` and no break-up before §18; §48.2 Runway hot as built; §54.9 the Auto-GCAS timing conflict; §58.2 InputFrame v3; §58.4 mouse-aim runs in the sim; AC-58.3 measured from the source event; AC-58.4 scaled to the aircraft (owner decision, ADR-33 amendment 1); A.1 `fcs/1`; A.2 gear, contacts, `n_max_by_config`, `fcs.gains_ref`; C.8 the ground-roll segments and the C.7/C.8 landing-roll note (target kept). The header version, left at 0.2.0 in 0.2.1, is corrected. No gate or target changed except as the owner decided (AC-58.4) |
 
 ## I.3 Ownership
 

@@ -1,6 +1,6 @@
 # ADR-36: Session config, ABI v3, input frame v3, snapshot v3 and the throttle hand-over
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-10-24
 - **Affects:** GDD 6.3 (`session_config/1`), 48.2, 58.2 (`InputFrame`), 58.3, 61.2, 61.4.4 (snapshot, state hash); `crates/sim-core` (`layout`, `input`, `session`, `sim`, `ownship`, `spawn`, `pilot`, `systems`), `crates/sim-wasm` (`fg_configure`), `crates/xtask` (`wasm`, `determinism`), `packages/sim-bridge`
@@ -134,9 +134,11 @@ of v0.1a.
 
 ## Consequences
 
-- The determinism goldens change once, in WP9: the erratic and flight60 suites now fly under
-  their sessions through the control system and the gear model, and a third suite (the circuit)
-  is added. Until then they are red by design.
+- The determinism goldens changed once, in the dedicated commit of WP9 (`5506df6`): the erratic
+  and flight60 suites now fly under their sessions (air, Standard, g-effects on; air, Manual, g-effects
+  off) through the control system and the gear model, and a third suite, the circuit (runway,
+  Standard, g-effects on), was added. The `tick_h`, `rng` and `bodies` columns of the erratic suite
+  were proven unchanged from v0.1a before blessing.
 - Every reader of the snapshot or the frame follows the layout: `cargo xtask gen-abi` regenerates
   `layout.gen.ts` and the vectors.
 - A host that does not acknowledge a spawn keeps the aircraft at idle (runway) or the trim
