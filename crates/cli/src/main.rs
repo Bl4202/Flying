@@ -6,7 +6,8 @@
 //!          [--spawn runway|air] [--assist full|standard|reduced|manual] [--g off|reduced|full]
 //!          (--ticks N | --at T1,T2,... | --every N --ticks N)
 //! fg bench [--seed HEX] [--script none|erratic|flight60|circuit] [--content PATH] [--ticks N] [--json]
-//! fg bench --aircraft N --content PATH [--ticks N] [--json]
+//! fg bench --aircraft N --content PATH [--assist full|standard|reduced|manual] [--ground]
+//!          [--ticks N] [--json]
 //! fg conformance --content PATH [--aircraft-index N] [--json PATH] [--traces DIR]
 //!                [--only ID,...] [--expect-deferred ID,...]
 //! fg circuit --content PATH [--assist all|full|standard|reduced|manual] [--json PATH]
@@ -17,7 +18,9 @@
 //! hashes as 16-digit hex strings. The determinism check compares this output to the WebAssembly
 //! builds (ADR-10). `fg bench` times the tick; its wall-clock numbers are observations about the
 //! machine and never feed state; with `--aircraft N` it times N copies of the spawned aircraft
-//! through the flight model alone, the T0 cost per aircraft-tick (GDD 60.2, PS-9). `fg conformance` runs the Performance Conformance Test
+//! through the control system (`--assist`, Standard by default) and the flight model, the T0 cost
+//! per aircraft-tick (GDD 60.2, PS-9); `--ground` starts them on the runway with the gear in play.
+//! `fg conformance` runs the Performance Conformance Test
 //! (ADR-31) and exits 1 when its gate fails. `fg circuit` flies the virtual tester's take-off,
 //! circuit and landing under each assist level (ADR-33) and exits 1 when a gate run fails.
 
@@ -37,7 +40,8 @@ const USAGE: &str = "usage:
            [--spawn runway|air] [--assist full|standard|reduced|manual] [--g off|reduced|full]
            (--ticks N | --at T1,T2,... | --every N --ticks N)
   fg bench [--seed HEX] [--script none|erratic|flight60|circuit] [--content PATH] [--ticks N] [--json]
-  fg bench --aircraft N --content PATH [--ticks N] [--json]
+  fg bench --aircraft N --content PATH [--assist full|standard|reduced|manual] [--ground]
+           [--ticks N] [--json]
   fg conformance --content PATH [--aircraft-index N] [--json PATH] [--traces DIR]
                  [--only ID,...] [--expect-deferred ID,...]
   fg circuit --content PATH [--assist all|full|standard|reduced|manual] [--json PATH]
@@ -267,7 +271,11 @@ fn advance_to(core: &mut SimCore, target: u64) {
 const BENCH_CHUNKS: u64 = 11;
 
 fn run_bench(args: &[String]) -> Result<(), String> {
-    let Parsed { setup, rest, on } = parse(args, &["--json"])?;
+    let Parsed {
+        mut setup,
+        rest,
+        on,
+    } = parse(args, &["--json", "--ground"])?;
     let mut ticks = None;
     let mut aircraft = None;
     for (flag, value) in &rest {
@@ -280,8 +288,15 @@ fn run_bench(args: &[String]) -> Result<(), String> {
         }
     }
     let json = on.iter().any(|f| f == "--json");
+    let ground = on.iter().any(|f| f == "--ground");
+    if ground && aircraft.is_none() {
+        return Err("--ground goes with --aircraft".into());
+    }
     if let Some(n) = aircraft {
-        return bench_aircraft(&setup, n, ticks, json);
+        // The microbench flies from the air unless it is asked for the ground, whatever the
+        // session default is.
+        setup.session.spawn = if ground { Spawn::Runway } else { Spawn::Air };
+        return bench_aircraft(&setup, n, ticks, json, ground);
     }
     let ticks = ticks.unwrap_or(220_000_u64);
     let per_chunk = ticks / BENCH_CHUNKS;
@@ -330,12 +345,60 @@ fn run_bench(args: &[String]) -> Result<(), String> {
 /// Kestrel with the inputs below: height within 100 m, `n_z` 0.4 to 1.5, bank within 35 degrees.
 const SEGMENT_TICKS: u64 = 1_200;
 
-/// The PS-9 microbench: `n` copies of the spawned aircraft stepped through the flight model in the
-/// live world (procedural geo, still air), with no other system running. Every `SEGMENT_TICKS`
-/// they restart from the trimmed spawn (a copy, negligible next to the ticks). By default each
-/// timed chunk is at least 64 segments of aircraft-ticks (76 800), so even one aircraft is timed
-/// over a long enough stretch. Reports ns per aircraft-tick.
-fn bench_aircraft(setup: &Setup, n: usize, ticks: Option<u64>, json: bool) -> Result<(), String> {
+/// The throttle lever for the ground microbench: enough to roll and not enough to lift off in a
+/// segment.
+const TAXI_LEVER: f64 = 0.45;
+
+/// What the microbench leaves alone: the throttle and the levers, and whether it is on the ground.
+struct Levers {
+    throttle: f64,
+    gear: f64,
+    flaps: f64,
+    ground: bool,
+}
+
+/// The microbench pilot's controls at `tick` of a segment: small slow waves on the three axes and,
+/// on the ground, a short touch of both brakes.
+fn microbench_controls(tick: u64, levers: &Levers) -> flight::controls::PilotControls {
+    let wave = |period: u64| match (tick / period) % 4 {
+        0 | 3 => 1.0,
+        _ => -1.0,
+    };
+    let brake = if levers.ground && (900..1_000).contains(&tick) {
+        0.3
+    } else {
+        0.0
+    };
+    flight::controls::PilotControls {
+        pitch: 0.03 * wave(45),
+        roll: 0.1 * wave(60),
+        yaw: 0.05 * wave(75),
+        throttle: levers.throttle,
+        gear: levers.gear,
+        flaps: levers.flaps,
+        brake_l: brake,
+        brake_r: brake,
+        ..flight::controls::PilotControls::default()
+    }
+}
+
+/// The PS-9 microbench: `n` copies of the spawned aircraft stepped through the control system and
+/// the flight model in the live world (procedural geo, still air), with no other system running.
+/// Every `SEGMENT_TICKS` they restart from the spawn (a copy, negligible next to the ticks). By
+/// default each timed chunk is at least 64 segments of aircraft-ticks (76 800), so even one
+/// aircraft is timed over a long enough stretch. Reports ns per aircraft-tick.
+///
+/// In the air the stick makes small slow manoeuvres. With `ground` the aircraft start on the runway
+/// at a taxi throttle, with the gear down and take-off flaps, and weave and brake a little, so the
+/// gear forces, the friction and the ground mode of the control system are timed; it fails if one
+/// leaves the ground, since the number would then not be the ground's.
+fn bench_aircraft(
+    setup: &Setup,
+    n: usize,
+    ticks: Option<u64>,
+    json: bool,
+    ground: bool,
+) -> Result<(), String> {
     if setup.content.is_none() {
         return Err("--aircraft needs --content (the aircraft comes from the pack)".into());
     }
@@ -350,6 +413,7 @@ fn bench_aircraft(setup: &Setup, n: usize, ticks: Option<u64>, json: bool) -> Re
     let core = setup.core()?;
     let svc = core.services();
     let model = svc.aircraft.as_ref().ok_or("the pack has no aircraft")?;
+    let fcs_model = svc.fcs.as_ref().ok_or("the pack has no control gains")?;
     let spawned = *core
         .ownship()
         .aircraft()
@@ -359,20 +423,20 @@ fn bench_aircraft(setup: &Setup, n: usize, ticks: Option<u64>, json: bool) -> Re
     // Gentle inputs on every axis, so the controls, actuators and the whole aero build-up are
     // exercised. Each is +, -, -, + over four periods: the stick commands rates, so this brings the
     // attitude back to the spawn's instead of letting it drift. The throttle stays where the
-    // spawn's trim put it (in steady state the core spool is the dry fraction of the lever).
-    let trimmed_lever = spawned.state.engines[0].core * f64::from(flight::engine::DETENT);
-    let controls = |tick: u64| {
-        let wave = |period: u64| match (tick / period) % 4 {
-            0 | 3 => 1.0,
-            _ => -1.0,
-        };
-        flight::controls::PilotControls {
-            pitch: 0.03 * wave(45),
-            roll: 0.1 * wave(60),
-            yaw: 0.05 * wave(75),
-            throttle: trimmed_lever,
-            ..flight::controls::PilotControls::default()
-        }
+    // spawn's trim put it (in steady state the core spool is the dry fraction of the lever); on the
+    // ground it is a taxi setting. The levers stay as the spawn left them.
+    let trimmed_lever = if ground {
+        TAXI_LEVER
+    } else {
+        spawned.state.engines[0].core * f64::from(flight::engine::DETENT)
+    };
+    let gear = if spawned.gear_lever_down { 1.0 } else { 0.0 };
+    let flaps = sim_core::spawn::FLAP_DETENT_FRACTION[usize::from(spawned.flap_detent).min(2)];
+    let levers = Levers {
+        throttle: trimmed_lever,
+        gear,
+        flaps,
+        ground,
     };
     let run = |fleet: &mut [sim_core::ownship::AircraftSlot], ticks: u64| {
         for tick in 0..ticks {
@@ -380,10 +444,13 @@ fn bench_aircraft(setup: &Setup, n: usize, ticks: Option<u64>, json: bool) -> Re
             if tick == 0 {
                 fleet.fill(spawned);
             }
-            let c = controls(tick);
+            let pilot = fcs::PilotInput {
+                controls: microbench_controls(tick, &levers),
+                ..fcs::PilotInput::default()
+            };
             let t_s = tick as f64 * sim_core::time::SIM_DT;
             for slot in fleet.iter_mut() {
-                let cmd = model.manual_commands(&mut slot.state, &c);
+                let cmd = fcs_model.step(model, &mut slot.state, &mut slot.fcs, &pilot, &env, t_s);
                 model.step_tick(&mut slot.state, &cmd, &env, t_s);
             }
         }
@@ -401,16 +468,26 @@ fn bench_aircraft(setup: &Setup, n: usize, ticks: Option<u64>, json: bool) -> Re
     {
         return Err("an aircraft faulted during the benchmark".into());
     }
+    if ground && fleet.iter().any(|s| !s.state.ground.wow) {
+        return Err("an aircraft left the ground during the ground benchmark".into());
+    }
     ns.sort_by(f64::total_cmp);
     let (min, median, max) = (ns[0], ns[ns.len() / 2], ns[ns.len() - 1]);
+    let assist = match setup.session.assist {
+        Assist::Full => "full",
+        Assist::Standard => "standard",
+        Assist::Reduced => "reduced",
+        Assist::Manual => "manual",
+    };
     if json {
         println!(
-            "{{\"schema\":\"fg-bench-aircraft/1\",\"aircraft\":{n},\"ticks\":{},\"ns_per_aircraft_tick_min\":{min:.1},\"ns_per_aircraft_tick_median\":{median:.1},\"ns_per_aircraft_tick_max\":{max:.1}}}",
+            "{{\"schema\":\"fg-bench-aircraft/1\",\"aircraft\":{n},\"assist\":\"{assist}\",\"ground\":{ground},\"ticks\":{},\"ns_per_aircraft_tick_min\":{min:.1},\"ns_per_aircraft_tick_median\":{median:.1},\"ns_per_aircraft_tick_max\":{max:.1}}}",
             per_chunk * BENCH_CHUNKS
         );
     } else {
         println!(
-            "{n} aircraft, {} ticks each: median {median:.0} ns per aircraft-tick (min {min:.0}, max {max:.0})",
+            "{n} aircraft, {assist} assist{}, {} ticks each: median {median:.0} ns per aircraft-tick (min {min:.0}, max {max:.0})",
+            if ground { " on the ground" } else { "" },
             per_chunk * BENCH_CHUNKS
         );
     }
@@ -465,6 +542,32 @@ mod tests {
         assert!(parse(&args(&["--seed", "xyz"]), &[]).is_err());
         assert!(parse(&args(&["--script", "wild"]), &[]).is_err());
         assert!(parse(&args(&["--content", "/no/such/file"]), &[]).is_err());
+    }
+
+    #[test]
+    fn the_microbench_pilot_brakes_only_on_the_ground_and_leaves_the_levers_alone() {
+        let air = Levers {
+            throttle: 0.4,
+            gear: 0.0,
+            flaps: 0.0,
+            ground: false,
+        };
+        let ground = Levers {
+            gear: 1.0,
+            flaps: 0.5,
+            ground: true,
+            ..air
+        };
+        for tick in 0..SEGMENT_TICKS {
+            let a = microbench_controls(tick, &air);
+            assert_eq!((a.brake_l, a.brake_r), (0.0, 0.0), "no brakes in the air");
+            assert_eq!((a.throttle, a.gear, a.flaps), (0.4, 0.0, 0.0));
+            let g = microbench_controls(tick, &ground);
+            assert_eq!((g.gear, g.flaps), (1.0, 0.5));
+            assert_eq!(g.brake_l, g.brake_r);
+            assert_eq!(g.brake_l > 0.0, (900..1_000).contains(&tick), "tick {tick}");
+            assert!(g.pitch.abs() <= 0.03 && g.roll.abs() <= 0.1 && g.yaw.abs() <= 0.05);
+        }
     }
 
     #[test]

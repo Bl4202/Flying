@@ -1,7 +1,7 @@
 //! Per-tick microbenchmark against a committed baseline (the PS-9 skeleton, GDD 60.9).
 //!
-//! Times the native core with `fg bench` (the erratic pilot and the baked pack, as the determinism
-//! run has) and compares the median nanoseconds per tick with `tests/perf/baseline.json`. Wall-clock
+//! Times the native core with `fg bench` (the erratic pilot, the air spawn under Standard assist and
+//! the baked pack, as the determinism run has) and compares the median nanoseconds per tick with `tests/perf/baseline.json`. Wall-clock
 //! numbers depend on the machine, so the verdict is informational unless `--strict` is given, and
 //! a baseline recorded on another OS or architecture is never compared at all. `--update` records
 //! the measurement as the new baseline.
@@ -16,6 +16,9 @@ use crate::util::{run_capture, workspace_root};
 const BASELINE: &str = "tests/perf/baseline.json";
 const CONTENT: &str = "content-out/core.cpack";
 const SCRIPT: &str = "erratic";
+/// The erratic suite's session (the determinism run's): the air spawn, Standard assist, g-effects
+/// on. The game's own default is the runway, where the erratic pilot would only sit on the wheels.
+const SESSION: [&str; 6] = ["--spawn", "air", "--assist", "standard", "--g", "full"];
 /// The regression budget of GDD 60.9: more than this slower than the baseline is a regression.
 const TOLERANCE_PCT: f64 = 5.0;
 
@@ -106,6 +109,7 @@ pub fn run_command(args: &[String]) -> Result<(), String> {
     let content = content.to_str().ok_or("non-UTF-8 repository path")?;
     let mut bench = Command::new(root.join("target/release/fg"));
     bench.args(["bench", "--json", "--script", SCRIPT, "--content", content]);
+    bench.args(SESSION);
     if let Some(t) = opts.ticks {
         bench.args(["--ticks", &t.to_string()]);
     }
@@ -127,7 +131,7 @@ pub fn run_command(args: &[String]) -> Result<(), String> {
         .unwrap_or_default();
         let doc = json!({
             "schema": "fg-bench-baseline/1",
-            "note": "Median ns per tick of `fg bench` (erratic pilot, core pack), on the machine class below. Compared by `cargo xtask bench`; informational unless --strict. Re-record with --update after an intended change, and say why in the commit.",
+            "note": "Median ns per tick of `fg bench` (erratic pilot, air spawn, Standard assist, core pack), on the machine class below. Compared by `cargo xtask bench`; informational unless --strict. Re-record with --update after an intended change, and say why in the commit.",
             "machine": machine_class(),
             "script": SCRIPT,
             "commit": commit.trim(),
