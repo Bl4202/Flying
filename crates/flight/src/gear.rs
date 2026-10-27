@@ -778,7 +778,9 @@ pub fn lowest_point_agl_m<E: FlightEnv>(
     let mut lowest = f64::INFINITY;
     let mut consider = |r_body: DVec3| {
         let p_bf = st.pos_bf + st.att.rotate(r_body);
-        lowest = lowest.min(env.height_msl_m(p_bf) - env.surface(p_bf).height_msl_m);
+        // Only the height is wanted: `surface()` also finds the normal (four more height lookups)
+        // and the class, and its height is `ground_height_m` by contract.
+        lowest = lowest.min(env.height_msl_m(p_bf) - env.ground_height_m(p_bf));
     };
     for leg in model.legs() {
         consider(leg.pos_ext_body_m - cg);

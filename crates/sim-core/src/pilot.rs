@@ -176,7 +176,7 @@ pub fn fly(
         counters.gloc_events = counters.gloc_events.wrapping_add(1);
     }
     slot.effects = effects;
-    let tel = model.telemetry(&slot.state, &env, t_s + dt);
+    let tel = model.telemetry_light(&slot.state, &env, t_s + dt);
     let load = model.structure_input(&slot.state, &tel);
     slot.warnings = slot.structure.step(&model.limits, &load, dt);
 }

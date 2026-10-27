@@ -114,7 +114,7 @@ impl FcsModel {
     ) -> Commands {
         let c = input.controls.sanitized();
         let engine = EngineCommand::from_lever(c.throttle, model.ab_stages());
-        let sense = model.sense(ac, env, t_s);
+        let sense = model.sense_light(ac, env, t_s);
         let s = Sensed::of(model, ac, &sense, env);
         ground::update_blend(self, fs, ac.ground.wow);
         fs.limiting = Limiting::default();
