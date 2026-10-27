@@ -32,8 +32,10 @@ test('PS-0 produces a valid report, and the sim holds its rate', async ({ page }
   await passCompat(page, `${HEADERS_BASE}?perf=ps0&seconds=${String(SECONDS)}`);
 
   const out = byId(page, 'perf-report');
+  // Warm-up (3 s) and the measured window, then the report; a fixed wait cannot cover the nightly
+  // run's 120 s window.
   await expect(byId(page, 'perf-status')).toHaveAttribute('data-state', 'done', {
-    timeout: 90_000,
+    timeout: (SECONDS + 60) * 1000,
   });
   const report = JSON.parse((await out.textContent()) ?? '{}') as Report;
 
