@@ -35,7 +35,14 @@ const RULES: &[(&str, &[&str])] = &[
     ("sim-wasm", &["sim-core"]),
     (
         "cli",
-        &["content", "flight", "flight-test", "serde_json", "sim-core"],
+        &[
+            "content",
+            "fcs",
+            "flight",
+            "flight-test",
+            "serde_json",
+            "sim-core",
+        ],
     ),
     ("server", &["sim-core", "protocol"]),
 ];
