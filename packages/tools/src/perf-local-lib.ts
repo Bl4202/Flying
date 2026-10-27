@@ -22,13 +22,22 @@ export interface LocalOptions {
   headless: boolean;
   out: string;
   machineClass: MachineClass;
+  /** Where the scripted flight starts: the air, or the runway the game starts on. */
+  spawn: SpawnArg;
+  /** Control-latency samples to take after the flight (AC-58.3); 0 skips the measurement. */
+  latency: number;
 }
+
+export type SpawnArg = 'air' | 'runway';
+
+/** The gate of AC-58.3: the 95th percentile of the control latency, ms (strict, reference machine). */
+export const LATENCY_P95_MS = 25;
 
 export const DEFAULT_BASE = 'https://bl4202.github.io/Flying/';
 
 const USAGE = `usage: node perf-local.ts --name NAME --class minimum|recommended|high
   [--base URL] [--renderer auto|webgl2|webgpu] [--throttle N] [--seconds N] [--fly N]
-  [--headless] [--out DIR]`;
+  [--spawn air|runway] [--latency SAMPLES] [--headless] [--out DIR]`;
 
 export function parseLocalArgs(argv: readonly string[]): LocalOptions {
   const opts: LocalOptions = {
@@ -39,8 +48,10 @@ export function parseLocalArgs(argv: readonly string[]): LocalOptions {
     seconds: 120,
     fly: 60,
     headless: false,
-    out: 'docs/exit/v0.0b/machines',
+    out: 'docs/exit/v0.1b/machines',
     machineClass: 'recommended',
+    spawn: 'air',
+    latency: 0,
   };
   let sawClass = false;
   for (let i = 0; i < argv.length; i++) {
@@ -92,6 +103,17 @@ export function parseLocalArgs(argv: readonly string[]): LocalOptions {
       case '--fly':
         opts.fly = Math.round(number(0, 3600));
         break;
+      case '--spawn': {
+        const sp = value();
+        if (sp !== 'air' && sp !== 'runway') {
+          throw new Error(`--spawn must be air or runway, not ${sp}`);
+        }
+        opts.spawn = sp;
+        break;
+      }
+      case '--latency':
+        opts.latency = Math.round(number(1, 100_000));
+        break;
       case '--out':
         opts.out = value();
         break;
@@ -123,6 +145,15 @@ export interface FlightSummary {
   toasts: string[];
 }
 
+/** The control latency the sim measured over the run, ms (AC-58.3). */
+export interface LatencySummary {
+  count: number;
+  avg: number;
+  p95: number;
+  p99: number;
+  max: number;
+}
+
 export interface RunFacts {
   compatVerdict: 'ok' | 'degraded' | 'fatal' | null;
   compatCodes: string[];
@@ -139,6 +170,9 @@ export interface RunFacts {
   } | null;
   benchmark: { profile: string; preset: string } | null;
   consoleErrors: string[];
+  /** Samples the run was asked for (0: no latency measurement was asked for). */
+  latencyWanted: number;
+  latency: LatencySummary | null;
 }
 
 export interface Check {
@@ -172,6 +206,16 @@ export function judgeRun(facts: RunFacts, cls: MachineClass): { checks: Check[];
     'frames render without errors or device loss',
     facts.consoleErrors.length === 0 && lost.length === 0 && facts.flight !== null,
   );
+  if (facts.latencyWanted > 0) {
+    const l = facts.latency;
+    add(
+      'latency',
+      l === null
+        ? `control latency p95 within ${String(LATENCY_P95_MS)} ms (not measured)`
+        : `control latency p95 ${l.p95.toFixed(2)} ms within ${String(LATENCY_P95_MS)} ms, over ${String(l.count)} changes (at least ${String(facts.latencyWanted)})`,
+      l !== null && l.count >= facts.latencyWanted && l.p95 <= LATENCY_P95_MS,
+    );
+  }
   const fps = facts.perf?.renderFps ?? facts.flight?.fpsAvg ?? 0;
   if (cls === 'minimum') {
     add('fps', `at least 30 FPS on a Minimum-class run (${fps.toFixed(1)})`, fps >= 30);
@@ -205,10 +249,15 @@ export function renderSummary(
     `- Compat verdict: ${facts.compatVerdict ?? 'screen not shown'}${facts.compatCodes.length > 0 ? ` (${facts.compatCodes.join(', ')})` : ''}`,
     f === null
       ? '- Flight: not run'
-      : `- Flight (${String(f.seconds)} s scripted): ${f.fpsAvg.toFixed(1)} FPS average, ${f.fpsMin.toFixed(1)} minimum, frame p99 ${f.frameP99Ms.toFixed(1)} ms, longest frame ${f.frameMaxMs.toFixed(1)} ms, sim ${f.simHzAvg.toFixed(2)} Hz`,
+      : `- Flight (${String(f.seconds)} s scripted, ${opts.spawn} start): ${f.fpsAvg.toFixed(1)} FPS average, ${f.fpsMin.toFixed(1)} minimum, frame p99 ${f.frameP99Ms.toFixed(1)} ms, longest frame ${f.frameMaxMs.toFixed(1)} ms, sim ${f.simHzAvg.toFixed(2)} Hz`,
     p === null
       ? '- PS-0: did not finish'
       : `- PS-0 (${String(opts.seconds)} s): ${p.verdict.toUpperCase()}, sim ${p.simHz.toFixed(3)} Hz, render ${p.renderFps.toFixed(1)} FPS`,
+    opts.latency === 0
+      ? '- Control latency: not measured'
+      : facts.latency === null
+        ? '- Control latency: did not finish'
+        : `- Control latency (${String(facts.latency.count)} changes): avg ${facts.latency.avg.toFixed(2)} ms, p95 ${facts.latency.p95.toFixed(2)} ms, p99 ${facts.latency.p99.toFixed(2)} ms, max ${facts.latency.max.toFixed(2)} ms, at ${facts.displayHz.toFixed(0)} Hz`,
     facts.benchmark === null
       ? '- Benchmark: not run'
       : `- Benchmark: profile ${facts.benchmark.profile}, preset ${facts.benchmark.preset}`,
@@ -226,7 +275,7 @@ export function renderSummary(
   }
   lines.push(
     '',
-    'Raw reports: `compat.json`, `flight.json`, `benchmark.json`, `perf-ps0.json`.',
+    'Raw reports: `compat.json`, `flight.json`, `latency.json`, `benchmark.json`, `perf-ps0.json`.',
     '',
   );
   return lines.join('\n');
