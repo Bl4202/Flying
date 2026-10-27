@@ -204,6 +204,8 @@ struct Stage {
     air: AirData,
     atmo: AtmoSample,
     height_msl_m: f64,
+    /// The CG's height above the ground under it, m.
+    height_agl_m: f64,
     force_body_n: DVec3,
     ground_force_body_n: DVec3,
     ground_moment_body_nm: DVec3,
@@ -590,6 +592,7 @@ impl AircraftModel {
             air,
             atmo,
             height_msl_m,
+            height_agl_m,
             force_body_n,
             ground_force_body_n: ground.force_body_n,
             ground_moment_body_nm: ground.moment_body_nm,
@@ -617,7 +620,18 @@ impl AircraftModel {
     pub fn telemetry<E: FlightEnv>(&self, s: &AircraftState, env: &E, t_s: f64) -> Telemetry {
         let mass = self.mass.props(&s.fuel);
         let st = self.stage(&s.body, s, &mass, env, t_s);
-        self.telemetry_of(s, &st, &mass, env)
+        self.telemetry_of(s, &st, &mass, env, true)
+    }
+
+    /// [`telemetry`](Self::telemetry) for a reader that does not use `agl_m` as the height of the
+    /// lowest wheel: there it is the CG's height above the ground, which the evaluation has
+    /// already found. Finding the lowest of the wheels and contact points costs a terrain lookup
+    /// for each of them, about half of a tick's work in the air.
+    #[must_use]
+    pub fn telemetry_light<E: FlightEnv>(&self, s: &AircraftState, env: &E, t_s: f64) -> Telemetry {
+        let mass = self.mass.props(&s.fuel);
+        let st = self.stage(&s.body, s, &mass, env, t_s);
+        self.telemetry_of(s, &st, &mass, env, false)
     }
 
     /// Everything the control laws read, from one evaluation of the forces: the telemetry, the
@@ -625,9 +639,20 @@ impl AircraftModel {
     /// own controls linearised about the flight condition (ADR-34).
     #[must_use]
     pub fn sense<E: FlightEnv>(&self, s: &AircraftState, env: &E, t_s: f64) -> Sense {
+        self.sense_of(s, env, t_s, true)
+    }
+
+    /// [`sense`](Self::sense) with the telemetry of [`telemetry_light`](Self::telemetry_light):
+    /// for the control laws, which do not read the height of the wheels.
+    #[must_use]
+    pub fn sense_light<E: FlightEnv>(&self, s: &AircraftState, env: &E, t_s: f64) -> Sense {
+        self.sense_of(s, env, t_s, false)
+    }
+
+    fn sense_of<E: FlightEnv>(&self, s: &AircraftState, env: &E, t_s: f64, feet: bool) -> Sense {
         let mass = self.mass.props(&s.fuel);
         let st = self.stage(&s.body, s, &mass, env, t_s);
-        let tel = self.telemetry_of(s, &st, &mass, env);
+        let tel = self.telemetry_of(s, &st, &mass, env, feet);
         let controls = self.aero.control_model(&AeroInput {
             air: st.air,
             alpha_dot_rps: 0.0,
@@ -649,6 +674,7 @@ impl AircraftModel {
         st: &Stage,
         mass: &MassProps,
         env: &E,
+        feet: bool,
     ) -> Telemetry {
         let ab_stage = self
             .engines
@@ -679,7 +705,11 @@ impl AircraftModel {
                 .any(|e| !e.running),
             ref_point_bf: self.ref_point_bf(s),
             wow: s.ground.wow,
-            agl_m: gear::lowest_point_agl_m(&self.gear, &s.body, mass, env),
+            agl_m: if feet {
+                gear::lowest_point_agl_m(&self.gear, &s.body, mass, env)
+            } else {
+                st.height_agl_m
+            },
             ground_speed_mps: {
                 let up = env.up_bf(s.body.pos_bf);
                 (s.body.vel_bf - up * s.body.vel_bf.dot(up)).length()
