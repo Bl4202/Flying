@@ -17,13 +17,14 @@ import {
   parseLocalArgs,
   renderSummary,
   type FlightSummary,
+  type LatencySummary,
   type LocalOptions,
   type RunFacts,
 } from './perf-local-lib.ts';
 
 interface Hooks {
   stats(): {
-    sim: { hz: number } | undefined;
+    sim: { hz: number; controlLatencyRun?: LatencySummary } | undefined;
     render:
       | {
           fps: number;
@@ -72,6 +73,8 @@ const facts: RunFacts = {
   perf: null,
   benchmark: null,
   consoleErrors,
+  latencyWanted: opts.latency,
+  latency: null,
 };
 
 /** Passes the compat screen if one shows, recording what it said. */
@@ -120,11 +123,12 @@ async function measureDisplayHz(): Promise<number> {
 
 /**
  * Holds each key for a while (`''` is hands off), in a pattern that exercises every axis and the
- * throttle. The stick drives the surfaces directly (no FCS before v0.1b), so the inputs are short
- * taps in opposing pairs with hands-off spells between them: long full-deflection holds tumble the
- * aircraft and the run would mostly measure crashes. The second half mirrors the first, so leftover
- * bank does not build into a spiral dive. Measured on the Kestrel (v0.1a): two minutes without a
- * crash, about 23 km flown, so the terrain patch re-centres at least once.
+ * throttle. The inputs are short taps in opposing pairs with hands-off spells between them: long
+ * full-deflection holds would mostly measure the limiters (or, under Manual assist, tumble the
+ * aircraft). The second half mirrors the first, so leftover bank does not build into a spiral
+ * dive. Measured on the Kestrel (v0.1a, the stick driving the surfaces): two minutes without a
+ * crash, about 23 km flown, so the terrain patch re-centres at least once. It flies from the air
+ * (`--spawn air`, the default here) under the game's Standard assist.
  */
 const MANOEUVRE: readonly (readonly [string, number])[] = [
   ['ShiftLeft', 600],
@@ -154,6 +158,32 @@ const MANOEUVRE: readonly (readonly [string, number])[] = [
   ['KeyE', 400],
   ['', 1500],
 ];
+
+/**
+ * AC-58.3: key presses and releases at random phases of the tick, until the sim has measured
+ * `wanted` changes (it counts the frames that carry one, from the key event to the end of the tick
+ * that acted on it). Resets the run's histograms first, so the flight before it does not count.
+ */
+async function measureLatency(wanted: number): Promise<LatencySummary> {
+  await page.evaluate(() => {
+    (window as unknown as { __flying?: Hooks }).__flying?.resetRun();
+  });
+  const phase = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
+  const deadline = Date.now() + 300_000;
+  while (Date.now() < deadline) {
+    for (let i = 0; i < 20; i++) {
+      await page.keyboard.down('KeyE');
+      await page.waitForTimeout(phase(8, 40));
+      await page.keyboard.up('KeyE');
+      await page.waitForTimeout(phase(8, 40));
+    }
+    const latest = await page.evaluate(
+      () => (window as unknown as { __flying?: Hooks }).__flying?.stats().sim?.controlLatencyRun,
+    );
+    if (latest !== undefined && latest.count >= wanted) return latest;
+  }
+  throw new Error(`fewer than ${String(wanted)} control changes were measured in five minutes`);
+}
 
 async function fly(seconds: number): Promise<FlightSummary> {
   const fps: number[] = [];
@@ -199,7 +229,7 @@ async function fly(seconds: number): Promise<FlightSummary> {
 
 try {
   // 1. Compat screen and a scripted flight.
-  await page.goto(url('debug=1'));
+  await page.goto(url(`debug=1&spawn=${opts.spawn}`));
   await passCompat();
   await byId(page, 'stage')
     .and(page.locator('[data-state="running"]'))
@@ -208,8 +238,9 @@ try {
   // The overlay has filled in by now (it refreshes four times a second).
   const text = async (id: string): Promise<string> =>
     ((await byId(page, id).getAttribute('data-value')) ?? '').replace('–', '');
+  // The adapter row carries the browser's description of the GPU and the renderer's own.
   facts.adapter = await text('ov-adapter');
-  facts.renderer = `${await text('ov-renderer')} ${await text('ov-device')}`.trim();
+  facts.renderer = await text('ov-renderer');
   await page.evaluate(() => {
     (window as unknown as { __flying?: Hooks }).__flying?.resetRun();
   });
@@ -217,6 +248,11 @@ try {
     console.log(`flying for ${String(opts.fly)} s…`);
     facts.flight = await fly(opts.fly);
     save('flight.json', JSON.stringify(facts.flight, null, 2));
+  }
+  if (opts.latency > 0) {
+    console.log(`control latency, ${String(opts.latency)} changes…`);
+    facts.latency = await measureLatency(opts.latency);
+    save('latency.json', JSON.stringify({ displayHz: facts.displayHz, ...facts.latency }, null, 2));
   }
   await page.screenshot({ path: join(outDir, 'flight.png') });
 

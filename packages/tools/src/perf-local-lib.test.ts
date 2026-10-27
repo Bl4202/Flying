@@ -5,6 +5,7 @@ import {
   parseLocalArgs,
   renderSummary,
   type FlightSummary,
+  type LatencySummary,
   type LocalOptions,
   type RunFacts,
 } from './perf-local-lib.ts';
@@ -30,6 +31,8 @@ function facts(over: Partial<RunFacts> = {}): RunFacts {
     perf: { verdict: 'pass', simHz: 60, renderFps: 119.9, failedGates: [] },
     benchmark: { profile: 'high', preset: 'ultra' },
     consoleErrors: [],
+    latencyWanted: 0,
+    latency: null,
     ...over,
   };
 }
@@ -54,6 +57,10 @@ describe('parseLocalArgs', () => {
       'http://127.0.0.1:4173/Flying',
       '--out',
       'somewhere',
+      '--spawn',
+      'runway',
+      '--latency',
+      '500',
     ]);
     expect(o).toEqual({
       name: 'm4-webgl2-throttled',
@@ -65,6 +72,8 @@ describe('parseLocalArgs', () => {
       headless: true,
       out: 'somewhere',
       machineClass: 'minimum',
+      spawn: 'runway',
+      latency: 500,
     });
   });
 
@@ -77,7 +86,9 @@ describe('parseLocalArgs', () => {
       seconds: 120,
       fly: 60,
       headless: false,
-      out: 'docs/exit/v0.0b/machines',
+      out: 'docs/exit/v0.1b/machines',
+      spawn: 'air',
+      latency: 0,
     });
   });
 
@@ -96,6 +107,12 @@ describe('parseLocalArgs', () => {
       /needs a value/,
     );
     expect(() => parseLocalArgs(['--name', 'x', '--class', 'high', '--bogus'])).toThrow(/unknown/);
+    expect(() => parseLocalArgs(['--name', 'x', '--class', 'high', '--spawn', 'sea'])).toThrow(
+      /--spawn/,
+    );
+    expect(() => parseLocalArgs(['--name', 'x', '--class', 'high', '--latency', '0'])).toThrow(
+      /--latency/,
+    );
   });
 });
 
@@ -136,6 +153,22 @@ describe('judgeRun', () => {
     expect(
       judgeRun(facts({ flight: { ...flight, toasts: ['Notice: Paused'] } }), 'high').pass,
     ).toBe(true);
+  });
+
+  it('judges the control latency only when it was asked for, strictly at 25 ms p95', () => {
+    expect(judgeRun(facts(), 'high').checks.map((c) => c.id)).not.toContain('latency');
+    const measured = (over: Partial<LatencySummary> = {}): RunFacts =>
+      facts({
+        latencyWanted: 500,
+        latency: { count: 612, avg: 9.3, p95: 21, p99: 22.8, max: 24.5, ...over },
+      });
+    const ok = judgeRun(measured(), 'high');
+    expect(ok.pass).toBe(true);
+    expect(ok.checks.find((c) => c.id === 'latency')?.text).toContain('p95 21.00 ms');
+    expect(judgeRun(measured({ p95: 25 }), 'high').pass).toBe(true);
+    expect(judgeRun(measured({ p95: 25.01 }), 'high').pass).toBe(false);
+    expect(judgeRun(measured({ count: 499 }), 'high').pass).toBe(false);
+    expect(judgeRun(facts({ latencyWanted: 500, latency: null }), 'high').pass).toBe(false);
   });
 
   it('asks 30 FPS of a Minimum-class run and the display rate of the others', () => {
@@ -189,6 +222,27 @@ describe('renderSummary', () => {
     expect(text).toContain('pageerror: boom');
     expect(text).toContain('## Notices shown during the flight');
     expect(text).toContain('SYS-103');
+  });
+
+  it('reports the control latency, or that it was not measured', () => {
+    const asked = parseLocalArgs(['--name', 'l', '--class', 'high', '--latency', '500']);
+    const f = facts({
+      latencyWanted: 500,
+      latency: { count: 612, avg: 9.3, p95: 21, p99: 22.8, max: 24.5 },
+    });
+    const text = renderSummary(asked, f, judgeRun(f, 'high'), 'x');
+    expect(text).toContain(
+      'Control latency (612 changes): avg 9.30 ms, p95 21.00 ms, p99 22.80 ms, max 24.50 ms, at 120 Hz',
+    );
+    expect(text).toContain('- [x] control latency p95 21.00 ms within 25 ms, over 612 changes');
+    expect(text).toContain('air start');
+    const g = facts({ latencyWanted: 500 });
+    expect(renderSummary(asked, g, judgeRun(g, 'high'), 'x')).toContain(
+      'Control latency: did not finish',
+    );
+    expect(renderSummary(opts, facts(), judgeRun(facts(), 'high'), 'x')).toContain(
+      'Control latency: not measured',
+    );
   });
 
   it('says so when a part did not run, and notes throttling', () => {
