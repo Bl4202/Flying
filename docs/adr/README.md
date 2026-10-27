@@ -38,16 +38,16 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-31](0031-performance-conformance-test-method.md) | Performance Conformance Test method and gates | Accepted |
 | [ADR-32](0032-ground-roll-conformance-method.md) | Ground-roll conformance method and the landing-roll finding | Accepted |
 | [ADR-33](0033-v0-1b-gates.md) | v0.1b gates: circuit, FCS handling, departure, mouse-aim and latency | Accepted |
-| [ADR-34](0034-flight-control-system.md) | The flight control system: assist levels, limiters, ground mode, mouse-aim | Proposed |
-| [ADR-35](0035-ground-model-and-test-airfield.md) | Ground model, touchdown criteria and the test airfield | Proposed |
-| [ADR-36](0036-session-config-abi-v3-input-snapshot.md) | Session config, ABI v3, input frame v3, snapshot v3 and the throttle hand-over | Proposed |
-| [ADR-37](0037-controls-stack.md) | The controls stack: actions, devices, `controls/1` profiles, the pump and the binding editor | Proposed |
-| [ADR-38](0038-g-physiology-departure-and-structure.md) | G-physiology, departure diagnostics, structural limits and the onboard control model | Proposed |
+| [ADR-34](0034-flight-control-system.md) | The flight control system: assist levels, limiters, ground mode, mouse-aim | Accepted |
+| [ADR-35](0035-ground-model-and-test-airfield.md) | Ground model, touchdown criteria and the test airfield | Accepted |
+| [ADR-36](0036-session-config-abi-v3-input-snapshot.md) | Session config, ABI v3, input frame v3, snapshot v3 and the throttle hand-over | Accepted |
+| [ADR-37](0037-controls-stack.md) | The controls stack: actions, devices, `controls/1` profiles, the pump and the binding editor | Accepted |
+| [ADR-38](0038-g-physiology-departure-and-structure.md) | G-physiology, departure diagnostics, structural limits and the onboard control model | Accepted |
 
 ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist before any tuning
 (AC-66.4).
 
 ADR-32 and ADR-33 were written first in v0.1b, before any gear or FCS code, for the same reason
 (AC-66.4). ADR-34 to ADR-38 (FCS, ground model and test airfield, session config / ABI v3 / input
-v3 / snapshot v3, controls stack, G-physiology and departure) are added with their work packages
-(ADR-34 to 38 so far).
+v3 / snapshot v3, controls stack, G-physiology and departure) were added with their work packages
+as Proposed and became Accepted when the milestone closed.

@@ -1,6 +1,6 @@
 # ADR-34: The flight control system (`crates/fcs`)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-10-24
 - **Affects:** GDD 11.11, 11.13.4, 11.15, 58.4, 11.18, 11.21 (AC-11.6), 58.11 (AC-58.4); `crates/fcs`, `crates/flight` (`aircraft::Sense`, `aero::ControlModel`), `content/core/fcs/`, `tools/content-bake`, `crates/xtask` (layers, content ids)
@@ -165,3 +165,12 @@ autotuner (the handling suite is the gate). Both are on the plan's cut list.
   ADR is the record of that reading.
 - Kestrel-specific coupling (`I_x`, `I_y`, `I_z`, rudder power) enters the roll limit through the
   mass and control models, not through constants, so another airframe needs only its own data.
+- The laws read the airframe through `AircraftModel::sense_light`: the same evaluation as `sense`,
+  with `agl_m` the height of the CG and not of the lowest wheel. No law reads it, and finding the
+  lowest of eight points costs a terrain lookup for each of them (v0.1b performance work, which
+  moved no hash). The virtual tester, which does read the height of the wheels, keeps `sense`.
+- Cost, native, on the M4, per aircraft-tick through `fg bench --aircraft`: about 6.3 µs in the air
+  under every assist (the control system adds about 0.1 µs to the manual law's 6.2 µs, most of the
+  rest being the airframe's own evaluation) and about 33 µs on the runway, where the gear forces
+  take a terrain sample and a surface normal per wheel per RK4 stage. In WASM the air figure is
+  about 16 to 20 µs, at the informational budget of 20 µs (GDD 60.2).

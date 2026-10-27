@@ -1,6 +1,6 @@
 # ADR-35: Ground model, touchdown criteria and the test airfield
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-10-22
 - **Affects:** GDD 10.4, 10.7, 11.10, 11.13, 18.8.1, Appendix A.2, C.7 to C.9; `crates/flight` (`gear`, `surface`, `env`, `aircraft`, `actuators`), `crates/sim-core` (`seams/geo`, `services`, `spawn`, `systems`), `content/core/aircraft/`, `tools/content-bake` (gear lints)
@@ -165,5 +165,11 @@ contact lies inside the bounding box; at least one braked leg; none or exactly o
 - The ground model costs nothing in the air: `forces()` returns zero when the CG is above the
   gear's reach, and `step_tick` still allocates nothing (`flight_no_alloc.rs` covers the pose
   solver, taxiing, all four touchdown classes, a belly skid and the tunnelling guard).
+- The ground itself costs what it should not hide: on the wheels an aircraft costs about 33 µs per
+  tick natively against about 6.3 µs in the air (`fg bench --aircraft 1 --ground`), because each of
+  three wheels takes a terrain sample, a normal (four more height lookups) and a class in every one
+  of eight RK4 stages. A cheaper normal on the flat pad would change bits and so the goldens; it is
+  left for a milestone that re-blesses anyway. The height of the lowest wheel that the telemetry
+  reports reads `ground_height_m`, which is what `surface().height_msl_m` is by contract.
 - Wetness, snow and dirt are modelled but the procedural world is paved and grass only until M2.
 - To be revisited at M2 (surface table into world content) and in the damage chapter (18).

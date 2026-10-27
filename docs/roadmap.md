@@ -82,6 +82,8 @@ Total to the Campaign Build is about 33 months (M0–M6), plus about 6 months fo
 
 **Note (2026-10-22):** the gates are fixed before the work in [ADR-32](adr/0032-ground-roll-conformance-method.md) (ground-roll method; the landing-roll target is kept and the data retuned) and [ADR-33](adr/0033-v0-1b-gates.md) (virtual-tester circuit under every assist, FCS handling and departure suites, latency definition, mouse-aim criterion scaled to the aircraft's turn rate). "A tester" is a scripted virtual tester run headless in CI; the owner's manual circuits on staging are recorded and do not block the tag. The scope is larger than the 4-week slot (about 13 engineer-weeks): expect the slot to slip. Work is on branch `v0.1b`.
 
+**Status (2026-10-27):** the code is merged to `main` (PR #7, with the required checks green and the staging smoke test passing); the exit checklist is [docs/exit/v0.1b.md](exit/v0.1b.md). In the headless gates, `AC-3.2` is complete (12 of 12 points, the deferred set empty), the virtual tester flies take-off, circuit and landing under all four assist levels, and the three determinism suites hash equal across native, debug and WASM. Open: the reference-machine runs (latency and the PS-0 strict gates) and the owner's manual circuits. The slot slipped as expected.
+
 ### v0.1c: Presentation (about 4 weeks)
 - Cockpit and chase cameras (§54.11); core HUD symbology and collimation (§54.2, §54.3).
 - Procedural test arenas plus basic terrain (low-resolution global + local patch) (§44, basic).

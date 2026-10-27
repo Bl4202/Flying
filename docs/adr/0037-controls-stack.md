@@ -1,6 +1,6 @@
 # ADR-37: The controls stack: actions, devices, `controls/1` profiles, the pump and the binding editor
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-10-24
 - **Affects:** GDD 58.1 to 58.6, 53.4, 59 (settings); `packages/input`, `packages/ui` (settings, controls store, pause menu, binding editor, warning strip, overlay rows, game flow), `packages/sim-bridge` (`InputFrameWriter`, `AircraftStatus`), `packages/app-shell` (wiring)
@@ -73,8 +73,9 @@ fractional number into an object field), results go into arrays rather than retu
 the frame is written into one buffer (`InputFrameWriter`). It does not make *no* garbage: V8 boxes
 a fractional number that crosses a call it does not inline (16 bytes, gone at the next young
 collection), and a browser clock read boxes its result. `pump.garbage.test.ts` measures it: nothing
-at rest with whole-number clocks, under 512 bytes an update with a pad, the mouse aim and four keys
-in play on fractional clocks (about 300 measured).
+at rest with whole-number clocks, under 1 024 bytes an update with a pad, the mouse aim and four
+keys in play on fractional clocks (304 measured on the development machine, 605 on the Linux CI
+runner, whose compiler boxes about twice as many numbers; the ceiling was 512 until the CI run).
 
 ### Mouse
 
@@ -143,7 +144,23 @@ nodes (AC-53.4: 147 measured with 44 rows; 40 rows and the strip is about 141).
 - Gamepad and HOTAS are tested only with stubbed Gamepad API objects (no hardware was available
   for v0.1b); the exit record says so. The generic joystick profile is a guess at the usual axis
   layout, which the editor fixes.
-- `app-shell/demo.ts` is wired in the wiring work package: settings and profile stores, the pause
-  menu and editor, the warning strip, the spawn hand-over, the snapshot reader on the main thread.
+- `app-shell/demo.ts` wires it (`controls.ts`, `menus.ts`, `status-feed.ts`): settings and profile
+  stores, the pause menu and editor, the warning strip, the spawn hand-over, and the snapshot
+  reader on the main thread. The facts about the wiring worth keeping:
+  - **The page reads the aircraft's state itself.** With the shared snapshot channel it has its own
+    seqlock reader and reads the newest snapshot every animation frame (a read does not disturb the
+    renderer's); with the message channel it takes the status that the sim reports with its 4 Hz
+    stats. That feeds the pump (spawn counter, throttle, assist, where the nose points) and the
+    warning strip (refreshed at most every 100 ms).
+  - **A scripted pilot has no pump.** The sim pushes the script's frame and then the frames the host
+    queued, the last winning, so the pump's neutral heartbeats would override a script. With
+    `?script=circuit` (and for the erratic script of the perf runs) the page creates neither the
+    controls nor the menus.
+  - **URL flags win for one visit.** `?spawn=`, `?assist=` and `?g=` override the stored settings
+    until the player changes that setting in the menu, and the menu shows what is true. The
+    g-effects dial is a session setting, so a change applies at the next start.
+  - **The menu holds the simulation** through one aggregator: paused by the overlay, a test or a
+    hidden tab, or a menu open. The trim keys move the elevator only in Manual assist; the other
+    laws trim themselves.
 - The e2e specs that read overlay rows by id (`ov-thrust`, `ov-latency`, ...) follow the merged
   rows there.
