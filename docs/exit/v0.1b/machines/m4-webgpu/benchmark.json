@@ -1,0 +1,83 @@
+{
+  "schema": "benchmark_report/1",
+  "mode": "full",
+  "startedAt": "2026-10-28T00:17:26.837Z",
+  "durationS": 26.51316499996185,
+  "build": {
+    "id": "725ea60f46823f521ee091d45466b253986a1e70",
+    "abi": 3,
+    "contentHash": ""
+  },
+  "machine": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "platform": "MacIntel",
+    "hardwareConcurrency": 10,
+    "deviceMemoryGb": 8,
+    "screen": "1600x900@1",
+    "adapter": "apple metal-3",
+    "renderer": "webgpu apple metal-3"
+  },
+  "cpu": {
+    "singleTicksPerSecond": 58177.383542910575,
+    "workers": 8,
+    "multiTicksPerSecond": 280446.7778031113,
+    "speedup": 4.820546417256096
+  },
+  "gpu": {
+    "backend": "webgpu",
+    "description": "apple metal-3",
+    "width": 1920,
+    "height": 1080,
+    "levels": [
+      {
+        "patches": 1,
+        "frames": 240,
+        "msPerFrame": 0.22064583326379458
+      },
+      {
+        "patches": 16,
+        "frames": 240,
+        "msPerFrame": 0.3226874999701977
+      },
+      {
+        "patches": 64,
+        "frames": 240,
+        "msPerFrame": 0.8417499999205271
+      }
+    ]
+  },
+  "memory": {
+    "deviceMemoryGb": 8,
+    "jsHeapLimitMb": 4096,
+    "jsHeapUsedMb": 5.331271171569824,
+    "measuredMb": 11.11748218536377
+  },
+  "storage": {
+    "available": true,
+    "writeMBps": 823.7895037119265,
+    "readMBps": 3386.9809919142585,
+    "note": ""
+  },
+  "classification": {
+    "profile": "minimum",
+    "preset": "medium",
+    "parts": {
+      "cpu": "minimum",
+      "gpu": "high",
+      "cores": "high",
+      "memory": "high"
+    },
+    "limitedBy": "cpu",
+    "facts": {
+      "cpuTicksPerSecond": 58177.383542910575,
+      "speedup": 4.820546417256096,
+      "workers": 8,
+      "gpuHeavyMs": 0.8417499999205271,
+      "gpuBackend": "webgpu",
+      "cores": 10,
+      "memoryGb": 8
+    },
+    "complete": true
+  },
+  "notes": []
+}

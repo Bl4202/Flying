@@ -67,8 +67,9 @@ Times the native core (`fg bench`, erratic pilot, core pack) and compares the me
 with `tests/perf/baseline.json`. Informational unless `--strict`, never compared across machine
 classes, and the 5 % budget is tight for a noisy laptop. Re-record with `--update` after an intended
 change and say why in the commit. The baseline was re-recorded at v0.1a, when the tick began to fly
-the 6-DOF aircraft (about 2 000 ns per tick before, about 4 200 after, on the M4), and is due again
-at v0.1b, when the erratic pilot began to fly through the Standard control system.
+the 6-DOF aircraft (about 2 000 ns per tick before, about 4 200 after, on the M4), and again at
+v0.1b (about 10 160 ns), when the erratic pilot began to fly through the Standard control system,
+the gear model and the physiology (the benchmark's session is air spawn, Standard assist).
 
 ### Per-aircraft cost (T0)
 
@@ -88,8 +89,11 @@ not be the ground's.
 
 | Where | v0.1a (manual law, no wheels) | v0.1b air, Standard | v0.1b ground |
 |---|---|---|---|
-| native, M4 | about 1 800 ns | about 6 300 ns | about 33 000 ns |
+| native, M4 | about 1 800 ns | about 6 600 ns | about 34 000 ns |
 | WASM single under Node, M4 | about 4 300 ns | about 16 000 to 20 000 ns (noisy) | not measured |
+
+In the browser (reference run A, 120 s) the whole sim step averaged 22 us a tick with the one
+aircraft, against a gate of 4 ms.
 
 The informational budget is 20 us per aircraft-tick in WASM. The air case is inside it with
 little margin, and the ground case is outside it natively, which does not matter for one player

@@ -169,8 +169,9 @@ autotuner (the handling suite is the gate). Both are on the plan's cut list.
   with `agl_m` the height of the CG and not of the lowest wheel. No law reads it, and finding the
   lowest of eight points costs a terrain lookup for each of them (v0.1b performance work, which
   moved no hash). The virtual tester, which does read the height of the wheels, keeps `sense`.
-- Cost, native, on the M4, per aircraft-tick through `fg bench --aircraft`: about 6.3 µs in the air
-  under every assist (the control system adds about 0.1 µs to the manual law's 6.2 µs, most of the
-  rest being the airframe's own evaluation) and about 33 µs on the runway, where the gear forces
+- Cost, native, on the M4, per aircraft-tick through `fg bench --aircraft`: about 6.6 µs in the air
+  under every assist (6.5 to 6.65 µs for all four: the control system adds under 0.1 µs to the
+  manual law, nearly all of the cost being the airframe's own evaluation) and about 34 µs on the runway, where the gear forces
   take a terrain sample and a surface normal per wheel per RK4 stage. In WASM the air figure is
-  about 16 to 20 µs, at the informational budget of 20 µs (GDD 60.2).
+  about 16 to 20 µs, at the informational budget of 20 µs (GDD 60.2); in the browser the whole
+  sim step averages 22 µs a tick with one aircraft (PS-0, reference run A).
