@@ -16,6 +16,7 @@ import {
   DebugOverlay,
   installOverlayHotkey,
   isOverlayChord,
+  OVERLAY_LABEL_WIDTH,
   OVERLAY_REFRESH_MS,
   type IntervalTimers,
   type OverlayActions,
@@ -153,6 +154,13 @@ describe('buildOverlayRows', () => {
     expect(stages).toHaveLength(Object.keys(STAGE).length);
     for (const r of stages) expect(r.value).toMatch(/^\d+\.\d{3} ms$/);
     expect(stages[10]?.value).toBe('0.010 ms');
+  });
+
+  it('leaves a space between every label and its value', () => {
+    const rows = [...buildOverlayRows(model()), ...buildOverlayRows(model({ flight: flight() }))];
+    for (const r of rows) {
+      expect(r.label.length, `${r.id}: "${r.label}"`).toBeLessThan(OVERLAY_LABEL_WIDTH);
+    }
   });
 
   it('shows dashes, not NaN, before any report has arrived', () => {

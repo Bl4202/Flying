@@ -14,7 +14,8 @@ import {
 import { t } from './strings.ts';
 
 export const OVERLAY_REFRESH_MS = 250;
-const LABEL_WIDTH = 13;
+/** Width of the label column, in characters: the longest label plus a space. */
+export const OVERLAY_LABEL_WIDTH = 16;
 
 export interface OverlayActions {
   hash(): Promise<{ tick: number; hashes: Readonly<Record<string, string>> }>;
@@ -117,7 +118,7 @@ export class DebugOverlay {
       this.#rowEls.set(row.id, el);
       this.#rowsEl?.append(el);
     }
-    const text = `${row.label.padEnd(LABEL_WIDTH)}${row.value}`;
+    const text = `${row.label.padEnd(OVERLAY_LABEL_WIDTH)}${row.value}`;
     if (el.textContent !== text) {
       el.textContent = text;
       el.dataset['value'] = row.value;
