@@ -206,9 +206,18 @@ fn the_toe_brakes_stop_a_rolling_aircraft() {
     f.run(60, |_| {});
     f.lever = 1.0;
     f.tick(|fr| fr.buttons |= 1 << button::PARKING_BRAKE);
-    while f.ground_speed() < 40.0 {
+    // Bounded: a core that crashes on the runway respawns for ever and never gets there.
+    for _ in 0..(60 * 60) {
+        if f.ground_speed() >= 40.0 {
+            break;
+        }
         f.tick(|_| {});
     }
+    assert!(
+        f.ground_speed() >= 40.0,
+        "only {} m/s after 60 s at full power",
+        f.ground_speed()
+    );
     // Idle, both toe brakes.
     f.lever = 0.0;
     for _ in 0..(30 * 60) {
