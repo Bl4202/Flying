@@ -1,0 +1,138 @@
+{
+  "checkpoints": [
+    {
+      "bodies": "53680ecf7f1b2ae2",
+      "combined": "295710d86c28ffbd",
+      "content": "588264193afd399a",
+      "input": "beaf74afad6523fb",
+      "ownship": "f0fae390d5717f6b",
+      "rng": "e8e3c512ad9ba48a",
+      "tick": 0,
+      "tick_h": "e00562d1f56ddc92"
+    },
+    {
+      "bodies": "c12c244fd9e76a34",
+      "combined": "495e64e6f9feee81",
+      "content": "588264193afd399a",
+      "input": "296fa6e23bda519d",
+      "ownship": "6a9edb5f14c1d625",
+      "rng": "159ce61db6a33f71",
+      "tick": 600,
+      "tick_h": "bb5ede3ffacc09f4"
+    },
+    {
+      "bodies": "aa2a3e48a129d65d",
+      "combined": "8dc08a5cc59b14e1",
+      "content": "588264193afd399a",
+      "input": "0d327a2e76c8c5ba",
+      "ownship": "06263c59f2195b6f",
+      "rng": "38e365ec87d8e40b",
+      "tick": 1200,
+      "tick_h": "be18148c89cd1c56"
+    },
+    {
+      "bodies": "dfcc57130ebdf346",
+      "combined": "fb595af98c55b579",
+      "content": "588264193afd399a",
+      "input": "ea76030799cf9d22",
+      "ownship": "fa61c230fadc1d40",
+      "rng": "93721494770202b6",
+      "tick": 1800,
+      "tick_h": "88a660150d86609b"
+    },
+    {
+      "bodies": "270565b6f2fab0a5",
+      "combined": "590f0d73814dec29",
+      "content": "588264193afd399a",
+      "input": "0f2ae7b683e1b09d",
+      "ownship": "10fb8ce3d585fb03",
+      "rng": "056db1b3039355d6",
+      "tick": 2400,
+      "tick_h": "0df050b9eb49267d"
+    },
+    {
+      "bodies": "333fe5843f33c8a5",
+      "combined": "fad81cfd7bcf292e",
+      "content": "588264193afd399a",
+      "input": "e2dab479d86b86b3",
+      "ownship": "15e6d2f15c34584e",
+      "rng": "f55618f07978ef65",
+      "tick": 3000,
+      "tick_h": "7dffd74c9c91826f"
+    },
+    {
+      "bodies": "dab51dcefbe3773b",
+      "combined": "8df292ea39bf7125",
+      "content": "588264193afd399a",
+      "input": "9f882102a2605d89",
+      "ownship": "f742a635adbdf870",
+      "rng": "1e4e6950492e5113",
+      "tick": 3600,
+      "tick_h": "ec87002c14b98b88"
+    },
+    {
+      "bodies": "f07db24a08791d64",
+      "combined": "513ce064751bf092",
+      "content": "588264193afd399a",
+      "input": "e0cb7cb66c97723a",
+      "ownship": "2a06593e68e5ffe9",
+      "rng": "03054a887c617c81",
+      "tick": 4200,
+      "tick_h": "ee66b678a301d3aa"
+    },
+    {
+      "bodies": "742763643a9a6555",
+      "combined": "96121f911a532072",
+      "content": "588264193afd399a",
+      "input": "5295e8f211c01fbd",
+      "ownship": "248a399121c888bf",
+      "rng": "230d52baeed5c4e0",
+      "tick": 4800,
+      "tick_h": "16eecd54df75b08c"
+    },
+    {
+      "bodies": "dac4a0fb15b3451b",
+      "combined": "1eb2d52bb7e3cc30",
+      "content": "588264193afd399a",
+      "input": "961d0722234e7f53",
+      "ownship": "4d98fa11f72bfa1e",
+      "rng": "7da22ec49d10df00",
+      "tick": 5400,
+      "tick_h": "0592a4fbf880e071"
+    },
+    {
+      "bodies": "8819cc4bb9d9cff2",
+      "combined": "1cec1f5401818e57",
+      "content": "588264193afd399a",
+      "input": "1035706c72d2941a",
+      "ownship": "6f23dfe3551cae12",
+      "rng": "15a3d32c70353461",
+      "tick": 6000,
+      "tick_h": "a6456bf9da40f593"
+    },
+    {
+      "bodies": "43ef27fcb2fd14fb",
+      "combined": "76df83bf755a83bc",
+      "content": "588264193afd399a",
+      "input": "426351ab6d397556",
+      "ownship": "e21250deb01f4dfe",
+      "rng": "4a99c694ec1337a9",
+      "tick": 6600,
+      "tick_h": "e2d37d52f951d065"
+    },
+    {
+      "bodies": "2c377acb9143c461",
+      "combined": "564dc84d1b45905b",
+      "content": "588264193afd399a",
+      "input": "39de6d827ac8a2fe",
+      "ownship": "1ff3b23dd8e9af1f",
+      "rng": "10197ef1ee27a582",
+      "tick": 7200,
+      "tick_h": "1591680661b0e51e"
+    }
+  ],
+  "script": "circuit",
+  "seed": "1f1e5eed00000001",
+  "session": "--spawn runway --assist standard --g full --arena plain",
+  "ticks": 7200
+}
