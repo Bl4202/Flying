@@ -22,7 +22,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-15](0015-terrain-queries-use-the-base-dem-only.md) | Terrain queries use the base DEM only | Accepted |
 | [ADR-16](0016-sensors-and-ai-never-read-the-render-world.md) | Sensors and AI never read the render world | Accepted |
 | [ADR-17](0017-four-role-threading-model.md) | Four-role threading model | Accepted |
-| [ADR-18](0018-reference-renderer-stack.md) | Reference renderer stack | Accepted |
+| [ADR-18](0018-reference-renderer-stack.md) | Reference renderer stack | Superseded by ADR-40 |
 | [ADR-19](0019-storage-and-offline.md) | Storage and offline | Accepted |
 | [ADR-20](0020-dom-for-chrome-gpu-for-hud.md) | DOM for chrome, GPU for HUD | Accepted |
 | [ADR-21](0021-toolchains-and-wasm-threads-build.md) | Toolchains and the WASM threads build | Accepted |
@@ -43,6 +43,8 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-36](0036-session-config-abi-v3-input-snapshot.md) | Session config, ABI v3, input frame v3, snapshot v3 and the throttle hand-over | Accepted |
 | [ADR-37](0037-controls-stack.md) | The controls stack: actions, devices, `controls/1` profiles, the pump and the binding editor | Accepted |
 | [ADR-38](0038-g-physiology-departure-and-structure.md) | G-physiology, departure diagnostics, structural limits and the onboard control model | Accepted |
+| [ADR-39](0039-v0-1c-gates.md) | v0.1c gates: screenshots, cameras, HUD, audio, frame rate and app flow | Accepted |
+| [ADR-40](0040-custom-renderer-stays.md) | The renderer stays custom; sky, terrain levels and quality presets | Proposed |
 
 ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist before any tuning
 (AC-66.4).
@@ -51,3 +53,6 @@ ADR-32 and ADR-33 were written first in v0.1b, before any gear or FCS code, for 
 (AC-66.4). ADR-34 to ADR-38 (FCS, ground model and test airfield, session config / ABI v3 / input
 v3 / snapshot v3, controls stack, G-physiology and departure) were added with their work packages
 as Proposed and became Accepted when the milestone closed.
+
+ADR-39 (the v0.1c gates) and ADR-40 (the renderer stays custom, superseding ADR-18) were written
+first in v0.1c, before any render, HUD or audio code (AC-66.4).

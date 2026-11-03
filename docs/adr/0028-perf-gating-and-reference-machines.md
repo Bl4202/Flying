@@ -55,3 +55,25 @@ machine (4 cores, 8 GB, integrated GPU).
 - WebGPU is exercised only on real GPUs (runs A and C); CI proves WebGL2.
 - The exit checklist records which items rest on approximations, and the waiver for true Minimum
   hardware is visible there.
+
+## Amendment 1 (2026-11-03): re-basing the benchmark's CPU thresholds when the kernel slows
+
+The first-run benchmark's CPU score is kernel ticks per second on one thread. When a milestone makes
+the kernel do more work per tick, every machine's score falls and machines drop a tier without
+having changed. v0.1a handled this by scaling the three CPU thresholds by the kernel's slowdown,
+measured under Node (WASM single) on the M4 (0.41). v0.1b's kernel change (the control system, the
+gear and physiology) was not followed by a re-base, so the M4 reads Minimum (58 177 ticks/s against
+74 000 for Recommended), where it read High at v0.1a (148 828).
+
+**Decision (owner, 2026-11-02).** The CPU thresholds are re-based by the v0.1a method: scale all
+three by the ratio of the current kernel's ticks per second to the v0.1a tag's kernel, both measured
+with the benchmark kernel under Node (WASM single) on the same machine, so every machine keeps its
+v0.1a tier. The ratio is cross-checked against the two browser benchmark reports on the M4
+(58 177 / 148 828 = 0.391); both figures are recorded in `thresholds.json`'s `basis`, and if they
+differ by more than 10 % the difference is stated here. The GPU thresholds are not touched (the GPU
+benchmark's workload does not change). A future kernel change that moves the score by more than
+10 % is re-based the same way, in the same milestone.
+
+With the re-base the M4 is benchmarked as High, as at v0.1a, and is the machine that gates v0.1c's
+60 FPS exit (ADR-39 P1, P2). No machine of the GDD's Recommended spec (6 cores, GTX 1660 / RTX 2060
+class) has been tested; the v0.1c exit checklist records that gap.
