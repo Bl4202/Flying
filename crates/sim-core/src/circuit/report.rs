@@ -86,6 +86,34 @@ pub struct Sample {
     pub touchdown_sink_mps: f64,
     /// The take-off stall speed at this mass, m/s.
     pub stall_speed_to_mps: f64,
+    /// True airspeed, m/s.
+    pub tas_mps: f64,
+    /// Dynamic pressure, Pa.
+    pub qbar_pa: f64,
+    /// Throttle lever, 0 to 1.
+    pub throttle: f64,
+    /// Core thrust as a fraction of military thrust.
+    pub engine_core: f64,
+    /// Afterburner level.
+    pub ab_level: f64,
+    /// `engine_bit` bits.
+    pub engine_bits: u8,
+    /// Airbrake, 0 to 1.
+    pub airbrake: f64,
+    /// Fuel flow, kg/s.
+    pub fuel_flow_kgps: f64,
+    /// The angle of attack at which the stall warning starts, rad.
+    pub alpha_warn_rad: f64,
+    /// The positive load limit for the configuration, g.
+    pub n_max_g: f64,
+    /// The highest load factor since the spawn, g.
+    pub max_nz_g: f64,
+    /// Vertical speed, m/s.
+    pub vs_mps: f64,
+    /// `ownship_flag` bits.
+    pub flags: u8,
+    /// `ownship_flag2` bits.
+    pub flags2: u16,
 }
 
 /// One criterion's outcome.
@@ -462,6 +490,20 @@ pub fn sample_of(core: &SimCore) -> Option<Sample> {
         parking_brake: flags2 & ownship_flag2::PARKING_BRAKE as u32 != 0,
         touchdown_sink_mps: f32_at(snap::O_TOUCHDOWN_VS),
         stall_speed_to_mps: stall_speed(model, mass, take_off_tef(model)),
+        tas_mps: f32_at(snap::O_TAS),
+        qbar_pa: f32_at(snap::O_QBAR),
+        throttle: f32_at(snap::O_THROTTLE),
+        engine_core: f32_at(snap::O_ENGINE_CORE),
+        ab_level: f32_at(snap::O_AB_LEVEL),
+        engine_bits: b[snap::O_ENGINE_BITS],
+        airbrake: f32_at(snap::O_AIRBRAKE),
+        fuel_flow_kgps: f32_at(snap::O_FUEL_FLOW),
+        alpha_warn_rad: f32_at(snap::O_ALPHA_WARN),
+        n_max_g: f32_at(snap::O_N_MAX),
+        max_nz_g: f32_at(snap::O_MAX_NZ),
+        vs_mps: f32_at(snap::O_VS),
+        flags: b[snap::O_FLAGS],
+        flags2: flags2 as u16,
     })
 }
 
@@ -628,6 +670,7 @@ mod tests {
                     parking_brake: t < 2.5,
                     touchdown_sink_mps: if landed { self.sink } else { 0.0 },
                     stall_speed_to_mps: self.stall_to,
+                    ..Ideal::good_sample()
                 });
                 t += dt;
             }
@@ -823,6 +866,20 @@ mod tests {
                 parking_brake: true,
                 touchdown_sink_mps: 0.0,
                 stall_speed_to_mps: 55.0,
+                tas_mps: 0.0,
+                qbar_pa: 0.0,
+                throttle: 0.0,
+                engine_core: 0.1,
+                ab_level: 0.0,
+                engine_bits: 1,
+                airbrake: 0.0,
+                fuel_flow_kgps: 0.1,
+                alpha_warn_rad: 0.4,
+                n_max_g: 7.0,
+                max_nz_g: 1.0,
+                vs_mps: 0.0,
+                flags: 0,
+                flags2: 0,
             }
         }
     }

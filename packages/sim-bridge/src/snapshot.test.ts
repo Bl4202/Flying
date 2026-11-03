@@ -52,11 +52,20 @@ interface Decoded {
     aim: number[];
     crash_cause: number;
     gear_bits: number;
+    arena: number;
+    engine_bits: number;
+    qbar: number;
+    fuel_flow: number;
+    engine_core: number;
+    ab_level: number;
+    max_nz: number;
+    n_max: number;
+    alpha_warn: number;
   };
   bodies: { pos_bf: number[]; quat: number[] }[];
 }
 const vector = JSON.parse(
-  readFileSync(new URL('../../../tests/vectors/snapshot_v3.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../tests/vectors/snapshot_v4.json', import.meta.url), 'utf8'),
 ) as { size: number; hex: string; decoded: Decoded };
 
 const bytes = (): Uint8Array =>
@@ -201,6 +210,42 @@ describe('SnapshotReader against the Rust reference snapshot', () => {
     expect(o.aim[0]).not.toBe(0);
     expect(o.aim[1]).not.toBe(0);
     expect(o.gear_bits & 0xc0, 'lever down, all down and locked').toBe(0xc0);
+  });
+
+  it('reads the v4 block, which fills the bytes v3 reserved', () => {
+    const r = new SnapshotReader(bytes());
+    const o = d.ownship;
+    expect([
+      r.arena(),
+      r.ownshipEngineBits(),
+      r.ownshipQbar(),
+      r.ownshipFuelFlow(),
+      r.ownshipEngineCore(),
+      r.ownshipAbLevel(),
+      r.ownshipMaxNz(),
+      r.ownshipNMax(),
+      r.ownshipAlphaWarn(),
+    ]).toEqual([
+      o.arena,
+      o.engine_bits,
+      o.qbar,
+      o.fuel_flow,
+      o.engine_core,
+      o.ab_level,
+      o.max_nz,
+      o.n_max,
+      o.alpha_warn,
+    ]);
+    // The vector rolls in the plain arena with the engine running and the wheels turning.
+    expect(o.arena, 'plain').toBe(1);
+    expect(o.engine_bits & 1, 'running').toBe(1);
+    expect(o.qbar).toBeGreaterThan(0);
+    expect(o.fuel_flow).toBeGreaterThan(0);
+    expect(o.engine_core).toBeGreaterThan(0);
+    expect(o.max_nz).toBeGreaterThan(0.5);
+    expect(o.n_max, 'the flaps-out limit: landing flap is down').toBe(4);
+    expect(o.alpha_warn).toBeGreaterThan(0.2);
+    expect(SNAPSHOT.O_ALPHA_WARN + 4, 'nothing reserved is left').toBe(SNAPSHOT.B_X);
   });
 
   it('reads bodies (the vector lists the first three and the last)', () => {

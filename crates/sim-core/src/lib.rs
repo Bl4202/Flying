@@ -45,5 +45,5 @@ pub const DEFAULT_SEED: u64 = 0x1F1E_5EED_0000_0001;
 
 pub use hash::SubsystemHashes;
 pub use input::InputFrame;
-pub use session::{Assist, ConfigError, GEffects, SessionConfig, Spawn};
+pub use session::{Arena, Assist, ConfigError, GEffects, SessionConfig, Spawn};
 pub use sim::{CoreState, LoadContentError, SimCore};

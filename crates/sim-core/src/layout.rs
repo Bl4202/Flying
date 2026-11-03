@@ -6,6 +6,9 @@
 //!
 //! Wall-clock fields (`T_MS`, `H_PUBLISH_TIME_MS`, the profile block) are observations about the
 //! host and never feed simulation state or hashes.
+//!
+//! The integer layouts are in [`TABLE`]; the few world constants the renderer needs as `f64` are in
+//! [`WORLD`], generated into the same file as the TypeScript object `WORLD`.
 
 macro_rules! layouts {
     ($( $(#[$doc:meta])* $group:ident { $( $name:ident = $val:expr ),* $(,)? } )*) => {
@@ -29,10 +32,10 @@ macro_rules! layouts {
 layouts! {
     /// Interface version of the exported C ABI and of these layouts.
     abi {
-        VERSION = 3,
+        VERSION = 4,
         // Frames the host can hand over per `fg_push_inputs` call.
         INPUT_BATCH = 8,
-        SNAPSHOT_LAYOUT_VERSION = 3,
+        SNAPSHOT_LAYOUT_VERSION = 4,
     }
 
     /// `InputFrame`, 96 bytes (GDD 58.2). `T_MS` is the host time of the source event (the key
@@ -138,7 +141,16 @@ layouts! {
         FULL = 2,
     }
 
-    /// Return value of `fg_configure`.
+    /// `arena` argument of `fg_configure` and the snapshot's `O_ARENA` (ADR-43): the procedural
+    /// test arena the world is.
+    arena {
+        // The v0.1b world: ridged hills round the airfield's basin.
+        RUGGED = 0,
+        // A plain at the runway's elevation with a few metres of relief.
+        PLAIN = 1,
+    }
+
+    /// Return value of `fg_configure` and `fg_reset`.
     config_status {
         OK = 0,
         // The core has started; the session must be configured first.
@@ -219,9 +231,16 @@ layouts! {
     /// `O_GEAR_BITS` is, per leg `i`, bit `2i` weight-on-wheels and bit `2i+1` collapsed, bit 6
     /// gear lever down, bit 7 all gear down and locked. `O_AIM_*` echo the mouse-aim direction
     /// the core is using.
+    ///
+    /// v4 (ADR-43) fills the bytes v3 reserved, without changing the size: `O_ARENA` (an
+    /// `arena`), `O_ENGINE_BITS` (`engine_bit` bits of the first engine), dynamic pressure, fuel
+    /// flow, core thrust as a fraction of military, the afterburner level, the highest load
+    /// factor since the last spawn, the positive load limit for the configuration the aircraft is
+    /// in, and the angle of attack at which the stall warning starts. Every one is derived at
+    /// publication from hashed state, so none is hashed itself.
     snapshot {
         MAGIC = 0x4E53_4746,
-        VERSION = 3,
+        VERSION = 4,
         HEADER_SIZE = 64,
         H_MAGIC = 0,
         H_VERSION = 4,
@@ -274,12 +293,31 @@ layouts! {
         O_AIM_EL = 252,
         O_CRASH_CAUSE = 256,
         O_GEAR_BITS = 257,
+        O_ARENA = 258,
+        O_ENGINE_BITS = 259,
+        O_QBAR = 260,
+        O_FUEL_FLOW = 264,
+        O_ENGINE_CORE = 268,
+        O_AB_LEVEL = 272,
+        O_MAX_NZ = 276,
+        O_N_MAX = 280,
+        O_ALPHA_WARN = 284,
         BODY_CAPACITY = 256,
         B_X = 288,
         B_Y = 2336,
         B_Z = 4384,
         B_QUAT = 6432,
         SIZE = 10528,
+    }
+
+    /// Bits of the snapshot's `O_ENGINE_BITS` (the first engine).
+    engine_bit {
+        // Burning fuel.
+        RUNNING = 1,
+        AB_LIT = 2,
+        COMPRESSOR_STALLED = 4,
+        // Flamed out and relighting (the relight clock is running).
+        RELIGHTING = 8,
     }
 
     /// Bits of the snapshot's `O_FLAGS`.
@@ -381,7 +419,8 @@ layouts! {
         ASSIST_CHANGES = 12,
     }
 
-    /// Terrain patch handed to the renderer once.
+    /// A terrain patch for the renderer (`fg_terrain_fill`); the renderer asks for one per level of
+    /// detail, each with its own post spacing.
     terrain {
         HEADER_SIZE = 32,
         H_ORIGIN_BF = 0,
@@ -442,6 +481,25 @@ layouts! {
         CIRCUIT = 3,
     }
 }
+
+/// World constants the renderer needs, as `f64` (the integer table cannot hold them): the sphere
+/// and anchor of the default battlefield frame, the airfield's elevation, and for each arena a
+/// height its terrain never goes below (the renderer's globe sits there, so only a hole in the
+/// terrain could show it). Printed exactly (shortest round-trip form) by `cargo xtask gen-abi`.
+pub const WORLD: &[(&str, f64)] = &[
+    ("EARTH_RADIUS_M", crate::seams::geo::EARTH_RADIUS_M),
+    ("ANCHOR_LAT_RAD", crate::seams::geo::DEFAULT_ANCHOR_LAT_RAD),
+    ("ANCHOR_LON_RAD", crate::seams::geo::DEFAULT_ANCHOR_LON_RAD),
+    ("RUNWAY_ELEVATION_M", crate::seams::geo::RUNWAY_ELEVATION_M),
+    (
+        "RUGGED_FLOOR_M",
+        crate::seams::geo::terrain_floor_m(crate::session::Arena::Rugged),
+    ),
+    (
+        "PLAIN_FLOOR_M",
+        crate::seams::geo::terrain_floor_m(crate::session::Arena::Plain),
+    ),
+];
 
 // Structural invariants, checked when the crate compiles: a layout that does not add up cannot
 // be built, let alone shipped to the TypeScript side.
@@ -504,7 +562,17 @@ const _: () = {
     assert!(s::O_AIM_EL + 4 == s::O_CRASH_CAUSE);
     assert!(s::O_CRASH_CAUSE + 1 == s::O_GEAR_BITS);
     assert!(s::O_FLAGS2.is_multiple_of(2) && s::O_GEAR_POS.is_multiple_of(4));
-    assert!(s::O_GEAR_BITS < s::OWNSHIP + s::OWNSHIP_SIZE);
+    // The v4 additions fill the bytes v3 reserved, exactly: two bytes, then seven floats.
+    assert!(s::O_GEAR_BITS + 1 == s::O_ARENA);
+    assert!(s::O_ARENA + 1 == s::O_ENGINE_BITS);
+    assert!(s::O_ENGINE_BITS + 1 == s::O_QBAR && s::O_QBAR.is_multiple_of(4));
+    assert!(s::O_QBAR + 4 == s::O_FUEL_FLOW);
+    assert!(s::O_FUEL_FLOW + 4 == s::O_ENGINE_CORE);
+    assert!(s::O_ENGINE_CORE + 4 == s::O_AB_LEVEL);
+    assert!(s::O_AB_LEVEL + 4 == s::O_MAX_NZ);
+    assert!(s::O_MAX_NZ + 4 == s::O_N_MAX);
+    assert!(s::O_N_MAX + 4 == s::O_ALPHA_WARN);
+    assert!(s::O_ALPHA_WARN + 4 == s::OWNSHIP + s::OWNSHIP_SIZE);
     assert!(s::B_X == s::OWNSHIP + s::OWNSHIP_SIZE);
     assert!(s::B_Y == s::B_X + s::BODY_CAPACITY * 8);
     assert!(s::B_Z == s::B_Y + s::BODY_CAPACITY * 8);
@@ -557,5 +625,15 @@ mod tests {
         assert!(snap.contains(&("SIZE", snapshot::SIZE)));
         assert!(snap.contains(&("B_QUAT", snapshot::B_QUAT)));
         assert!(names.contains(&"hash_kind"));
+    }
+
+    #[test]
+    fn the_world_table_has_unique_finite_names_and_the_sphere() {
+        let mut names: Vec<_> = WORLD.iter().map(|(n, _)| *n).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), WORLD.len());
+        assert!(WORLD.iter().all(|(_, v)| v.is_finite()));
+        assert!(WORLD.contains(&("EARTH_RADIUS_M", 6_371_000.0)));
     }
 }

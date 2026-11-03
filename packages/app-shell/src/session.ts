@@ -1,10 +1,10 @@
 /**
- * The sortie the game starts: the URL flags (`?spawn=`, `?assist=`, `?g=`) over the player's
- * settings over the game's defaults. A performance run flies the scripted pilot, which needs the
- * scripted session whatever the URL says, so every run of a scenario is the same run.
+ * The sortie the game starts: the URL flags (`?spawn=`, `?assist=`, `?g=`, `?arena=`) over the
+ * player's settings over the game's defaults. A performance run flies the scripted pilot, which
+ * needs the scripted session whatever the URL says, so every run of a scenario is the same run.
  */
 import type { Flags } from '@flying/platform-web';
-import { ASSIST_LEVEL, G_EFFECTS, SPAWN_KIND } from '@flying/sim-bridge/layout';
+import { ARENA, ASSIST_LEVEL, G_EFFECTS, SPAWN_KIND } from '@flying/sim-bridge/layout';
 import type { Settings } from '@flying/ui';
 import {
   DEFAULT_SESSION,
@@ -24,11 +24,15 @@ const G_DIALS = {
   reduced: G_EFFECTS.REDUCED,
   full: G_EFFECTS.FULL,
 } as const;
+const ARENAS = { rugged: ARENA.RUGGED, plain: ARENA.PLAIN } as const;
+
+/** The settings a session is made from (the arena joins them with settings v2). */
+type SessionSettings = Pick<Settings, 'spawn' | 'assist' | 'gEffects'> & { arena?: number };
 
 export function sessionFromFlags(
   flags: Flags,
   perf: boolean,
-  settings?: Pick<Settings, 'spawn' | 'assist' | 'gEffects'>,
+  settings?: SessionSettings,
 ): SessionConfig {
   if (perf) {
     return { ...SCRIPTED_SESSION };
@@ -38,6 +42,7 @@ export function sessionFromFlags(
     spawn: flags.spawn === undefined ? base.spawn : SPAWNS[flags.spawn],
     assist: flags.assist === undefined ? base.assist : ASSISTS[flags.assist],
     gEffects: flags.g === undefined ? base.gEffects : G_DIALS[flags.g],
+    arena: flags.arena === undefined ? (base.arena ?? DEFAULT_SESSION.arena) : ARENAS[flags.arena],
   };
 }
 

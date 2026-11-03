@@ -17,6 +17,7 @@
  * | `spawn` | `runway` (default) or `air`: where the aircraft starts |
  * | `assist` | `full`, `standard` (default), `reduced` or `manual` |
  * | `g` | `off`, `reduced` or `full` (default): the g-effects dial |
+ * | `arena` | `rugged` (default) or `plain`: the procedural test arena |
  * | `script` | `circuit`: the virtual tester flies the circuit instead of the player (a test aid) |
  */
 
@@ -24,6 +25,7 @@ export type RendererChoice = 'auto' | 'webgpu' | 'webgl2' | 'null';
 export type SpawnChoice = 'runway' | 'air';
 export type AssistChoice = 'full' | 'standard' | 'reduced' | 'manual';
 export type GEffectsChoice = 'off' | 'reduced' | 'full';
+export type ArenaChoice = 'rugged' | 'plain';
 
 export interface Flags {
   debug: false | 'overlay' | 'perf';
@@ -47,6 +49,8 @@ export interface Flags {
   assist: AssistChoice | undefined;
   /** The g-effects dial, if the URL says. */
   g: GEffectsChoice | undefined;
+  /** The test arena, if the URL says. */
+  arena: ArenaChoice | undefined;
   /** A scripted pilot in place of the player (the circuit the exit gate flies), if the URL says. */
   script: false | 'circuit';
   /** Problems found while parsing, in order. */
@@ -58,6 +62,7 @@ const SWITCHES = ['transfer', 'mainrender', 'timer', 'stall'] as const;
 const SPAWNS: readonly SpawnChoice[] = ['runway', 'air'];
 const ASSISTS: readonly AssistChoice[] = ['full', 'standard', 'reduced', 'manual'];
 const G_DIALS: readonly GEffectsChoice[] = ['off', 'reduced', 'full'];
+const ARENAS: readonly ArenaChoice[] = ['rugged', 'plain'];
 const KNOWN = new Set([
   'debug',
   'renderer',
@@ -70,6 +75,7 @@ const KNOWN = new Set([
   'spawn',
   'assist',
   'g',
+  'arena',
   'script',
 ]);
 
@@ -89,6 +95,7 @@ export function defaultFlags(): Flags {
     spawn: undefined,
     assist: undefined,
     g: undefined,
+    arena: undefined,
     script: false,
     warnings: [],
   };
@@ -198,6 +205,13 @@ export function parseFlags(search: string): Flags {
     const choice = G_DIALS.find((d) => d === g);
     if (choice === undefined) bad('g', g, G_DIALS.join(', '));
     else flags.g = choice;
+  }
+
+  const arena = params.get('arena');
+  if (arena !== null) {
+    const choice = ARENAS.find((a) => a === arena);
+    if (choice === undefined) bad('arena', arena, ARENAS.join(' or '));
+    else flags.arena = choice;
   }
 
   const script = params.get('script');

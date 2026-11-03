@@ -1,13 +1,13 @@
 //! The session configuration: what kind of sortie the player starts (GDD 6.3 `session_config/1`,
 //! ADR-36).
 //!
-//! The host sets it once, while the core is idle, through `fg_configure`. Changes during the
-//! sortie travel in the input frame instead (an assist request, a spawn request), so they are
-//! deterministic and a replay reproduces them.
+//! The host sets it while the core is idle, through `fg_configure` (after `fg_init` or
+//! `fg_reset`). Changes during the sortie travel in the input frame instead (an assist request, a
+//! spawn request), so they are deterministic and a replay reproduces them.
 
 use core::fmt;
 
-use crate::layout::{assist_level, g_effects, spawn_kind};
+use crate::layout::{arena, assist_level, g_effects, spawn_kind};
 
 /// Where the player's aircraft starts (and respawns by default).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -93,7 +93,57 @@ impl GEffects {
     }
 }
 
-/// The session: spawn, initial assist level and g-effects.
+/// Which procedural test arena the world is (ADR-43). Both share the test airfield, the sphere and
+/// the anchor; only the land around the airfield differs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Arena {
+    /// The v0.1b world: ridged hills round a 40 m basin with the runway in it.
+    #[default]
+    Rugged,
+    /// A 40 m plain with a few metres of gentle relief everywhere, and the same runway.
+    Plain,
+}
+
+impl Arena {
+    /// Every arena, in code order.
+    pub const ALL: [Self; 2] = [Self::Rugged, Self::Plain];
+
+    /// The number carried over the ABI and in the snapshot (see [`crate::layout::arena`]).
+    #[must_use]
+    pub const fn code(self) -> u8 {
+        match self {
+            Self::Rugged => arena::RUGGED as u8,
+            Self::Plain => arena::PLAIN as u8,
+        }
+    }
+
+    /// The arena for an ABI number, or `None` if it is not one.
+    #[must_use]
+    pub const fn from_code(code: u32) -> Option<Self> {
+        match code as usize {
+            arena::RUGGED => Some(Self::Rugged),
+            arena::PLAIN => Some(Self::Plain),
+            _ => None,
+        }
+    }
+
+    /// The name tools use on the command line (`rugged`, `plain`).
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Rugged => "rugged",
+            Self::Plain => "plain",
+        }
+    }
+
+    /// The arena of a command-line name.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|a| a.name() == name)
+    }
+}
+
+/// The session: spawn, initial assist level, g-effects and the arena.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SessionConfig {
     /// Where the aircraft starts.
@@ -102,6 +152,8 @@ pub struct SessionConfig {
     pub assist: Assist,
     /// The g-effects dial.
     pub g_effects: GEffects,
+    /// The world the session flies in.
+    pub arena: Arena,
 }
 
 /// Why a session was not accepted.
@@ -128,8 +180,9 @@ impl fmt::Display for ConfigError {
 impl std::error::Error for ConfigError {}
 
 impl SessionConfig {
-    /// The three settings as one number, for the state hash: the `spawn_kind`, `assist_level` and
-    /// `g_effects` codes in a byte each.
+    /// The settings as one number, for the state hash: the `spawn_kind`, `assist_level`,
+    /// `g_effects` and `arena` codes in a byte each, lowest first. The default arena's code is 0,
+    /// so a `rugged` session hashes exactly as the same session did before arenas existed (v0.1b).
     #[must_use]
     pub fn hash_word(&self) -> u64 {
         let spawn = match self.spawn {
@@ -141,15 +194,18 @@ impl SessionConfig {
             GEffects::Reduced => g_effects::REDUCED,
             GEffects::Full => g_effects::FULL,
         };
-        spawn as u64 | u64::from(self.assist.code()) << 8 | (g as u64) << 16
+        spawn as u64
+            | u64::from(self.assist.code()) << 8
+            | (g as u64) << 16
+            | u64::from(self.arena.code()) << 24
     }
 
     /// Builds a session from the numbers of `fg_configure` (`spawn_kind`, `assist_level`,
-    /// `g_effects`).
+    /// `g_effects`, `arena`).
     ///
     /// # Errors
     /// [`ConfigError::Invalid`] if any argument is not a code of its group.
-    pub fn from_codes(spawn: u32, assist: u32, g: u32) -> Result<Self, ConfigError> {
+    pub fn from_codes(spawn: u32, assist: u32, g: u32, arena: u32) -> Result<Self, ConfigError> {
         let spawn = match spawn as usize {
             spawn_kind::RUNWAY => Spawn::Runway,
             spawn_kind::AIR => Spawn::Air,
@@ -162,10 +218,12 @@ impl SessionConfig {
             g_effects::FULL => GEffects::Full,
             _ => return Err(ConfigError::Invalid),
         };
+        let arena = Arena::from_code(arena).ok_or(ConfigError::Invalid)?;
         Ok(Self {
             spawn,
             assist,
             g_effects,
+            arena,
         })
     }
 }
@@ -180,6 +238,7 @@ mod tests {
         assert_eq!(s.spawn, Spawn::Runway);
         assert_eq!(s.assist, Assist::Standard);
         assert_eq!(s.g_effects, GEffects::Full);
+        assert_eq!(s.arena, Arena::Rugged);
     }
 
     #[test]
@@ -195,23 +254,32 @@ mod tests {
         }
         assert_eq!(Assist::from_code(0), None, "0 means keep, not a level");
         assert_eq!(Assist::from_code(5), None);
-        let ok = SessionConfig::from_codes(1, 4, 0).unwrap();
+        let ok = SessionConfig::from_codes(1, 4, 0, 1).unwrap();
         assert_eq!(
-            (ok.spawn, ok.assist, ok.g_effects),
-            (Spawn::Air, Assist::Manual, GEffects::Off)
+            (ok.spawn, ok.assist, ok.g_effects, ok.arena),
+            (Spawn::Air, Assist::Manual, GEffects::Off, Arena::Plain)
         );
         assert_eq!(
-            SessionConfig::from_codes(2, 2, 2),
+            SessionConfig::from_codes(2, 2, 2, 0),
             Err(ConfigError::Invalid)
         );
         assert_eq!(
-            SessionConfig::from_codes(0, 0, 2),
+            SessionConfig::from_codes(0, 0, 2, 0),
             Err(ConfigError::Invalid)
         );
         assert_eq!(
-            SessionConfig::from_codes(0, 2, 3),
+            SessionConfig::from_codes(0, 2, 3, 0),
             Err(ConfigError::Invalid)
         );
+        assert_eq!(
+            SessionConfig::from_codes(0, 2, 2, 2),
+            Err(ConfigError::Invalid)
+        );
+        for a in Arena::ALL {
+            assert_eq!(Arena::from_code(u32::from(a.code())), Some(a));
+            assert_eq!(Arena::from_name(a.name()), Some(a));
+        }
+        assert_eq!(Arena::from_name("flat"), None);
     }
 
     #[test]
@@ -243,16 +311,36 @@ mod tests {
                 Assist::Manual,
             ] {
                 for g_effects in [GEffects::Off, GEffects::Reduced, GEffects::Full] {
-                    let w = SessionConfig {
-                        spawn,
-                        assist,
-                        g_effects,
+                    for arena in Arena::ALL {
+                        let w = SessionConfig {
+                            spawn,
+                            assist,
+                            g_effects,
+                            arena,
+                        }
+                        .hash_word();
+                        assert!(!seen.contains(&w));
+                        seen.push(w);
                     }
-                    .hash_word();
-                    assert!(!seen.contains(&w));
-                    seen.push(w);
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_rugged_session_hashes_as_the_v0_1b_session_did() {
+        // v0.1b's word: spawn | assist << 8 | g << 16, nothing above. The goldens depend on it.
+        let s = SessionConfig {
+            spawn: Spawn::Runway,
+            assist: Assist::Standard,
+            g_effects: GEffects::Full,
+            arena: Arena::Rugged,
+        };
+        assert_eq!(s.hash_word(), 2 << 8 | 2 << 16);
+        let plain = SessionConfig {
+            arena: Arena::Plain,
+            ..s
+        };
+        assert_eq!(plain.hash_word(), s.hash_word() | 1 << 24);
     }
 }

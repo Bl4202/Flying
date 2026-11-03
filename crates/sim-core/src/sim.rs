@@ -21,7 +21,7 @@ use crate::rng::RngStreams;
 use crate::schedule::{Schedule, TickCtx};
 use crate::seams::replay::{NullReplaySink, ReplaySink};
 use crate::services::Services;
-use crate::session::{ConfigError, SessionConfig};
+use crate::session::{Arena, ConfigError, SessionConfig};
 use crate::snapshot::SnapshotBuffer;
 use crate::spawn::spawn;
 use crate::systems::{default_schedule, write_snapshot};
@@ -30,7 +30,8 @@ use crate::time::SIM_DT;
 use crate::world::{Counters, World};
 
 /// Lifecycle state of the core (GDD 61.4.1). `Idle -> Running -> Paused -> Running -> Ended` is
-/// wired; loading content and missions arrive with the mission system.
+/// wired, and [`SimCore::reset`] returns any state to `Idle`; loading content and missions arrive
+/// with the mission system.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CoreState {
@@ -121,13 +122,9 @@ impl SimCore {
     #[must_use]
     pub fn with_services(seed: u64, svc: Services) -> Self {
         let rng = RngStreams::new(seed);
-        let probe = ProbeWorld::new(
-            rng.stream("probe/init"),
-            rng.stream("probe/gust"),
-            rng.stream("probe/reseed"),
-        );
+        let (probe, ownship) = start_bodies(&rng, &svc);
         let mut world = World {
-            ownship: Ownship::Spectator(Observer::spawn(&*svc.geo)),
+            ownship,
             probe,
             input: crate::input::InputState::new(),
             counters: Counters::default(),
@@ -186,9 +183,13 @@ impl SimCore {
         Ok(())
     }
 
-    /// Sets the session: where the aircraft starts (and respawns), the assist level it starts at
-    /// and the g-effects dial (ADR-36). Only an idle core accepts one. It is part of the
-    /// aircraft's hashed state; a core with no aircraft ignores it.
+    /// Sets the session: where the aircraft starts (and respawns), the assist level it starts at,
+    /// the g-effects dial (ADR-36) and the arena (ADR-43). Only an idle core accepts one. It is
+    /// part of the aircraft's hashed state; a core with no aircraft ignores all but the arena.
+    ///
+    /// A different arena rebuilds the world (it allocates) and puts the spectator back over the
+    /// new ground. Set the input script after this: the circuit tester reads the world it flies in
+    /// when it is made.
     ///
     /// # Errors
     /// [`ConfigError::NotIdle`] once the core has started.
@@ -197,7 +198,37 @@ impl SimCore {
             return Err(ConfigError::NotIdle);
         }
         self.session = session;
+        if self.svc.arena != session.arena {
+            self.svc.set_arena(session.arena);
+            self.world.ownship = Ownship::Spectator(Observer::spawn(&*self.svc.geo));
+            // The snapshot says which world it is before the first tick.
+            write_snapshot(&mut self.world, &self.svc, self.tick, self.state.code());
+        }
         Ok(())
+    }
+
+    /// Any state back to `Idle`, exactly as a fresh core from the same seed with the same content
+    /// (ADR-43): the tick count, the random streams, the probe world, the ownship, the input state
+    /// (the script included), the counters, the session and the arena return to their start
+    /// values. The loaded content and the models built from it stay, and so do the profiling
+    /// setting, the replay sink and the snapshot buffer's memory, so the host's snapshot address
+    /// stays valid. Configure the next session, then set the script, then start.
+    pub fn reset(&mut self) {
+        self.svc.set_arena(Arena::default());
+        self.rng = RngStreams::new(self.rng.master());
+        let (probe, ownship) = start_bodies(&self.rng, &self.svc);
+        self.world.probe = probe;
+        self.world.ownship = ownship;
+        self.world.input = crate::input::InputState::new();
+        self.world.counters = Counters::default();
+        self.world.snapshot.clear();
+        self.tick = 0;
+        self.session = SessionConfig::default();
+        self.spawn_fuel = crate::ownship::DEFAULT_SPAWN_FUEL;
+        self.profiler = self.profiler.as_ref().map(|p| Profiler::new(p.clock()));
+        self.profile_block = [0; profile::SIZE];
+        self.state = CoreState::Idle;
+        write_snapshot(&mut self.world, &self.svc, 0, CoreState::Idle.code());
     }
 
     /// The session in force.
@@ -491,6 +522,16 @@ impl SimCore {
     pub fn state_hash(&self) -> u64 {
         self.subsystem_hashes().combined
     }
+}
+
+/// The probe world and the spectator a core starts with, from its random streams and services.
+fn start_bodies(rng: &RngStreams, svc: &Services) -> (ProbeWorld, Ownship) {
+    let probe = ProbeWorld::new(
+        rng.stream("probe/init"),
+        rng.stream("probe/gust"),
+        rng.stream("probe/reseed"),
+    );
+    (probe, Ownship::Spectator(Observer::spawn(&*svc.geo)))
 }
 
 /// The registry's identity: entry count and the pack's SHA-256, which covers every byte of content.
@@ -914,6 +955,7 @@ mod tests {
                 spawn: Spawn::Air,
                 assist: Assist::Manual,
                 g_effects: GEffects::Full,
+                arena: Arena::Rugged,
             },
         )
     }
@@ -1106,6 +1148,7 @@ mod tests {
             spawn: Spawn::Air,
             assist: Assist::Reduced,
             g_effects: GEffects::Off,
+            arena: Arena::Rugged,
         };
         assert_eq!(c.configure(wanted), Ok(()));
         assert_eq!(c.session(), wanted);
@@ -1123,12 +1166,156 @@ mod tests {
         // an aircraft (tests/aircraft.rs) and of nothing else.
         let mut a = SimCore::new(7);
         let mut b = SimCore::new(7);
-        b.configure(SessionConfig::from_codes(1, 4, 0).unwrap())
+        b.configure(SessionConfig::from_codes(1, 4, 0, 0).unwrap())
             .unwrap();
         a.start();
         b.start();
         a.step(300);
         b.step(300);
         assert_eq!(a.subsystem_hashes(), b.subsystem_hashes());
+    }
+
+    fn arena_session(arena: Arena) -> SessionConfig {
+        SessionConfig {
+            arena,
+            ..SessionConfig::default()
+        }
+    }
+
+    /// A core with the pack, configured, scripted with the circuit tester, started and stepped.
+    fn circuit_core(seed: u64, arena: Arena, ticks: u32) -> SimCore {
+        let mut c = SimCore::new(seed);
+        c.load_content(&pack(8400)).unwrap();
+        c.configure(arena_session(arena)).unwrap();
+        assert!(c.set_input_script(input_script::CIRCUIT as u32));
+        assert!(c.start());
+        c.step(ticks);
+        c
+    }
+
+    #[test]
+    fn a_reset_core_flies_exactly_as_a_fresh_one_in_both_arenas() {
+        // ADR-39 D3: fly one session, reset, fly another; the second equals a fresh core in every
+        // subsystem hash, the snapshot and the counters.
+        for arena in Arena::ALL {
+            let mut c = circuit_core(41, Arena::Plain, 900);
+            assert!(c.pause());
+            c.reset();
+            assert_eq!(c.core_state(), CoreState::Idle);
+            assert_eq!(c.tick(), 0);
+            assert_eq!(c.session(), SessionConfig::default());
+            c.configure(arena_session(arena)).unwrap();
+            assert!(c.set_input_script(input_script::CIRCUIT as u32));
+            assert!(c.start());
+            c.step(1_200);
+            let fresh = circuit_core(41, arena, 1_200);
+            assert_eq!(c.subsystem_hashes(), fresh.subsystem_hashes(), "{arena:?}");
+            assert_eq!(c.snapshot_bytes(), fresh.snapshot_bytes(), "{arena:?}");
+            assert_eq!(c.counters(), fresh.counters(), "{arena:?}");
+            assert_eq!(c.input().counters(), fresh.input().counters(), "{arena:?}");
+        }
+    }
+
+    #[test]
+    fn reset_works_from_every_state_and_keeps_the_snapshot_address() {
+        let mut c = SimCore::new(3);
+        c.load_content(&pack(8400)).unwrap();
+        let at = c.snapshot_bytes().as_ptr();
+        let fresh_idle = {
+            let mut f = SimCore::new(3);
+            f.load_content(&pack(8400)).unwrap();
+            (f.subsystem_hashes(), f.snapshot_bytes().to_vec())
+        };
+        for setup in [0, 1, 2, 3] {
+            match setup {
+                1 => {
+                    assert!(c.start());
+                    c.step(30);
+                }
+                2 => {
+                    assert!(c.start());
+                    c.step(30);
+                    assert!(c.pause());
+                }
+                3 => {
+                    assert!(c.start());
+                    c.step(30);
+                    assert!(c.end());
+                }
+                _ => c.configure(arena_session(Arena::Plain)).unwrap(),
+            }
+            c.reset();
+            assert_eq!(c.core_state(), CoreState::Idle, "after setup {setup}");
+            assert_eq!(c.snapshot_bytes().as_ptr(), at, "after setup {setup}");
+            assert_eq!(c.subsystem_hashes(), fresh_idle.0, "after setup {setup}");
+            assert_eq!(c.snapshot_bytes(), &fresh_idle.1[..], "after setup {setup}");
+            assert_eq!(c.services().arena, Arena::Rugged);
+        }
+        // Content survives a reset: the next start flies the aircraft.
+        assert!(c.start());
+        assert!(c.ownship().aircraft().is_some());
+    }
+
+    #[test]
+    fn configuring_an_arena_rebuilds_the_world_and_the_snapshot_names_it() {
+        let mut c = SimCore::new(1);
+        assert_eq!(c.snapshot_bytes()[snap::O_ARENA], 0);
+        c.configure(arena_session(Arena::Plain)).unwrap();
+        assert_eq!(c.services().arena, Arena::Plain);
+        assert_eq!(c.snapshot_bytes()[snap::O_ARENA], 1);
+        // The spectator stands over the plain.
+        let o = c.observer().expect("the spectator").pos_bf();
+        let ground = c.services().geo.ground_z_bf(o.x, o.y);
+        assert!(
+            (ground - 40.0).abs() < 3.5 && o.z > ground,
+            "{o:?} over {ground}"
+        );
+        c.configure(arena_session(Arena::Rugged)).unwrap();
+        assert_eq!(c.snapshot_bytes()[snap::O_ARENA], 0);
+        // Same arena twice: nothing is rebuilt and the snapshot is not rewritten.
+        let before = c.counters().snapshots;
+        c.configure(arena_session(Arena::Rugged)).unwrap();
+        assert_eq!(c.counters().snapshots, before);
+    }
+
+    #[test]
+    fn the_v4_snapshot_fields_mirror_the_state_they_come_from() {
+        let mut c = circuit_core(5, Arena::Rugged, 0);
+        for _ in 0..40 {
+            c.step(60);
+            let b = c.snapshot_bytes();
+            let f = |o: usize| f64::from(f32::from_le_bytes(b[o..o + 4].try_into().unwrap()));
+            let slot = crate::test_support::slot(&c);
+            let model = c.services().aircraft.as_ref().unwrap();
+            let e = &slot.state.engines[0];
+            assert_eq!(f(snap::O_ENGINE_CORE), f64::from(e.core as f32));
+            assert_eq!(f(snap::O_AB_LEVEL), f64::from(e.ab_level as f32));
+            assert_eq!(f(snap::O_MAX_NZ), f64::from(slot.structure.max_n_g as f32));
+            let n_max = model.limits.n_max_for(
+                slot.state.surfaces.gear,
+                model.flap_fraction(&slot.state.surfaces),
+            );
+            assert_eq!(f(snap::O_N_MAX), f64::from(n_max as f32));
+            assert_eq!(
+                b[snap::O_ENGINE_BITS] & crate::layout::engine_bit::RUNNING as u8,
+                u8::from(e.running) * crate::layout::engine_bit::RUNNING as u8
+            );
+            // Dynamic pressure is 1/2 rho V^2 at the snapshot's true airspeed, within f32 rounding
+            // and the density at the aircraft (1.225 kg/m^3 at sea level, less above).
+            let tas = f(snap::O_TAS);
+            let qbar = f(snap::O_QBAR);
+            assert!(
+                qbar >= 0.0 && qbar <= 0.5 * 1.226 * tas * tas + 1.0,
+                "{qbar} at {tas}"
+            );
+            let alpha_warn = f(snap::O_ALPHA_WARN).to_degrees();
+            assert!((10.0..40.0).contains(&alpha_warn), "{alpha_warn}");
+            assert!(f(snap::O_FUEL_FLOW) > 0.0, "the engine burns fuel");
+            assert!(
+                f(snap::O_MAX_NZ) > 0.5,
+                "the wheels or the wings carry the weight"
+            );
+        }
+        assert_eq!(c.snapshot_bytes()[snap::O_ARENA], 0);
     }
 }

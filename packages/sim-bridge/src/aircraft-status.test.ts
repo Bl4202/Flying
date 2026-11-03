@@ -5,7 +5,7 @@ import { SNAPSHOT } from './layout.gen.ts';
 import { SnapshotReader } from './snapshot.ts';
 
 const vector = JSON.parse(
-  readFileSync(new URL('../../../tests/vectors/snapshot_v3.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../tests/vectors/snapshot_v4.json', import.meta.url), 'utf8'),
 ) as {
   hex: string;
   decoded: {
@@ -46,6 +46,21 @@ describe('readAircraftStatus', () => {
     expect(s.nCmd).toBe(f(o['n_cmd'] as number));
     expect(s.gearBits).toBe(o['gear_bits']);
     expect(s.crashCause).toBe(o['crash_cause']);
+    // Snapshot v4.
+    expect(s.arena).toBe(o['arena']);
+    expect(s.arena).toBe(1);
+    expect(s.engineBits).toBe(o['engine_bits']);
+    expect(s.qbar).toBe(f(o['qbar'] as number));
+    expect(s.fuel).toBe(f(o['fuel'] as number));
+    expect(s.fuelFlow).toBe(f(o['fuel_flow'] as number));
+    expect(s.engineCore).toBe(f(o['engine_core'] as number));
+    expect(s.abLevel).toBe(f(o['ab_level'] as number));
+    expect(s.maxNz).toBe(f(o['max_nz'] as number));
+    expect(s.nMax).toBe(f(o['n_max'] as number));
+    expect(s.alphaWarn).toBe(f(o['alpha_warn'] as number));
+    expect(s.qbar).toBeGreaterThan(0);
+    expect(s.engineCore).toBeGreaterThan(0);
+    expect(s.nMax, 'the flaps-out limit (the vector rolls with landing flap)').toBe(4);
   });
 
   it('works out where the nose points from the attitude', () => {

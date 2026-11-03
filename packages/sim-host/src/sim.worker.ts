@@ -76,6 +76,20 @@ async function handle(command: ReturnType<typeof parseSimCommand>): Promise<void
     throw new Error(`SYS-031: "${command.type}" before init`);
   }
   switch (command.type) {
+    case 'configure':
+      sim.configure(command.session);
+      if (!sim.setInputScript(command.script)) {
+        throw new Error(`SYS-004: unknown input script ${String(command.script)}`);
+      }
+      // The arena decides the ground, so the renderer's terrain is generated again.
+      sendPatch(sim, [0, 0]);
+      post({ type: 'state', coreState: sim.coreState() });
+      break;
+    case 'reset':
+      sim.reset();
+      loop.reset();
+      post({ type: 'state', coreState: sim.coreState() });
+      break;
     case 'start':
       sim.start();
       loop.start();

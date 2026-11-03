@@ -5,11 +5,17 @@
  * Usage: node wasm-hash.ts --variant single|threads --seed HEX --at T1,T2,... [--dir wasm-out]
  *                           [--script none|erratic|flight60|circuit] [--content PATH.cpack]
  *                           [--spawn runway|air] [--assist full|standard|reduced|manual]
- *                           [--g off|reduced|full]
+ *                           [--g off|reduced|full] [--arena rugged|plain]
  */
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { ASSIST_LEVEL, G_EFFECTS, INPUT_SCRIPT, SPAWN_KIND } from '@flying/sim-bridge/layout';
+import {
+  ARENA,
+  ASSIST_LEVEL,
+  G_EFFECTS,
+  INPUT_SCRIPT,
+  SPAWN_KIND,
+} from '@flying/sim-bridge/layout';
 import {
   DEFAULT_SESSION,
   HASH_KIND,
@@ -85,6 +91,7 @@ const session: SessionConfig = {
     { off: G_EFFECTS.OFF, reduced: G_EFFECTS.REDUCED, full: G_EFFECTS.FULL },
     DEFAULT_SESSION.gEffects,
   ),
+  arena: choose('arena', { rugged: ARENA.RUGGED, plain: ARENA.PLAIN }, DEFAULT_SESSION.arena),
 };
 
 // Same order as `fg hash`: content first (only an idle core takes it), then the session, then the

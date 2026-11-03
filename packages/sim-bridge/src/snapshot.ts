@@ -1,12 +1,14 @@
 /**
- * Snapshot v3: what the sim publishes each tick and the renderer draws from. Layout in
+ * Snapshot v4: what the sim publishes each tick and the renderer draws from. Layout in
  * `layout.gen.ts` (from Rust); this file reads and stamps it.
  *
  * Positions are battlefield-frame `f64`, orientations `f32` quaternions `[w, x, y, z]`, bodies
  * are structure-of-arrays so a whole axis is contiguous. The ownship block is the player's
  * aircraft (its reference point, attitude, air data, engine and fuel) or, with no aircraft
  * content, the spectator (`OWNSHIP_FLAG.SPECTATOR`; air data zero). Angles are radians. v3 adds the
- * flight control system, gear, wheel, g-physiology and mouse-aim state (`O_ASSIST` onward).
+ * flight control system, gear, wheel, g-physiology and mouse-aim state (`O_ASSIST` onward); v4 the
+ * arena, engine and limit fields the HUD and the audio need (`O_ARENA` onward), in the bytes v3
+ * reserved.
  */
 import { SNAPSHOT } from './layout.gen.ts';
 
@@ -269,6 +271,51 @@ export class SnapshotReader {
   /** Per leg `i`: bit `2i` weight-on-wheels, bit `2i+1` collapsed; bit 6 lever down; bit 7 locked. */
   ownshipGearBits(): number {
     return this.#dv.getUint8(SNAPSHOT.O_GEAR_BITS);
+  }
+
+  /** The test arena the world is (`ARENA`). */
+  arena(): number {
+    return this.#dv.getUint8(SNAPSHOT.O_ARENA);
+  }
+
+  /** `ENGINE_BIT` bits of the first engine. */
+  ownshipEngineBits(): number {
+    return this.#dv.getUint8(SNAPSHOT.O_ENGINE_BITS);
+  }
+
+  /** Dynamic pressure, Pa. */
+  ownshipQbar(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_QBAR, true);
+  }
+
+  /** Total fuel flow, kg/s. */
+  ownshipFuelFlow(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_FUEL_FLOW, true);
+  }
+
+  /** Core thrust of the first engine as a fraction of military thrust. */
+  ownshipEngineCore(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_ENGINE_CORE, true);
+  }
+
+  /** Afterburner level of the first engine, 0 to 1. */
+  ownshipAbLevel(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_AB_LEVEL, true);
+  }
+
+  /** The highest load factor since the last spawn, g. */
+  ownshipMaxNz(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_MAX_NZ, true);
+  }
+
+  /** The positive load limit for the configuration the aircraft is in, g. */
+  ownshipNMax(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_N_MAX, true);
+  }
+
+  /** The angle of attack at which the stall warning starts, radians. */
+  ownshipAlphaWarn(): number {
+    return this.#dv.getFloat32(SNAPSHOT.O_ALPHA_WARN, true);
   }
 
   /** Body `i` position, BF metres. */
