@@ -1,4 +1,4 @@
-//! Snapshot v3: the render-relevant state published at the end of every tick
+//! Snapshot v4: the render-relevant state published at the end of every tick
 //! (GDD 61.2 "Sim -> Render", layout in [`crate::layout::snapshot`]).
 //!
 //! The core writes into a buffer it owns and never reallocates; the host copies it out into a
@@ -57,10 +57,19 @@ impl SnapshotBuffer {
     /// A zeroed snapshot carrying only the magic and version.
     #[must_use]
     pub fn new() -> Self {
-        let mut buf = vec![0_u8; s::SIZE].into_boxed_slice();
-        put_u32(&mut buf, s::H_MAGIC, s::MAGIC as u32);
-        put_u32(&mut buf, s::H_VERSION, s::VERSION as u32);
-        Self { buf }
+        let mut b = Self {
+            buf: vec![0_u8; s::SIZE].into_boxed_slice(),
+        };
+        b.clear();
+        b
+    }
+
+    /// Back to what [`SnapshotBuffer::new`] gives, in the same memory (a session reset keeps the
+    /// address the host reads from).
+    pub fn clear(&mut self) {
+        self.buf.fill(0);
+        put_u32(&mut self.buf, s::H_MAGIC, s::MAGIC as u32);
+        put_u32(&mut self.buf, s::H_VERSION, s::VERSION as u32);
     }
 
     /// The encoded snapshot, [`crate::layout::snapshot::SIZE`] bytes.
@@ -140,6 +149,19 @@ impl SnapshotBuffer {
         }
         b[s::O_CRASH_CAUSE] = o.crash_cause;
         b[s::O_GEAR_BITS] = o.gear_bits;
+        b[s::O_ARENA] = o.arena;
+        b[s::O_ENGINE_BITS] = o.engine_bits;
+        for (at, value) in [
+            (s::O_QBAR, o.qbar_pa),
+            (s::O_FUEL_FLOW, o.fuel_flow_kgps),
+            (s::O_ENGINE_CORE, o.engine_core),
+            (s::O_AB_LEVEL, o.ab_level),
+            (s::O_MAX_NZ, o.max_nz_g),
+            (s::O_N_MAX, o.n_max_g),
+            (s::O_ALPHA_WARN, o.alpha_warn_rad),
+        ] {
+            put_f32(b, at, value as f32);
+        }
 
         for i in 0..BODY_COUNT {
             let [x, y, z] = src.probe.pos_bf(i);
@@ -156,7 +178,7 @@ impl SnapshotBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::layout::{crash_cause, ownship_flag, ownship_flag2};
+    use crate::layout::{arena, crash_cause, engine_bit, ownship_flag, ownship_flag2};
     use crate::math::{DQuat, DVec3};
 
     fn u32_at(b: &[u8], o: usize) -> u32 {
@@ -217,6 +239,15 @@ mod tests {
             aim_rad: [0.5, -0.25],
             crash_cause: crash_cause::SINK_RATE as u8,
             gear_bits: 0b1010_0101,
+            arena: arena::PLAIN as u8,
+            engine_bits: (engine_bit::RUNNING | engine_bit::AB_LIT) as u8,
+            qbar_pa: 17_732.5,
+            fuel_flow_kgps: 1.25,
+            engine_core: 0.875,
+            ab_level: 0.5,
+            max_nz_g: 6.25,
+            n_max_g: 7.5,
+            alpha_warn_rad: 0.5,
         };
         (SnapshotBuffer::new(), ownship, probe)
     }
@@ -226,8 +257,29 @@ mod tests {
         let b = SnapshotBuffer::new();
         assert_eq!(b.bytes().len(), s::SIZE);
         assert_eq!(&b.bytes()[0..4], b"FGSN");
-        assert_eq!(u32_at(b.bytes(), s::H_VERSION), 3);
+        assert_eq!(u32_at(b.bytes(), s::H_VERSION), 4);
         assert!(b.bytes()[8..].iter().all(|&x| x == 0));
+    }
+
+    /// The v4 block of the sample: it fills what v3 reserved.
+    fn assert_v4_block(b: &[u8]) {
+        assert_eq!(b[s::O_ARENA], arena::PLAIN as u8);
+        assert_eq!(
+            usize::from(b[s::O_ENGINE_BITS]),
+            engine_bit::RUNNING | engine_bit::AB_LIT
+        );
+        for (at, v) in [
+            (s::O_QBAR, 17_732.5),
+            (s::O_FUEL_FLOW, 1.25),
+            (s::O_ENGINE_CORE, 0.875),
+            (s::O_AB_LEVEL, 0.5),
+            (s::O_MAX_NZ, 6.25),
+            (s::O_N_MAX, 7.5),
+            (s::O_ALPHA_WARN, 0.5),
+        ] {
+            assert_eq!(f32_at(b, at), v as f32, "offset {at}");
+        }
+        assert_eq!(s::O_ALPHA_WARN + 4, s::B_X, "no reserved bytes are left");
     }
 
     #[test]
@@ -311,10 +363,7 @@ mod tests {
         }
         assert_eq!(b[s::O_CRASH_CAUSE], crash_cause::SINK_RATE as u8);
         assert_eq!(b[s::O_GEAR_BITS], 0b1010_0101);
-        assert!(
-            b[s::O_GEAR_BITS + 1..s::B_X].iter().all(|&x| x == 0),
-            "reserved bytes are zero"
-        );
+        assert_v4_block(b);
 
         for i in [0, 1, 31] {
             let [x, y, z] = probe.pos_bf(i);
@@ -326,6 +375,23 @@ mod tests {
         // Slots past the body count are untouched.
         assert_eq!(f64_at(b, s::B_X + 8 * 32), 0.0);
         assert_eq!(b.len(), s::SIZE);
+    }
+
+    #[test]
+    fn clearing_gives_a_fresh_buffer_in_the_same_memory() {
+        let (mut buf, o, probe) = sample();
+        let at = buf.bytes().as_ptr();
+        buf.write(&SnapshotSource {
+            tick: 9,
+            core_state: 2,
+            last_input_seq: 3,
+            input_t_ms: 1.0,
+            ownship: &o,
+            probe: &probe,
+        });
+        buf.clear();
+        assert_eq!(buf.bytes(), SnapshotBuffer::new().bytes());
+        assert_eq!(buf.bytes().as_ptr(), at);
     }
 
     #[test]

@@ -100,6 +100,22 @@ export class SimLoop {
     this.#d.sim.setProfiling(on);
   }
 
+  /**
+   * After the core was reset to idle: stop the clock, drop queued input, start a new reporting
+   * window at tick 0, and publish the core's idle snapshot so readers see the reset.
+   */
+  reset(): void {
+    const d = this.#d;
+    d.clock.pause();
+    this.discardInputs();
+    this.resetRun();
+    this.#windowStartMs = d.nowMs();
+    this.#windowStartTick = 0;
+    d.snapshots.publish(d.sim.snapshot(), (copy) => {
+      stampPublishTime(copy, d.sharedNowMs());
+    });
+  }
+
   /** Forget run-level statistics (after warm-up). */
   resetRun(): void {
     this.#stepRun.reset();

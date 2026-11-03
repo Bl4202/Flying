@@ -10,6 +10,7 @@ import {
   inputTransferables,
   parseSimEvent,
   snapshotTransferables,
+  type SessionConfig,
   type SimCommand,
   type SimEvent,
   type SimInit,
@@ -154,6 +155,14 @@ export class SimClient {
     }
   }
 
+  /** Sets the next sortie on the idle core: the session, then the script (`INPUT_SCRIPT`). */
+  configure(session: SessionConfig, script: number): void {
+    this.#send({ type: 'configure', session, script });
+  }
+  /** Back to an idle core with the same content (after a sortie, before the next `configure`). */
+  reset(): void {
+    this.#send({ type: 'reset' });
+  }
   start(): void {
     this.#send({ type: 'start' });
   }

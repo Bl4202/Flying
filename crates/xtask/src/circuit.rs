@@ -1,6 +1,7 @@
 //! `cargo xtask circuit`: bakes the core pack, builds `fg` in release, flies the virtual tester's
-//! take-off, circuit and landing under every assist level (ADR-33) and fails if a gate run fails.
-//! The `circuit_report/1` JSON and the CSV traces go to `target/circuit/`.
+//! take-off, circuit and landing under every assist level (ADR-33), in the arena `--arena` names
+//! (`all` by default: both, ADR-39 D1), and fails if a gate run fails. The `circuit_report/1` JSON
+//! and the CSV traces go to `target/circuit/`.
 
 use std::process::Command;
 
@@ -13,15 +14,17 @@ const OUT_DIR: &str = "target/circuit";
 
 pub fn run_command(args: &[String]) -> Result<(), String> {
     let mut assist = String::from("all");
+    let mut arena = String::from("all");
     let mut robustness = true;
     let mut it = args.iter();
     while let Some(flag) = it.next() {
         match flag.as_str() {
             "--assist" => assist.clone_from(it.next().ok_or("--assist needs a value")?),
+            "--arena" => arena.clone_from(it.next().ok_or("--arena needs a value")?),
             "--no-robustness" => robustness = false,
             other => {
                 return Err(format!(
-                    "usage: cargo xtask circuit [--assist all|full|standard|reduced|manual] [--no-robustness]\nunknown flag {other}"
+                    "usage: cargo xtask circuit [--assist all|full|standard|reduced|manual] [--arena all|rugged|plain] [--no-robustness]\nunknown flag {other}"
                 ));
             }
         }
@@ -42,6 +45,7 @@ pub fn run_command(args: &[String]) -> Result<(), String> {
         .arg("circuit")
         .args(["--content", CONTENT])
         .args(["--assist", &assist])
+        .args(["--arena", &arena])
         .arg("--json")
         .arg(out.join("report.json"))
         .arg("--traces")

@@ -15,7 +15,7 @@ const init: SimInit = {
   contentUrl: '/c.cpack',
   seed: '1f',
   script: 1,
-  session: { spawn: 1, assist: 2, gEffects: 2 },
+  session: { spawn: 1, assist: 2, gEffects: 2, arena: 0 },
   snapshot: { kind: 'shared', sab: new SharedArrayBuffer(4) },
   input: { kind: 'shared', sab: new SharedArrayBuffer(4) },
   terrainPort: null,
@@ -29,6 +29,8 @@ describe('parseSimCommand', () => {
   it('accepts every well-formed command', () => {
     for (const c of [
       init,
+      { type: 'configure', session: init.session, script: 3 },
+      { type: 'reset' },
       { type: 'start' },
       { type: 'pause' },
       { type: 'resume' },
@@ -54,6 +56,10 @@ describe('parseSimCommand', () => {
     expect(() => parseSimCommand({ ...init, session: null })).toThrow(/init.*session/);
     expect(() => parseSimCommand({ ...init, session: undefined })).toThrow(/init.*session/);
     expect(() => parseSimCommand({ ...init, forceTimer: 1 })).toThrow(/forceTimer: boolean/);
+    expect(() => parseSimCommand({ type: 'configure', script: 0 })).toThrow(/configure.*session/);
+    expect(() => parseSimCommand({ type: 'configure', session: init.session })).toThrow(
+      /configure.*script: number/,
+    );
   });
 
   it('lets any value through for the fields documented as nullable', () => {

@@ -11,10 +11,14 @@
 //!   `tests/golden/flight60.json`.
 //! - `circuit`: the virtual tester's take-off, circuit and landing from the runway (ADR-33), every
 //!   ten seconds for six minutes; golden `tests/golden/circuit.json`.
+//! - `plain-circuit`: the same tester in the `plain` arena (ADR-43) for two minutes, every ten
+//!   seconds, so the second arena's ground contact is covered; golden
+//!   `tests/golden/plain-circuit.json`.
 //!
 //! The native hashes must also equal the goldens, which catches accidental behaviour changes
 //! rather than just cross-build drift. `--compare-only` skips the goldens (native against WASM
-//! only), for work in progress that is known to change behaviour.
+//! only), for work in progress that is known to change behaviour. `--suite NAME` runs one suite,
+//! so a new suite can be blessed without touching the others.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -40,12 +44,16 @@ const FLIGHT60_EVERY: u64 = 60;
 const CIRCUIT_TICKS: u64 = 21_600;
 /// Its checkpoint spacing: every ten seconds.
 const CIRCUIT_EVERY: u64 = 600;
+/// Length of the plain-circuit suite, ticks (two minutes: the take-off roll, lift-off and climb).
+const PLAIN_CIRCUIT_TICKS: u64 = 7_200;
 
 struct Options {
     ticks: u64,
     bless: bool,
     skip_wasm: bool,
     compare_only: bool,
+    /// Run only the suite of this name.
+    suite: Option<String>,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -54,6 +62,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         bless: false,
         skip_wasm: false,
         compare_only: false,
+        suite: None,
     };
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -65,6 +74,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--bless" => o.bless = true,
             "--skip-wasm" => o.skip_wasm = true,
             "--compare-only" => o.compare_only = true,
+            "--suite" => o.suite = Some(it.next().ok_or("--suite needs a value")?.clone()),
             other => return Err(format!("unknown flag {other}")),
         }
     }
@@ -79,6 +89,8 @@ fn parse(args: &[String]) -> Result<Options, String> {
 
 /// One scripted run and its golden.
 struct Suite {
+    /// What `--suite` calls it.
+    name: &'static str,
     /// The `--script` name.
     script: &'static str,
     /// Checkpoint ticks, increasing.
@@ -87,8 +99,50 @@ struct Suite {
     golden: &'static str,
     /// The debug build is compared at this tick (debug is slow).
     debug_probe: u64,
-    /// The session the suite runs under, as `fg hash` / `wasm-hash.ts` flags (ADR-36).
-    session: [&'static str; 6],
+    /// The session the suite runs under, as `fg hash` / `wasm-hash.ts` flags (ADR-36). The golden
+    /// stores them joined and compares them strictly, so a suite's list never changes once
+    /// blessed (the v0.1b suites name no arena: it is the default).
+    session: &'static [&'static str],
+}
+
+/// The suites, in the order they run.
+fn suites(ticks: u64) -> [Suite; 4] {
+    [
+        Suite {
+            name: "erratic",
+            script: "erratic",
+            at: schedule(ticks),
+            golden: "tests/golden/determinism.json",
+            debug_probe: 10_000.min(ticks),
+            session: &["--spawn", "air", "--assist", "standard", "--g", "full"],
+        },
+        Suite {
+            name: "flight60",
+            script: "flight60",
+            at: every(FLIGHT60_TICKS, FLIGHT60_EVERY),
+            golden: "tests/golden/flight60.json",
+            debug_probe: FLIGHT60_TICKS,
+            session: &["--spawn", "air", "--assist", "manual", "--g", "off"],
+        },
+        Suite {
+            name: "circuit",
+            script: "circuit",
+            at: every(CIRCUIT_TICKS, CIRCUIT_EVERY),
+            golden: "tests/golden/circuit.json",
+            debug_probe: 3_000,
+            session: &["--spawn", "runway", "--assist", "standard", "--g", "full"],
+        },
+        Suite {
+            name: "plain-circuit",
+            script: "circuit",
+            at: every(PLAIN_CIRCUIT_TICKS, CIRCUIT_EVERY),
+            golden: "tests/golden/plain-circuit.json",
+            debug_probe: 3_000,
+            session: &[
+                "--spawn", "runway", "--assist", "standard", "--g", "full", "--arena", "plain",
+            ],
+        },
+    ]
 }
 
 /// Powers of ten, every 100 000, and the final tick.
@@ -190,30 +244,21 @@ pub fn run_command(args: &[String]) -> Result<(), String> {
         return Err("wasm-out is missing: run `cargo xtask wasm` first".into());
     }
 
-    let suites = [
-        Suite {
-            script: "erratic",
-            at: schedule(opts.ticks),
-            golden: "tests/golden/determinism.json",
-            debug_probe: 10_000.min(opts.ticks),
-            session: ["--spawn", "air", "--assist", "standard", "--g", "full"],
-        },
-        Suite {
-            script: "flight60",
-            at: every(FLIGHT60_TICKS, FLIGHT60_EVERY),
-            golden: "tests/golden/flight60.json",
-            debug_probe: FLIGHT60_TICKS,
-            session: ["--spawn", "air", "--assist", "manual", "--g", "off"],
-        },
-        Suite {
-            script: "circuit",
-            at: every(CIRCUIT_TICKS, CIRCUIT_EVERY),
-            golden: "tests/golden/circuit.json",
-            debug_probe: 3_000,
-            session: ["--spawn", "runway", "--assist", "standard", "--g", "full"],
-        },
-    ];
-    for suite in &suites {
+    let all = suites(opts.ticks);
+    if let Some(name) = &opts.suite
+        && !all.iter().any(|s| s.name == name)
+    {
+        let names: Vec<_> = all.iter().map(|s| s.name).collect();
+        return Err(format!(
+            "unknown --suite {name} (one of {})",
+            names.join(", ")
+        ));
+    }
+    let suites: Vec<&Suite> = all
+        .iter()
+        .filter(|s| opts.suite.as_deref().is_none_or(|n| n == s.name))
+        .collect();
+    for suite in suites {
         run_suite(&root, suite, content, &opts)?;
     }
     if opts.compare_only {
@@ -230,25 +275,20 @@ fn run_suite(
     content: &str,
     opts: &Options,
 ) -> Result<(), String> {
-    let setup = [
+    let mut setup = vec![
         "--seed",
         SEED_HEX,
         "--script",
         suite.script,
         "--content",
         content,
-        suite.session[0],
-        suite.session[1],
-        suite.session[2],
-        suite.session[3],
-        suite.session[4],
-        suite.session[5],
     ];
+    setup.extend_from_slice(suite.session);
     let at = list(&suite.at);
     let last = *suite.at.last().expect("a suite has checkpoints");
     println!(
         "== {}: native release, {last} ticks, {} checkpoints",
-        suite.script,
+        suite.name,
         suite.at.len()
     );
     let native = parse_lines(
@@ -256,7 +296,7 @@ fn run_suite(
         &capture(
             Command::new(root.join("target/release/fg"))
                 .arg("hash")
-                .args(setup)
+                .args(&setup)
                 .args(["--at", &at]),
         )?,
     )?;
@@ -268,7 +308,7 @@ fn run_suite(
         &capture(
             Command::new(root.join("target/debug/fg"))
                 .arg("hash")
-                .args(setup)
+                .args(&setup)
                 .args(["--ticks", &probe.to_string()]),
         )?,
     )?;
@@ -278,25 +318,25 @@ fn run_suite(
         .cloned()
         .collect();
     if let Some(d) = first_difference("release", &release_at_probe, "debug", &debug) {
-        return Err(format!("{}: native release vs debug: {d}", suite.script));
+        return Err(format!("{}: native release vs debug: {d}", suite.name));
     }
     println!("   release == debug at tick {probe}");
 
     if !opts.skip_wasm {
         for variant in ["single", "threads"] {
-            println!("== {}: wasm {variant} under node", suite.script);
+            println!("== {}: wasm {variant} under node", suite.name);
             let wasm = parse_lines(
                 variant,
                 &capture(
                     Command::new("node")
                         .current_dir(root)
                         .args(["packages/tools/src/wasm-hash.ts", "--variant", variant])
-                        .args(setup)
+                        .args(&setup)
                         .args(["--at", &at]),
                 )?,
             )?;
             if let Some(d) = first_difference("native", &native, variant, &wasm) {
-                return Err(format!("{}: native vs wasm {variant}: {d}", suite.script));
+                return Err(format!("{}: native vs wasm {variant}: {d}", suite.name));
             }
             println!("   identical at all {} checkpoints", native.len());
         }
@@ -362,13 +402,14 @@ fn check_golden(
         return Err(format!(
             "native differs from {}: {d}\n\
              If this change to simulation behaviour is intended, re-bless with \
-             `cargo xtask determinism --bless` and explain why in the PR.",
+             `cargo xtask determinism --bless` (or `--bless --suite NAME`) and explain why in \
+             the PR.",
             suite.golden
         ));
     }
     println!(
         "== {}: golden matches ({} checkpoints)",
-        suite.script,
+        suite.name,
         native.len()
     );
     Ok(())
@@ -409,6 +450,33 @@ mod tests {
         assert_eq!(at.len(), 37);
         assert_eq!((at[0], at[36]), (0, 21_600));
         assert!(at.contains(&3_000), "the debug probe is a checkpoint");
+    }
+
+    #[test]
+    fn the_v0_1b_suites_keep_their_session_lists_and_plain_circuit_adds_the_arena() {
+        // The goldens store these joined and compare them strictly (ADR-39 D2: unchanged).
+        let s = suites(1_000_000);
+        let joined: Vec<String> = s.iter().map(|x| x.session.join(" ")).collect();
+        assert_eq!(joined[0], "--spawn air --assist standard --g full");
+        assert_eq!(joined[1], "--spawn air --assist manual --g off");
+        assert_eq!(joined[2], "--spawn runway --assist standard --g full");
+        assert_eq!(
+            joined[3],
+            "--spawn runway --assist standard --g full --arena plain"
+        );
+        let names: Vec<_> = s.iter().map(|x| x.name).collect();
+        assert_eq!(names, ["erratic", "flight60", "circuit", "plain-circuit"]);
+        let plain = &s[3];
+        assert_eq!((plain.at.len(), plain.at[12]), (13, 7_200));
+        assert!(plain.at.contains(&plain.debug_probe));
+    }
+
+    #[test]
+    fn the_suite_filter_takes_a_name() {
+        let args = |l: &[&str]| l.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
+        let o = parse(&args(&["--bless", "--suite", "plain-circuit"])).unwrap();
+        assert_eq!(o.suite.as_deref(), Some("plain-circuit"));
+        assert!(parse(&args(&["--suite"])).is_err());
     }
 
     #[test]

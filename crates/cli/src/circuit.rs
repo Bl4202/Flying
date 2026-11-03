@@ -3,8 +3,9 @@
 //! The virtual tester takes off from the runway, flies the circuit and lands, under each assist
 //! level, through the real input path. Prints one table per run, optionally writes the
 //! `circuit_report/1` JSON and the 10 Hz CSV traces, and fails (exit 1) when a gate run fails. The
-//! gate is the default load under all four assist levels; with `--robustness` the circuit is also
-//! flown at other fuel loads and reported, which does not affect the exit code.
+//! gate is the default load under all four assist levels, in the arena `--arena` names (`rugged`
+//! by default, `all` for both, ADR-39 D1); with `--robustness` the circuit is also flown at other
+//! fuel loads and reported, which does not affect the exit code.
 
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -13,7 +14,7 @@ use serde_json::{Value, json};
 use sim_core::circuit::Phase;
 use sim_core::circuit::report::{self, CircuitReport, Sample};
 use sim_core::layout::input_script;
-use sim_core::{Assist, DEFAULT_SEED, GEffects, SessionConfig, SimCore, Spawn};
+use sim_core::{Arena, Assist, DEFAULT_SEED, GEffects, SessionConfig, SimCore, Spawn};
 
 /// The fuel the gate flies with, as a fraction of capacity (the spawn's default).
 pub const GATE_FUEL: f64 = 0.6;
@@ -33,6 +34,7 @@ const LEVELS: [(&str, Assist); 4] = [
 pub struct Args {
     content: PathBuf,
     assists: Vec<(&'static str, Assist)>,
+    arenas: Vec<Arena>,
     json: Option<PathBuf>,
     traces: Option<PathBuf>,
     robustness: bool,
@@ -47,6 +49,7 @@ pub fn parse(args: &[String]) -> Result<Args, String> {
     let mut a = Args {
         content: PathBuf::new(),
         assists: LEVELS.to_vec(),
+        arenas: vec![Arena::Rugged],
         json: None,
         traces: None,
         robustness: false,
@@ -74,6 +77,13 @@ pub fn parse(args: &[String]) -> Result<Args, String> {
                     ]
                 };
             }
+            "--arena" => {
+                a.arenas = if value == "all" {
+                    Arena::ALL.to_vec()
+                } else {
+                    vec![Arena::from_name(value).ok_or_else(|| format!("unknown arena {value}"))?]
+                };
+            }
             "--json" => a.json = Some(PathBuf::from(value)),
             "--traces" => a.traces = Some(PathBuf::from(value)),
             "--seed" => {
@@ -90,6 +100,7 @@ pub fn parse(args: &[String]) -> Result<Args, String> {
 /// One flown circuit.
 struct Run {
     name: &'static str,
+    arena: Arena,
     fuel: f64,
     gate: bool,
     report: CircuitReport,
@@ -99,8 +110,8 @@ struct Run {
 fn fly(
     a: &Args,
     bytes: &[u8],
-    name: &'static str,
-    assist: Assist,
+    (name, assist): (&'static str, Assist),
+    arena: Arena,
     fuel: f64,
 ) -> Result<Run, String> {
     let mut core = SimCore::new(a.seed);
@@ -113,6 +124,7 @@ fn fly(
         spawn: Spawn::Runway,
         assist,
         g_effects: GEffects::Full,
+        arena,
     })
     .map_err(|e| format!("cannot configure the session: {e}"))?;
     if !core.set_input_script(input_script::CIRCUIT as u32) {
@@ -131,6 +143,7 @@ fn fly(
     });
     Ok(Run {
         name,
+        arena,
         fuel,
         gate: (fuel - GATE_FUEL).abs() < 1e-9,
         report,
@@ -138,13 +151,15 @@ fn fly(
     })
 }
 
-const TRACE_HEADER: &str =
-    "t_s,phase,along_m,across_m,agl_m,cas_mps,gs_mps,alpha_deg,nz_g,wow,gear_pos,stall_warning\n";
+/// The trace columns: the v0.1b set, then the snapshot v4 fields and what the audio needs to
+/// replay a sortie offline (ADR-39 A5).
+const TRACE_HEADER: &str = "t_s,phase,along_m,across_m,agl_m,cas_mps,gs_mps,alpha_deg,nz_g,wow,gear_pos,stall_warning,\
+tas_mps,qbar_pa,throttle,engine_core,ab_level,engine_bits,airbrake,fuel_flow_kgps,alpha_warn_deg,n_max_g,max_nz_g,vs_mps,flags,flags2\n";
 
 fn trace_row(out: &mut String, s: &Sample) {
     let _ = writeln!(
         out,
-        "{:.1},{},{:.1},{:.2},{:.2},{:.2},{:.2},{:.2},{:.3},{},{:.2},{}",
+        "{:.1},{},{:.1},{:.2},{:.2},{:.2},{:.2},{:.2},{:.3},{},{:.2},{},{:.2},{:.1},{:.4},{:.4},{:.4},{},{:.3},{:.4},{:.2},{:.2},{:.3},{:.2},{},{}",
         s.t_s,
         s.phase.name(),
         s.along_m,
@@ -156,7 +171,21 @@ fn trace_row(out: &mut String, s: &Sample) {
         s.nz_g,
         u8::from(s.wow),
         s.gear_pos,
-        u8::from(s.stall_warning)
+        u8::from(s.stall_warning),
+        s.tas_mps,
+        s.qbar_pa,
+        s.throttle,
+        s.engine_core,
+        s.ab_level,
+        s.engine_bits,
+        s.airbrake,
+        s.fuel_flow_kgps,
+        s.alpha_warn_rad.to_degrees(),
+        s.n_max_g,
+        s.max_nz_g,
+        s.vs_mps,
+        s.flags,
+        s.flags2
     );
 }
 
@@ -165,8 +194,9 @@ fn markdown(r: &Run) -> String {
     let rep = &r.report;
     let _ = writeln!(
         s,
-        "\n### {} assist, {:.0} kg{}: {}",
+        "\n### {} assist, {}, {:.0} kg{}: {}",
         r.name,
+        r.arena.name(),
         rep.mass_kg,
         if r.gate { "" } else { " (informational)" },
         if rep.pass { "pass" } else { "FAIL" }
@@ -210,6 +240,7 @@ fn run_json(r: &Run) -> Value {
         .collect();
     json!({
         "assist": r.name,
+        "arena": r.arena.name(),
         "fuel_fraction": r.fuel,
         "mass_kg": rep.mass_kg,
         "gate": r.gate,
@@ -239,7 +270,7 @@ fn report_json(runs: &[Run], build: &str) -> Value {
     let failed: Vec<String> = runs
         .iter()
         .filter(|r| r.gate && !r.report.pass)
-        .map(|r| r.name.to_owned())
+        .map(|r| format!("{}/{}", r.arena.name(), r.name))
         .collect();
     json!({
         "schema": "circuit_report/1",
@@ -258,11 +289,14 @@ pub fn run(args: &[String], build: &str) -> Result<bool, String> {
     let bytes = std::fs::read(&a.content)
         .map_err(|e| format!("cannot read {}: {e}", a.content.display()))?;
     let mut runs = Vec::new();
-    for &(name, assist) in &a.assists {
-        runs.push(fly(&a, &bytes, name, assist, GATE_FUEL)?);
-        if a.robustness {
-            for fuel in ROBUSTNESS_FUELS {
-                runs.push(fly(&a, &bytes, name, assist, fuel)?);
+    for &arena in &a.arenas {
+        for &level in &a.assists {
+            runs.push(fly(&a, &bytes, level, arena, GATE_FUEL)?);
+            // The robustness loads are flown in the default arena only (informational).
+            if a.robustness && arena == Arena::Rugged {
+                for fuel in ROBUSTNESS_FUELS {
+                    runs.push(fly(&a, &bytes, level, arena, fuel)?);
+                }
             }
         }
     }
@@ -280,15 +314,21 @@ pub fn run(args: &[String], build: &str) -> Result<bool, String> {
         std::fs::create_dir_all(dir)
             .map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
         for r in &runs {
-            let path = dir.join(format!("{}_{:.0}.csv", r.name, r.fuel * 100.0));
+            // v0.1b's names for the default arena; the other arena is prefixed.
+            let prefix = if r.arena == Arena::Rugged {
+                String::new()
+            } else {
+                format!("{}_", r.arena.name())
+            };
+            let path = dir.join(format!("{prefix}{}_{:.0}.csv", r.name, r.fuel * 100.0));
             std::fs::write(&path, &r.trace)
                 .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
         }
     }
-    let failed: Vec<&str> = runs
+    let failed: Vec<String> = runs
         .iter()
         .filter(|r| r.gate && !r.report.pass)
-        .map(|r| r.name)
+        .map(|r| format!("{}/{}", r.arena.name(), r.name))
         .collect();
     println!(
         "\ngate: {}",
@@ -327,10 +367,16 @@ mod tests {
         .unwrap();
         assert_eq!(a.content, PathBuf::from("x.cpack"));
         assert_eq!(a.assists, [("reduced", Assist::Reduced)]);
+        assert_eq!(a.arenas, [Arena::Rugged]);
         assert!(a.robustness);
         assert_eq!(a.seed, 0xff);
         let all = parse(&args(&["--content", "x", "--assist", "all"])).unwrap();
         assert_eq!(all.assists.len(), 4);
+        let both = parse(&args(&["--content", "x", "--arena", "all"])).unwrap();
+        assert_eq!(both.arenas, Arena::ALL);
+        let plain = parse(&args(&["--content", "x", "--arena", "plain"])).unwrap();
+        assert_eq!(plain.arenas, [Arena::Plain]);
+        assert!(parse(&args(&["--content", "x", "--arena", "flat"])).is_err());
         assert!(parse(&args(&[])).is_err(), "--content is required");
         assert!(parse(&args(&["--content", "x", "--assist", "wat"])).is_err());
         assert!(parse(&args(&["--content", "x", "--wat", "1"])).is_err());
@@ -357,6 +403,7 @@ mod tests {
         };
         let runs = [Run {
             name: "standard",
+            arena: Arena::Rugged,
             fuel: GATE_FUEL,
             gate: true,
             report: rep,
@@ -365,8 +412,9 @@ mod tests {
         let v = report_json(&runs, "fg test");
         assert_eq!(v["schema"], "circuit_report/1");
         assert_eq!(v["gate"]["pass"], false);
-        assert_eq!(v["gate"]["failed"][0], "standard");
+        assert_eq!(v["gate"]["failed"][0], "rugged/standard");
         let run = &v["runs"][0];
+        assert_eq!(run["arena"], "rugged");
         assert_eq!(run["criteria"].as_array().unwrap().len(), 9);
         assert_eq!(run["criteria"][0]["id"], "C1");
         assert!(run["phase_times_s"]["rollout"].is_null(), "NaN is null");

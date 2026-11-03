@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 use sim_core::input::{FRAME_BYTES, InputFrame};
 use sim_core::layout::{axis, button, ownship_flag2, snapshot as snap, spawn_request};
-use sim_core::{Assist, GEffects, SessionConfig, SimCore, Spawn};
+use sim_core::{Arena, Assist, GEffects, SessionConfig, SimCore, Spawn};
 
 /// The real core pack, baked once.
 fn pack() -> &'static [u8] {
@@ -23,6 +23,7 @@ const AIR_STANDARD: SessionConfig = SessionConfig {
     spawn: Spawn::Air,
     assist: Assist::Standard,
     g_effects: GEffects::Full,
+    arena: Arena::Rugged,
 };
 
 /// A core and the host's side of the conversation: sequence numbers, the throttle lever and the
@@ -394,6 +395,10 @@ fn the_session_is_part_of_the_aircrafts_hash() {
         },
         SessionConfig {
             assist: Assist::Full,
+            ..AIR_STANDARD
+        },
+        SessionConfig {
+            arena: Arena::Plain,
             ..AIR_STANDARD
         },
     ] {

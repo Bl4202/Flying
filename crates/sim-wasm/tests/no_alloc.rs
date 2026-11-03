@@ -9,7 +9,8 @@
 //! flaps, the parking and toe brakes, every assist level in turn, and resets to the air and back.
 //!
 //! Then the virtual tester's whole sortie under each assist level (take-off, circuit, landing and
-//! rollout): the touchdown, the bounce and the stop.
+//! rollout): the touchdown, the bounce and the stop. Then, after `fg_reset` (which, like
+//! `fg_start`, may allocate), the same sortie in the `plain` arena (ADR-43).
 //!
 //! A G-LOC is out of reach through the ABI (twelve seconds of sustained 9 g are beyond the
 //! aircraft's energy); the control system's G-LOC path is in `fcs_no_alloc.rs`, and the ground
@@ -24,13 +25,13 @@ use std::cell::Cell;
 use sim_core::InputFrame;
 use sim_core::dmath;
 use sim_core::layout::{
-    assist_level, axis, button, config_status, content_status, counter, g_effects, input_frame,
-    input_script, spawn_kind, spawn_request,
+    arena, assist_level, axis, button, config_status, content_status, counter, g_effects,
+    input_frame, input_script, spawn_kind, spawn_request,
 };
 use sim_wasm::abi::{
     fg_configure, fg_content_reserve, fg_init, fg_load_content, fg_profile_ptr, fg_push_inputs,
-    fg_set_input_script, fg_set_profiling, fg_snapshot_ptr, fg_start, fg_state_hash_lo, fg_step,
-    with_content_buffer, with_input_buffer, with_profile,
+    fg_reset, fg_set_input_script, fg_set_profiling, fg_snapshot_ptr, fg_start, fg_state_hash_lo,
+    fg_step, with_content_buffer, with_input_buffer, with_profile,
 };
 
 thread_local! {
@@ -153,7 +154,8 @@ fn the_tick_path_allocates_nothing_after_warm_up() {
         fg_configure(
             spawn_kind::AIR as u32,
             assist_level::MANUAL as u32,
-            g_effects::FULL as u32
+            g_effects::FULL as u32,
+            arena::RUGGED as u32
         ),
         config_status::OK as u32
     );
@@ -346,7 +348,8 @@ fn circuit_flight(pack: &[u8]) {
             fg_configure(
                 spawn_kind::RUNWAY as u32,
                 assist as u32,
-                g_effects::FULL as u32
+                g_effects::FULL as u32,
+                arena::RUGGED as u32
             ),
             config_status::OK as u32
         );
@@ -370,6 +373,35 @@ fn circuit_flight(pack: &[u8]) {
         assert_eq!(counters(counter::FDM_FAULTS), 0);
         assert_eq!(counters(counter::HARD_LANDINGS), 0);
     }
+
+    // A session reset (it keeps the content) and the same sortie in the other arena.
+    assert_eq!(fg_reset(), config_status::OK as u32);
+    assert_eq!(
+        fg_configure(
+            spawn_kind::RUNWAY as u32,
+            assist_level::STANDARD as u32,
+            g_effects::FULL as u32,
+            arena::PLAIN as u32
+        ),
+        config_status::OK as u32
+    );
+    assert_eq!(fg_set_input_script(input_script::CIRCUIT as u32), 1);
+    assert_eq!(fg_start(), 1);
+    for _ in 0..300 {
+        assert_eq!(fg_step(1), 1);
+    }
+    let before = allocations();
+    for _ in 0..(230 * 60) {
+        assert_eq!(fg_step(1), 1);
+    }
+    assert_eq!(
+        allocations() - before,
+        0,
+        "the circuit in the plain arena allocated"
+    );
+    assert!(counters(counter::TOUCHDOWNS) >= 1, "it landed on the plain");
+    assert_eq!(counters(counter::CRASHES), 0);
+    assert_eq!(counters(counter::HARD_LANDINGS), 0);
 }
 
 /// `input_flag::MOUSE_AIM` as the frame's flag word.

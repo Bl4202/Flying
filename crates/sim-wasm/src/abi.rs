@@ -1,4 +1,4 @@
-//! Exported C ABI, version 3. See `UNSAFE.md` for the invariants that make the global state sound
+//! Exported C ABI, version 4. See `UNSAFE.md` for the invariants that make the global state sound
 //! and for the rules about the pointers handed out here.
 //!
 //! The host (the Sim Worker) drives the core through plain functions and exchanges bytes through
@@ -8,13 +8,13 @@
 //! |---|---|---|---|
 //! | content | host writes | `fg_content_reserve(len)` | next `fg_content_reserve`, `fg_init`, or a successful `fg_load_content` |
 //! | input staging | host writes | `fg_input_ptr()` | forever |
-//! | snapshot | host reads | `fg_snapshot_ptr()` | next `fg_init` |
+//! | snapshot | host reads | `fg_snapshot_ptr()` | next `fg_init` (`fg_reset` keeps it) |
 //! | profile | host reads | `fg_profile_ptr()` (refreshes it) | next `fg_init` |
 //! | terrain patch | host reads | `fg_terrain_ptr()` after `fg_terrain_fill` | next `fg_init` or `fg_terrain_fill` |
 //!
-//! Any call that allocates (`fg_init`, `fg_content_reserve`, `fg_load_content`, the first
-//! `fg_terrain_fill`) may grow memory, which replaces the `ArrayBuffer` behind every JavaScript
-//! view: re-derive views after those calls. `fg_step` and `fg_push_inputs` never allocate
+//! Any call that allocates (`fg_init`, `fg_content_reserve`, `fg_load_content`, `fg_configure`
+//! with a new arena, `fg_reset`, `fg_start`, the first `fg_terrain_fill`) may grow memory, which
+//! replaces the `ArrayBuffer` behind every JavaScript view: re-derive views after those calls. `fg_step` and `fg_push_inputs` never allocate
 //! (`tests/no_alloc.rs`).
 //!
 //! Layouts and status codes are in `sim_core::layout`, generated into TypeScript by
@@ -219,12 +219,13 @@ pub extern "C" fn fg_resume() -> u32 {
     with_core(|c| u32::from(c.resume())).unwrap_or(0)
 }
 
-/// Sets the session while the core is idle: `spawn` (`spawn_kind`), `assist` (`assist_level`) and
-/// `g_effects` (`g_effects`). Returns a `config_status`; a refused session changes nothing.
+/// Sets the session while the core is idle: `spawn` (`spawn_kind`), `assist` (`assist_level`),
+/// `g_effects` (`g_effects`) and `arena` (`arena`). Returns a `config_status`; a refused session
+/// changes nothing. A new arena rebuilds the world, so it may allocate.
 #[unsafe(no_mangle)]
-pub extern "C" fn fg_configure(spawn: u32, assist: u32, g_effects: u32) -> u32 {
+pub extern "C" fn fg_configure(spawn: u32, assist: u32, g_effects: u32, arena: u32) -> u32 {
     with_core(|c| {
-        let Ok(session) = SessionConfig::from_codes(spawn, assist, g_effects) else {
+        let Ok(session) = SessionConfig::from_codes(spawn, assist, g_effects, arena) else {
             return config_status::INVALID as u32;
         };
         match c.configure(session) {
@@ -232,6 +233,19 @@ pub extern "C" fn fg_configure(spawn: u32, assist: u32, g_effects: u32) -> u32 {
             Err(ConfigError::NotIdle) => config_status::NOT_IDLE as u32,
             Err(ConfigError::Invalid) => config_status::INVALID as u32,
         }
+    })
+    .unwrap_or(config_status::NO_CORE as u32)
+}
+
+/// Returns the core to `Idle` from any state, as a fresh core from the same seed with the content
+/// it has loaded (ADR-43): tick 0, the default session and arena, no script, nothing queued. The
+/// snapshot address stays the same. Returns a `config_status` (`OK`, or `NO_CORE` before
+/// `fg_init`). May allocate.
+#[unsafe(no_mangle)]
+pub extern "C" fn fg_reset() -> u32 {
+    with_core(|c| {
+        c.reset();
+        config_status::OK as u32
     })
     .unwrap_or(config_status::NO_CORE as u32)
 }
@@ -384,11 +398,27 @@ mod tests {
         with_core(|c| c.snapshot_bytes().to_vec()).unwrap()
     }
 
+    /// `fg_reset` returns the core to idle at tick 0, with the snapshot where it was and the
+    /// session open again.
+    fn check_reset(seed: u64) {
+        let snapshot_at = fg_snapshot_ptr();
+        assert_eq!(fg_reset(), config_status::OK as u32);
+        assert_eq!(fg_core_state(), core_state::IDLE as u32);
+        assert_eq!(join(fg_tick_lo(), fg_tick_hi()), 0);
+        assert_eq!(fg_snapshot_ptr(), snapshot_at);
+        assert_eq!(snapshot()[snap::O_ARENA], 0, "the default arena again");
+        assert_eq!(
+            join(fg_state_hash_lo(), fg_state_hash_hi()),
+            SimCore::new(seed).state_hash()
+        );
+        assert_eq!(fg_configure(0, 2, 2, 0), config_status::OK as u32);
+    }
+
     // One test only: the exports share a process-wide global.
     #[test]
     fn the_abi_drives_the_core_end_to_end() {
         // Before init everything is inert.
-        assert_eq!(fg_abi_version(), 3);
+        assert_eq!(fg_abi_version(), 4);
         assert_eq!(fg_core_state(), core_state::NONE as u32);
         assert_eq!(
             (
@@ -400,7 +430,8 @@ mod tests {
             (0, 0, 0, 0)
         );
         assert_eq!(fg_load_content(10), content_status::NO_CORE as u32);
-        assert_eq!(fg_configure(0, 2, 2), config_status::NO_CORE as u32);
+        assert_eq!(fg_configure(0, 2, 2, 0), config_status::NO_CORE as u32);
+        assert_eq!(fg_reset(), config_status::NO_CORE as u32);
         assert_eq!(fg_push_inputs(1), 0);
         assert_eq!(fg_terrain_fill(0.0, 0.0, 100.0), 0);
 
@@ -428,13 +459,15 @@ mod tests {
         });
 
         // The session: refused when out of range, accepted while idle, refused once started.
-        assert_eq!(fg_configure(9, 2, 2), config_status::INVALID as u32);
-        assert_eq!(fg_configure(0, 0, 2), config_status::INVALID as u32);
-        assert_eq!(fg_configure(1, 4, 0), config_status::OK as u32);
+        assert_eq!(fg_configure(9, 2, 2, 0), config_status::INVALID as u32);
+        assert_eq!(fg_configure(0, 0, 2, 0), config_status::INVALID as u32);
+        assert_eq!(fg_configure(0, 2, 2, 7), config_status::INVALID as u32);
+        assert_eq!(fg_configure(1, 4, 0, 1), config_status::OK as u32);
+        assert_eq!(snapshot()[snap::O_ARENA], 1, "the snapshot names the arena");
 
         // Lifecycle through the ABI.
         assert_eq!(fg_start(), 1);
-        assert_eq!(fg_configure(0, 2, 2), config_status::NOT_IDLE as u32);
+        assert_eq!(fg_configure(0, 2, 2, 0), config_status::NOT_IDLE as u32);
         assert_eq!(fg_start(), 0, "already running");
         assert_eq!(fg_core_state(), core_state::RUNNING as u32);
         assert_eq!(fg_load_content(1), content_status::NOT_IDLE as u32);
@@ -474,6 +507,8 @@ mod tests {
         );
         assert_ne!(fg_terrain_ptr(), 0);
         assert_eq!(fg_terrain_fill(f64::NAN, 0.0, 100.0), 0);
+
+        check_reset(seed);
 
         // The ABI and the core agree on every hash after identical work.
         assert_eq!(fg_init(lo(seed), hi(seed)), 0);

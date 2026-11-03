@@ -28,6 +28,12 @@ pub struct Profiler {
 }
 
 impl Profiler {
+    /// The clock this profiler reads.
+    #[must_use]
+    pub fn clock(&self) -> ClockFn {
+        self.clock
+    }
+
     /// A profiler reading time from `clock`.
     #[must_use]
     pub fn new(clock: ClockFn) -> Self {

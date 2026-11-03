@@ -54,7 +54,7 @@ describe('flightWarnings', () => {
     for (const [bit, id] of cases) expect(ids(status({ flags2: bit })), id).toEqual([id]);
   });
 
-  it('puts warnings before cautions, most urgent first', () => {
+  it('puts warnings before cautions, most urgent first (GDD 54.8: the ground first)', () => {
     const s = status({
       flags: OWNSHIP_FLAG.STALL_WARN,
       flags2:
@@ -73,6 +73,9 @@ describe('flightWarnings', () => {
     ]);
     expect(stripSeverity(s)).toBe('warning');
     expect(stripSeverity(status({ flags2: OWNSHIP_FLAG2.G_LIMIT }))).toBe('caution');
+    // Ground collision outranks the stall.
+    const both = status({ flags: OWNSHIP_FLAG.STALL_WARN, agl: 300, vs: -100, cas: 200 });
+    expect(ids(both)).toEqual(['pullup', 'stall']);
   });
 
   describe('pull up', () => {

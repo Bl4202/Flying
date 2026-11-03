@@ -5,7 +5,8 @@
  * Blocks the module owns (snapshot, profile, terrain) are handed out as views onto its memory.
  * Growing the memory replaces the `ArrayBuffer` behind every view, so each accessor rebuilds its
  * view when the buffer's identity changed; a view is good until the next call into the module that
- * can allocate (`init`, `loadContent`, `fillTerrain`). Copy what must outlive that.
+ * can allocate (`init`, `loadContent`, `configure` with a new arena, `reset`, `start`,
+ * `fillTerrain`). Copy what must outlive that.
  */
 import {
   hex64,
@@ -17,6 +18,7 @@ import {
 } from '@flying/platform-web/wasm-loader';
 import {
   ABI,
+  ARENA,
   ASSIST_LEVEL,
   CONFIG_STATUS,
   CONTENT_STATUS,
@@ -29,7 +31,7 @@ import {
 
 export { HASH_KIND, hex64 };
 
-/** What kind of sortie to start (GDD 6.3 `session_config/1`, ADR-36). */
+/** What kind of sortie to start (GDD 6.3 `session_config/1`, ADR-36, ADR-43). */
 export interface SessionConfig {
   /** `SPAWN_KIND`: the runway or the air. */
   spawn: number;
@@ -37,13 +39,16 @@ export interface SessionConfig {
   assist: number;
   /** `G_EFFECTS`: Off, Reduced or Full. */
   gEffects: number;
+  /** `ARENA`: the procedural test arena, Rugged or Plain. */
+  arena: number;
 }
 
-/** The session the game starts with: the runway, Standard assist, full g-effects. */
+/** The session the game starts with: the runway, Standard assist, full g-effects, Rugged. */
 export const DEFAULT_SESSION: Readonly<SessionConfig> = {
   spawn: SPAWN_KIND.RUNWAY,
   assist: ASSIST_LEVEL.STANDARD,
   gEffects: G_EFFECTS.FULL,
+  arena: ARENA.RUGGED,
 };
 
 /**
@@ -55,6 +60,7 @@ export const SCRIPTED_SESSION: Readonly<SessionConfig> = {
   spawn: SPAWN_KIND.AIR,
   assist: ASSIST_LEVEL.STANDARD,
   gEffects: G_EFFECTS.FULL,
+  arena: ARENA.RUGGED,
 };
 
 /** Must equal `ABI_VERSION` in `crates/sim-wasm/src/abi.rs`. */
@@ -68,8 +74,16 @@ export interface SimHandle {
   init(seed: bigint): void;
   /** Loads a `.cpack` into an idle core. Throws if the core refuses it. */
   loadContent(bytes: Uint8Array): void;
-  /** Sets the session on an idle core, before `start`. Throws if the core refuses it. */
+  /**
+   * Sets the session on an idle core, before `start`. Throws if the core refuses it. Set the
+   * script after this (the circuit tester reads the arena it flies in).
+   */
   configure(session: SessionConfig): void;
+  /**
+   * Back to `Idle` from any state, as a fresh core with the same content (ADR-43): tick 0, the
+   * default session, no script. The snapshot address stays the same.
+   */
+  reset(): void;
   /** Selects the scripted pilot (`INPUT_SCRIPT`). Returns false for an unknown script. */
   setInputScript(script: number): boolean;
   /** `Idle -> Running`. Returns false if the core was not idle. */
@@ -155,6 +169,7 @@ export function wrapSim({ variant, instance, memory }: LoadedWasm): SimHandle {
   const pause = requireFn(x, 'fg_pause');
   const resume = requireFn(x, 'fg_resume');
   const configure = requireFn(x, 'fg_configure');
+  const reset = requireFn(x, 'fg_reset');
   const setScript = requireFn(x, 'fg_set_input_script');
   const inputPtr = requireFn(x, 'fg_input_ptr');
   const inputCapacity = requireFn(x, 'fg_input_capacity');
@@ -207,9 +222,15 @@ export function wrapSim({ variant, instance, memory }: LoadedWasm): SimHandle {
       }
     },
     configure(session) {
-      const status = configure(session.spawn, session.assist, session.gEffects);
+      const status = configure(session.spawn, session.assist, session.gEffects, session.arena);
       if (status !== CONFIG_STATUS.OK) {
         throw new Error(`SYS-009: session rejected (status ${String(status)})`);
+      }
+    },
+    reset() {
+      const status = reset();
+      if (status !== CONFIG_STATUS.OK) {
+        throw new Error(`SYS-009: reset refused (status ${String(status)})`);
       }
     },
     setInputScript: (script) => setScript(script) === 1,

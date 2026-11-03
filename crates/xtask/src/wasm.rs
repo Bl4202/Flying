@@ -38,6 +38,7 @@ const REQUIRED_EXPORTS: &[&str] = &[
     "fg_pause",
     "fg_resume",
     "fg_configure",
+    "fg_reset",
     "fg_set_input_script",
     "fg_input_ptr",
     "fg_input_capacity",

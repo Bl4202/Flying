@@ -7,7 +7,7 @@ use flight::gear::GroundState;
 use crate::input::{FRAME_BYTES, InputFrame};
 use crate::layout::{axis, crash_cause, fcs_mode, ownship_flag, ownship_flag2, snapshot as snap};
 use crate::math::DVec3;
-use crate::session::{Assist, GEffects, SessionConfig, Spawn};
+use crate::session::{Arena, Assist, GEffects, SessionConfig, Spawn};
 use crate::sim::SimCore;
 use crate::test_support::{flying_under, slot};
 
@@ -15,12 +15,14 @@ const RUNWAY: SessionConfig = SessionConfig {
     spawn: Spawn::Runway,
     assist: Assist::Standard,
     g_effects: GEffects::Full,
+    arena: Arena::Rugged,
 };
 
 const AIR: SessionConfig = SessionConfig {
     spawn: Spawn::Air,
     assist: Assist::Standard,
     g_effects: GEffects::Full,
+    arena: Arena::Rugged,
 };
 
 /// Sends neutral frames (with `f` applied) for `ticks` ticks, acknowledging the spawn.

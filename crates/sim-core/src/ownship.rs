@@ -1,14 +1,14 @@
 //! The player's ownship: the 6-DOF aircraft when content provides one, otherwise the kinematic
 //! spectator of v0.0b (ADR-29).
 
-use flight::aircraft::{AircraftModel, AircraftState};
+use flight::aircraft::{AircraftModel, AircraftState, STALL_WARNING_MARGIN_DEG};
 use flight::env::FlightEnv;
 use flight::gear::{GEAR_DOWN_MIN, GroundEvents};
 use flight::physio::{MAX_DELAY_TICKS, PhysioEffects, PhysioState};
 use flight::structure::{StructureFlags, StructureState};
 
 use crate::hash::StateHasher;
-use crate::layout::{crash_cause, fcs_mode, ownship_flag, ownship_flag2};
+use crate::layout::{crash_cause, engine_bit, fcs_mode, ownship_flag, ownship_flag2};
 use crate::math::{DQuat, DVec3};
 use crate::observer::Observer;
 use crate::services::Services;
@@ -335,6 +335,24 @@ pub struct OwnshipView {
     pub crash_cause: u8,
     /// Gear bits (see the snapshot layout).
     pub gear_bits: u8,
+    /// The arena the world is (`arena`).
+    pub arena: u8,
+    /// `engine_bit` bits of the first engine.
+    pub engine_bits: u8,
+    /// Dynamic pressure, Pa.
+    pub qbar_pa: f64,
+    /// Total fuel flow, kg/s.
+    pub fuel_flow_kgps: f64,
+    /// Core thrust of the first engine as a fraction of military thrust.
+    pub engine_core: f64,
+    /// Afterburner level of the first engine, a fraction of its thrust increment.
+    pub ab_level: f64,
+    /// The highest load factor since the last spawn, g.
+    pub max_nz_g: f64,
+    /// The positive load limit for the configuration the aircraft is in, g.
+    pub n_max_g: f64,
+    /// The angle of attack at which the stall warning starts, rad.
+    pub alpha_warn_rad: f64,
 }
 
 impl Default for OwnshipView {
@@ -379,6 +397,15 @@ impl Default for OwnshipView {
             aim_rad: [0.0; 2],
             crash_cause: crash_cause::NONE as u8,
             gear_bits: 0,
+            arena: 0,
+            engine_bits: 0,
+            qbar_pa: 0.0,
+            fuel_flow_kgps: 0.0,
+            engine_core: 0.0,
+            ab_level: 0.0,
+            max_nz_g: 0.0,
+            n_max_g: 0.0,
+            alpha_warn_rad: 0.0,
         }
     }
 }
@@ -397,10 +424,14 @@ impl OwnshipView {
                 throttle: o.throttle(),
                 altitude_m: svc.geo.height_msl_m(o.pos_bf()),
                 flags: ownship_flag::SPECTATOR as u8,
+                arena: svc.arena.code(),
                 ..Self::default()
             },
             // An aircraft without a model cannot happen (the model is built before the slot).
-            (Ownship::Aircraft(_), None) => Self::default(),
+            (Ownship::Aircraft(_), None) => Self {
+                arena: svc.arena.code(),
+                ..Self::default()
+            },
         }
     }
 }
@@ -459,6 +490,24 @@ fn gear_bits(a: &AircraftSlot, model: &AircraftModel) -> u8 {
     bits
 }
 
+/// Snapshot `O_ENGINE_BITS`: the first engine's state.
+fn engine_bits(e: &flight::engine::EngineState) -> u8 {
+    let mut bits = 0;
+    if e.running {
+        bits |= engine_bit::RUNNING;
+    }
+    if e.ab_lit {
+        bits |= engine_bit::AB_LIT;
+    }
+    if e.compressor_stalled {
+        bits |= engine_bit::COMPRESSOR_STALLED;
+    }
+    if !e.running && e.relight_s > 0.0 {
+        bits |= engine_bit::RELIGHTING;
+    }
+    bits as u8
+}
+
 fn aircraft_view(a: &AircraftSlot, model: &AircraftModel, svc: &Services, t_s: f64) -> OwnshipView {
     let env = svc.flight_env();
     let s = &a.state;
@@ -485,6 +534,8 @@ fn aircraft_view(a: &AircraftSlot, model: &AircraftModel, svc: &Services, t_s: f
     };
     // What the picture shows: nothing with the dial off (the pilot's state still advances).
     let shown = a.session.g_effects != GEffects::Off;
+    let engine = &s.engines[0];
+    let alpha_warn_deg = model.aero.alpha_peak_deg(t.air.mach) - STALL_WARNING_MARGIN_DEG;
     OwnshipView {
         pos_bf: t.ref_point_bf,
         att: s.body.att,
@@ -529,5 +580,16 @@ fn aircraft_view(a: &AircraftSlot, model: &AircraftModel, svc: &Services, t_s: f
         aim_rad: a.aim.unwrap_or([0.0; 2]),
         crash_cause: cause,
         gear_bits: gear_bits(a, model),
+        arena: svc.arena.code(),
+        engine_bits: engine_bits(engine),
+        qbar_pa: t.air.qbar_pa,
+        fuel_flow_kgps: t.fuel_flow_kgps,
+        engine_core: engine.core,
+        ab_level: engine.ab_level,
+        max_nz_g: a.structure.max_n_g,
+        n_max_g: model
+            .limits
+            .n_max_for(s.surfaces.gear, model.flap_fraction(&s.surfaces)),
+        alpha_warn_rad: alpha_warn_deg.to_radians(),
     }
 }
