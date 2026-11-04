@@ -9,6 +9,7 @@ import { runRendererContract, WebGl2Renderer, WebGpuRenderer } from '@flying/ren
 import { SHADERS } from '@flying/render/shader-sources';
 import type { Renderer } from '@flying/render/renderer';
 import type { DeepFeatures } from '@flying/platform-web';
+import { mountSelfTestTable } from './selftest-table.ts';
 
 type Backend = 'webgl2' | 'webgpu';
 
@@ -53,44 +54,10 @@ async function runBackend(backend: Backend, features: DeepFeatures): Promise<Bac
 }
 
 export async function runRendererSelfTest(args: RendererSelfTestArgs): Promise<void> {
-  const table = args.root.querySelector('table');
-  if (!table) {
-    throw new Error('SYS-010: the self-test table is missing from the page');
-  }
-  args.root.hidden = false;
-  const row = (id: string, label: string, value: string, state: string): void => {
-    const tr = document.createElement('tr');
-    const th = document.createElement('th');
-    th.scope = 'row';
-    th.textContent = label;
-    const td = document.createElement('td');
-    td.dataset['testid'] = id;
-    td.dataset['state'] = state;
-    td.textContent = value;
-    tr.append(th, td);
-    table.append(tr);
-  };
-  const status = document.createElement('td');
-  status.dataset['testid'] = 'status';
-  status.textContent = 'running';
-  const head = document.createElement('tr');
-  const th = document.createElement('th');
-  th.scope = 'row';
-  th.textContent = 'Status';
-  head.append(th, status);
-  table.append(head);
-
+  const table = mountSelfTestTable(args.root);
   for (const backend of ['webgl2', 'webgpu'] as const) {
     const outcome = await runBackend(backend, args.features);
-    row(
-      `contract-${backend}`,
-      `Renderer contract, ${backend}`,
-      outcome.text,
-      outcome.state === 'pass' ? 'ok' : 'warn',
-    );
-    // The data attribute carries the machine-readable result next to the text.
-    const cell = table.querySelector<HTMLElement>(`[data-testid="contract-${backend}"]`);
-    if (cell) cell.dataset['result'] = outcome.state;
+    table.row(`contract-${backend}`, `Renderer contract, ${backend}`, outcome.text, outcome.state);
   }
-  status.textContent = 'done';
+  table.done();
 }

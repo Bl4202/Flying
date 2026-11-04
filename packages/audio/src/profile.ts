@@ -89,6 +89,8 @@ export interface MixProfile {
   /** The aircraft bus is lowered by this much (a negative number) while a warning sounds. */
   readonly duckDb: number;
   readonly levelOffsetDb: number;
+  /** The aircraft's voices in the chase view, relative to the cockpit view, dB. */
+  readonly chaseOffsetDb: number;
 }
 
 export interface AudioProfile {
@@ -188,7 +190,11 @@ export function parseAudioProfile(s: Slice): AudioProfile {
       gearChime: chime(w.at('gear_chime')),
       cautionChime: chime(w.at('caution_chime')),
     },
-    mix: { duckDb: mix.n('duck_db', DB[0], 0), levelOffsetDb: db(mix, 'level_offset_db') },
+    mix: {
+      duckDb: mix.n('duck_db', DB[0], 0),
+      levelOffsetDb: db(mix, 'level_offset_db'),
+      chaseOffsetDb: db(mix, 'chase_offset_db'),
+    },
   };
 }
 

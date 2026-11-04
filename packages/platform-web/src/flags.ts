@@ -10,7 +10,7 @@
  * | `renderer` | `auto` (default), `webgpu`, `webgl2`, `null` |
  * | `flags` | comma list of `transfer`, `mainrender`, `timer`, `stall` (test switches) |
  * | `compat` | `1`: show the compat screen even if it was acknowledged |
- * | `selftest` | `1` (golden hash), `renderer` (renderer contract) |
+ * | `selftest` | `1` (golden hash), `renderer` (renderer contract), `audio` (the flight audio in this browser) |
  * | `perf` | `ps0`: run the PS-0 scenario |
  * | `seconds` | duration of a perf run, 1 to 3600 |
  * | `bench` | `quick` or `full`: run the first-run benchmark |
@@ -48,7 +48,7 @@ export interface Flags {
   /** Expose the stall hooks that tests use to freeze a thread. */
   stall: boolean;
   compat: boolean;
-  selftest: false | 'hash' | 'renderer';
+  selftest: false | 'hash' | 'renderer' | 'audio';
   perf: false | 'ps0';
   seconds: number | undefined;
   bench: false | 'quick' | 'full';
@@ -183,8 +183,10 @@ export function parseFlags(search: string): Flags {
     flags.selftest = 'hash';
   } else if (selftest === 'renderer') {
     flags.selftest = 'renderer';
+  } else if (selftest === 'audio') {
+    flags.selftest = 'audio';
   } else if (selftest !== null) {
-    bad('selftest', selftest, '1 or renderer');
+    bad('selftest', selftest, '1, renderer or audio');
   }
 
   const perf = params.get('perf');

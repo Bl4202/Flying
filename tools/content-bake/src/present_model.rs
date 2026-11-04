@@ -975,4 +975,9 @@ pub struct MixAudio {
     /// Overall level offset of the aircraft's voices (GDD A.12 `level_offset_db`).
     #[schemars(extend("x-unit" = "dB"), range(min = -24.0, max = 24.0))]
     pub level_offset_db: f64,
+    /// The aircraft's voices in the chase view, relative to the cockpit view. The cockpit hears the
+    /// outside through the canopy; the chase view has no canopy, and without this it would be
+    /// louder by the canopy's attenuation.
+    #[schemars(extend("x-unit" = "dB"), range(min = -24.0, max = 24.0))]
+    pub chase_offset_db: f64,
 }
