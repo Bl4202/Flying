@@ -142,6 +142,11 @@ export interface FrameData {
   hideCanopy: boolean;
   /** Draw the cockpit interior (the cockpit view only). */
   cockpit: boolean;
+  /** Draw the HUD: `hudCount` segments of `hudSegments`, the uniform block `hudUniform`. */
+  hud: boolean;
+  hudCount: number;
+  hudSegments: Float32Array;
+  hudUniform: Float32Array;
   instances: Float32Array;
   instanceCount: number;
   /** Copies of the terrain patch to draw, laid out on a grid; 1 for normal frames. */
@@ -160,6 +165,10 @@ export class SceneBuilder {
     model: false,
     hideCanopy: false,
     cockpit: false,
+    hud: false,
+    hudCount: 0,
+    hudSegments: new Float32Array(0),
+    hudUniform: new Float32Array(0),
     instances: new Float32Array(MARKER_INSTANCE_CAPACITY * MARKER_INSTANCE_FLOATS),
     instanceCount: 0,
     patchInstances: 1,
@@ -220,6 +229,9 @@ export class SceneBuilder {
       MAX_PATCH_INSTANCES,
       Math.max(1, Math.floor(opts.patchInstances ?? 1)),
     );
+    // The HUD is added after the frame is built (by `Hud.fillFrame`); start with none.
+    f.hud = false;
+    f.hudCount = 0;
     f.model = opts.model !== undefined;
     f.hideCanopy = f.cockpit = f.model && cam?.mode === 'cockpit';
     opts.model?.update(f.modelUniform, state, this.#eyeBf);

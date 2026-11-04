@@ -5,6 +5,7 @@ import { NullRenderer } from './null-renderer.ts';
 import { RenderLoop } from './render-loop.ts';
 import { FRAME_AT, SceneBuilder } from './scene.ts';
 import { makeSnapshot } from './snapshot-fixture.ts';
+import { FIXTURE_COCKPIT, FIXTURE_FONT, FIXTURE_HUD, FIXTURE_MODEL } from './model-fixture.ts';
 import { makeTestPatch } from './terrain-test-patch.ts';
 
 function rig() {
@@ -276,6 +277,80 @@ describe('RenderLoop', () => {
       }
       const half = t.renderer.lastFrame?.uniform[FRAME_AT.PARAMS + 1] ?? 0;
       expect(Math.atan(half) * 2 * (180 / Math.PI)).toBeCloseTo(100, 1);
+    });
+  });
+
+  describe('the HUD', () => {
+    const presentation = {
+      hud: FIXTURE_HUD,
+      cockpit: FIXTURE_COCKPIT,
+      model: FIXTURE_MODEL,
+      font: FIXTURE_FONT,
+    };
+
+    it('is not drawn until the aircraft has a presentation', () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.setCockpit({
+        ...FIXTURE_COCKPIT,
+        eyeBodyM: FIXTURE_COCKPIT.eyePointM,
+        headLimits: { yawDeg: 135, pitchUpDeg: 60, pitchDownDeg: 60 },
+      });
+      t.loop.frame();
+      expect(t.renderer.lastFrame?.hud).toBe(false);
+    });
+
+    it('is built into the frame in the cockpit view, as direction at infinity (no overlay)', () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.resize(640, 360);
+      t.loop.setPresentation(presentation);
+      t.advance(16);
+      t.loop.frame();
+      const frame = t.renderer.lastFrame;
+      expect(frame?.hud).toBe(true);
+      expect(frame?.hudCount).toBeGreaterThan(50);
+      expect(frame?.hudUniform[24]).toBe(0); // not an overlay
+      expect(frame?.hudUniform[20]).toBe(640);
+    });
+
+    it('becomes an overlay in the chase view', () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.setPresentation(presentation);
+      t.loop.setView({ ...t.loop.view, camera: 'chase' });
+      t.advance(16);
+      t.loop.frame();
+      expect(t.renderer.lastFrame?.hudUniform[24]).toBe(1);
+    });
+
+    it('is left out for a spectator, and when the player has turned it off', () => {
+      const t = rig();
+      t.publish(1, { ownship: { pos: [0, 0, 1000], assist: 0 } });
+      t.loop.setPresentation(presentation);
+      t.advance(16);
+      t.loop.frame();
+      expect(t.renderer.lastFrame?.hud).toBe(false);
+      const u = rig();
+      u.publish(1);
+      u.loop.setPresentation(presentation);
+      u.loop.setView({ ...u.loop.view, hudBrightness: 0 });
+      u.advance(16);
+      u.loop.frame();
+      expect(u.renderer.lastFrame?.hud).toBe(false);
+    });
+
+    it("takes the player's palette, size and declutter", () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.setPresentation(presentation);
+      t.loop.setSettings({ gfxStrength: 100, hudPalette: 'amber', hudOverlay: true, hudScale: 2 });
+      t.loop.setView({ ...t.loop.view, hudDeclutter: 2, hudBrightness: 60 });
+      t.advance(16);
+      t.loop.frame();
+      const u = t.renderer.lastFrame?.hudUniform;
+      expect([u?.[16], u?.[24]]).toEqual([1, 1]);
+      expect(u?.[19]).toBeCloseTo(0.6, 6);
     });
   });
 });

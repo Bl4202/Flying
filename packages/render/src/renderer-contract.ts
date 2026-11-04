@@ -24,7 +24,10 @@ import {
 } from './scene.ts';
 import { FOV_Y } from './camera.ts';
 import { CameraRig, DEFAULT_COCKPIT, type CameraPose } from './camera-rig.ts';
-import { FIXTURE_COCKPIT, FIXTURE_MODEL } from './model-fixture.ts';
+import { FIXTURE_COCKPIT, FIXTURE_FONT, FIXTURE_HUD, FIXTURE_MODEL } from './model-fixture.ts';
+import { Hud } from './hud/hud.ts';
+import { bodyToRender } from './camera.ts';
+import { newAircraftStatus } from '@flying/sim-bridge';
 import { buildCockpitMesh, buildModelMesh } from './model-mesh.ts';
 import { ModelRig } from './model-rig.ts';
 import { newViewState } from '@flying/sim-bridge/view-channel';
@@ -501,6 +504,135 @@ export async function runRendererContract(
           return f > 0.02 ? undefined : `only ${(f * 100).toFixed(2)} % of pixels differ`;
         },
       );
+
+      /** A cockpit or chase picture with the HUD, with the eye moved `eyeShift` metres in body y (right). */
+      const drawHud = async (
+        camera: 'cockpit' | 'chase',
+        extra: { eyeShift?: number; w?: number; h?: number } = {},
+      ): Promise<Uint8Array> => {
+        const [w, h] = [extra.w ?? 480, extra.h ?? 270];
+        renderer.resize(w, h);
+        const state = aircraftWorld(1);
+        const rig = new CameraRig(
+          { eyeBodyM: FIXTURE_COCKPIT.eyePointM, headLimits: DEFAULT_COCKPIT.headLimits },
+          { heightAt: () => Number.NaN },
+        );
+        const view = { ...newViewState(), camera };
+        for (let i = 0; i < 400; i++) rig.step(state, view, 1 / 60);
+        const terrain = patchAt(0);
+        upload(terrain);
+        // Heading north, so body right is east: move the eye east by `eyeShift`.
+        const pose = { ...rig.pose, eyeBf: Float64Array.from(rig.pose.eyeBf) };
+        pose.eyeBf[0] = (pose.eyeBf[0] ?? 0) + (extra.eyeShift ?? 0);
+        const frame = scene.build(state, {
+          aspect: w / h,
+          zRange: renderer.zRange,
+          timeS: 0,
+          terrain,
+          camera: pose,
+          model: new ModelRig(FIXTURE_MODEL),
+          debugView: 'classify',
+        });
+        const hud = new Hud(FIXTURE_HUD, FIXTURE_COCKPIT, FIXTURE_FONT);
+        const status = newAircraftStatus();
+        status.assist = 2;
+        status.cas = 130;
+        status.altitude = 1500;
+        status.agl = 1000;
+        const rotation = new Float32Array(16);
+        bodyToRender(rotation, state.ownshipQuat);
+        hud.fillFrame(
+          frame,
+          {
+            posBf: state.ownshipPosBf,
+            quatBf: state.ownshipQuat,
+            velBf: [0, 130, 0],
+            status,
+            warnings: 0,
+            timeS: 0,
+          },
+          rotation,
+          {
+            declutter: 0,
+            brightness: 1,
+            palette: 'green',
+            overlay: camera === 'chase',
+            overlayScale: 1,
+            widthPx: w,
+            heightPx: h,
+            fovY: pose.fovY,
+            eyeBf: pose.eyeBf,
+          },
+        );
+        renderer.setMesh('exterior', buildModelMesh(FIXTURE_MODEL));
+        renderer.setMesh('cockpit', buildCockpitMesh(FIXTURE_COCKPIT));
+        renderer.render(frame);
+        const px = await renderer.debugReadPixels();
+        renderer.setMesh('exterior', undefined);
+        renderer.setMesh('cockpit', undefined);
+        renderer.resize(width, height);
+        return px;
+      };
+
+      await check(
+        'the HUD draws in the cockpit view, inside the combiner and nowhere else',
+        async () => {
+          const [w, h] = [640, 360];
+          const px = await drawHud('cockpit', { w, h });
+          let n = 0;
+          let outside = 0;
+          // The combiner: 28 by 20 degrees from the eye, in a picture 75 degrees tall.
+          const tan = Math.tan(FOV_Y / 2);
+          const halfX = ((Math.tan((14 * Math.PI) / 180) / (tan * (w / h))) * w) / 2 + 3;
+          const halfY = ((Math.tan((10 * Math.PI) / 180) / tan) * h) / 2 + 3;
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              if (!isKey(px, (y * w + x) * 4, CLASSIFY_KEYS.hud)) continue;
+              n += 1;
+              if (Math.abs(x - w / 2) > halfX || Math.abs(y - h / 2) > halfY) outside += 1;
+            }
+          }
+          return n > 150 && outside === 0
+            ? undefined
+            : `${String(n)} HUD pixels, ${String(outside)} outside the combiner`;
+        },
+      );
+
+      await check(
+        'the HUD is collimated: moving the eye inside the eye box moves no symbol',
+        async () => {
+          const [w, h] = [640, 360];
+          const [centre, shifted] = [
+            await drawHud('cockpit', { w, h }),
+            await drawHud('cockpit', { w, h, eyeShift: 0.03 }),
+          ];
+          // The middle of the combiner (8 by 6 degrees either way), away from its edge, which does
+          // move with the eye: what is drawn there must not.
+          const tan = Math.tan(FOV_Y / 2);
+          const halfX = ((Math.tan((8 * Math.PI) / 180) / (tan * (w / h))) * w) / 2;
+          const halfY = ((Math.tan((6 * Math.PI) / 180) / tan) * h) / 2;
+          let differing = 0;
+          let total = 0;
+          for (let y = Math.floor(h / 2 - halfY); y < h / 2 + halfY; y++) {
+            for (let x = Math.floor(w / 2 - halfX); x < w / 2 + halfX; x++) {
+              const at = (y * w + x) * 4;
+              const a = isKey(centre, at, CLASSIFY_KEYS.hud);
+              const b = isKey(shifted, at, CLASSIFY_KEYS.hud);
+              if (a || b) total += 1;
+              if (a !== b) differing += 1;
+            }
+          }
+          return total > 40 && differing <= total * 0.02
+            ? undefined
+            : `${String(differing)} of ${String(total)} HUD pixels moved with a 30 mm eye shift`;
+        },
+      );
+
+      await check('the HUD is an overlay in the chase view', async () => {
+        const px = await drawHud('chase');
+        const n = countKey(px, CLASSIFY_KEYS.hud);
+        return n > 150 ? undefined : `${String(n)} HUD pixels`;
+      });
 
       await check('many patch instances draw without breaking the frame', async () => {
         upload(patchAt(0));

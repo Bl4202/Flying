@@ -6,6 +6,7 @@ import type { RendererChoice } from '@flying/platform-web/flags';
 import type { Quantiles, SnapshotEndpoint } from '@flying/sim-bridge';
 import type { ViewState } from '@flying/sim-bridge/view-channel';
 import type { CockpitView } from './camera-rig.ts';
+import type { HudPalette } from './hud/hud.ts';
 import type { RenderPresentation } from './present.ts';
 import type { Backend, SampleCount } from './renderer.ts';
 import type { DebugView, RenderFault } from './scene.ts';
@@ -20,6 +21,12 @@ export interface RenderSettings {
   debugView?: DebugView;
   /** A seeded render fault, honoured only by a debug build (tests that must fail). */
   fault?: RenderFault | null;
+  /** The HUD's colour (default the data's green). */
+  hudPalette?: HudPalette;
+  /** Draw the HUD as an overlay even in the cockpit view. */
+  hudOverlay?: boolean;
+  /** The overlay's size, 0.5 to 2 (default 1). */
+  hudScale?: number;
 }
 
 export interface RenderInit {

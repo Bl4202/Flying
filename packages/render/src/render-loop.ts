@@ -4,7 +4,16 @@
  * the overlay and the perf harness show.
  */
 import { Histogram } from '@flying/platform-web/metrics';
-import { CONTENDED, SNAPSHOT, type Quantiles, type SnapshotSource } from '@flying/sim-bridge';
+import {
+  CONTENDED,
+  newAircraftStatus,
+  readAircraftStatus,
+  SNAPSHOT,
+  SnapshotReader,
+  warningBits,
+  type Quantiles,
+  type SnapshotSource,
+} from '@flying/sim-bridge';
 import {
   copyViewState,
   newViewState,
@@ -18,13 +27,16 @@ import {
   type CameraPose,
   type CockpitView,
 } from './camera-rig.ts';
+import { bodyToRender } from './camera.ts';
+import type { Declutter } from './hud/elements.ts';
+import { Hud } from './hud/hud.ts';
 import { buildCockpitMesh, buildModelMesh } from './model-mesh.ts';
 import { ModelRig } from './model-rig.ts';
 import type { RenderPresentation } from './present.ts';
-import type { SnapshotInterpolator } from './interp.ts';
+import type { SceneState, SnapshotInterpolator } from './interp.ts';
 import type { RenderSettings, RenderStats } from './messages.ts';
 import type { Renderer } from './renderer.ts';
-import type { SceneBuilder } from './scene.ts';
+import type { FrameData, SceneBuilder } from './scene.ts';
 import { TerrainSet } from './terrain-levels.ts';
 
 export interface RenderLoopDeps {
@@ -67,6 +79,11 @@ export class RenderLoop {
   /** The aircraft's presentation, once known: its meshes are uploaded and its parts animated. */
   #presentation: RenderPresentation | undefined;
   #modelRig: ModelRig | undefined;
+  #hud: Hud | undefined;
+  /** The newest snapshot's aircraft status, for the HUD and the warnings. */
+  readonly #status = newAircraftStatus();
+  readonly #reader: SnapshotReader;
+  readonly #rot = new Float32Array(16);
   /** The camera rig drives the picture once it is told anything about the view (else the eye is the reference point). */
   #rigActive = false;
   #lastRigAt = Number.NaN;
@@ -90,6 +107,7 @@ export class RenderLoop {
     this.#d = deps;
     this.#renderer = renderer;
     this.#rig = new CameraRig(DEFAULT_COCKPIT, this.#terrain);
+    this.#reader = new SnapshotReader(this.#buf);
     this.#windowStart = deps.monoMs();
   }
 
@@ -106,6 +124,37 @@ export class RenderLoop {
     this.#terrain.installed().forEach((mesh) => {
       renderer.setTerrainLevel(mesh.level, mesh);
     });
+  }
+
+  /** Builds this frame's HUD into `frame`: on the glass in the cockpit view, as an overlay in the chase view. */
+  #drawHud(frame: FrameData, state: SceneState, camera: CameraPose, nowMs: number): void {
+    const hud = this.#hud;
+    const view = this.#view;
+    if (!hud || this.#status.assist === 0 || view.hudBrightness <= 0) return;
+    bodyToRender(this.#rot, state.ownshipQuat);
+    hud.fillFrame(
+      frame,
+      {
+        posBf: state.ownshipPosBf,
+        quatBf: state.ownshipQuat,
+        velBf: state.ownshipVelBf,
+        status: this.#status,
+        warnings: warningBits(this.#status),
+        timeS: nowMs / 1000,
+      },
+      this.#rot,
+      {
+        declutter: view.hudDeclutter as Declutter,
+        brightness: view.hudBrightness / 100,
+        palette: this.#settings.hudPalette ?? 'green',
+        overlay: camera.mode === 'chase' || this.#settings.hudOverlay === true,
+        overlayScale: this.#settings.hudScale ?? 1,
+        widthPx: this.width,
+        heightPx: this.height,
+        fovY: camera.fovY,
+        eyeBf: camera.eyeBf,
+      },
+    );
   }
 
   /** The camera rig. */
@@ -139,6 +188,7 @@ export class RenderLoop {
   setPresentation(presentation: RenderPresentation): void {
     this.#presentation = presentation;
     this.#modelRig = new ModelRig(presentation.model);
+    this.#hud = new Hud(presentation.hud, presentation.cockpit, presentation.font);
     this.#uploadAircraft(this.#renderer);
     this.setCockpit(cockpitView(presentation.cockpit));
   }
@@ -207,6 +257,7 @@ export class RenderLoop {
     } else if (n > 0 && n !== this.#lastPublication) {
       this.#lastPublication = n;
       d.interp.push(this.#buf);
+      readAircraftStatus(this.#reader, this.#status);
     }
     const state = d.interp.sample(shared);
     if (state === null) {
@@ -231,6 +282,7 @@ export class RenderLoop {
       debugView: this.#settings.debugView ?? 'normal',
       fault: this.#settings.fault ?? null,
     });
+    if (camera) this.#drawHud(frame, state, camera, now);
     const t0 = d.monoMs();
     this.#renderer.render(frame);
     const spent = d.monoMs() - t0;

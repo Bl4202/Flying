@@ -2,6 +2,7 @@
  * The shaders as the bundler delivers them: WGSL preprocessed by the Vite plugin, GLSL generated
  * from it and committed. Importing this file needs that plugin, so tests that do not draw avoid it.
  */
+import hudWgsl from '../shaders/hud.wgsl';
 import markerWgsl from '../shaders/marker.wgsl';
 import fxWgsl from '../shaders/screen_fx.wgsl';
 import meshWgsl from '../shaders/mesh.wgsl';
@@ -12,6 +13,8 @@ import fxVert from '../shaders/gen/screen_fx.vert.glsl?raw';
 import markerFrag from '../shaders/gen/marker.frag.glsl?raw';
 import markerVert from '../shaders/gen/marker.vert.glsl?raw';
 import glslManifest from '../shaders/gen/manifest.json';
+import hudFrag from '../shaders/gen/hud.frag.glsl?raw';
+import hudVert from '../shaders/gen/hud.vert.glsl?raw';
 import meshFrag from '../shaders/gen/mesh.frag.glsl?raw';
 import meshVert from '../shaders/gen/mesh.vert.glsl?raw';
 import skyFrag from '../shaders/gen/sky.frag.glsl?raw';
@@ -21,6 +24,8 @@ import terrainVert from '../shaders/gen/terrain_patch.vert.glsl?raw';
 import type { ShaderSources } from './renderer.ts';
 
 export const SHADERS: ShaderSources = {
+  hudWgsl,
+  hudGlsl: { vertex: hudVert, fragment: hudFrag, blocks: glslManifest.hud.blocks },
   skyWgsl,
   skyGlsl: { vertex: skyVert, fragment: skyFrag, blocks: glslManifest.sky.blocks },
   meshWgsl,

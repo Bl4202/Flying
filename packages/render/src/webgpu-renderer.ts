@@ -35,6 +35,8 @@ import {
   LEVEL_UNIFORM_FLOATS,
   MARKER_INSTANCE_CAPACITY,
 } from './scene.ts';
+import { HUD_UNIFORM_BYTES } from './hud/hud.ts';
+import { MAX_SEGMENTS, SEGMENT_FLOATS } from './hud/graph.ts';
 import { MESH_VERTEX_BYTES, MODEL_UNIFORM_BYTES, type ModelMesh } from './model-mesh.ts';
 import { VERTEX_BYTES, type TerrainMesh } from './terrain-mesh.ts';
 
@@ -43,6 +45,7 @@ const INSTANCE_BYTES = MARKER_INSTANCE_FLOATS * 4;
 
 /** The pipelines for one sample count (a pipeline is made for the sample count it draws into). */
 interface Pipelines {
+  hud: GPURenderPipeline;
   sky: GPURenderPipeline;
   mesh: GPURenderPipeline;
   terrain: GPURenderPipeline;
@@ -78,6 +81,9 @@ export class WebGpuRenderer implements Renderer {
   /** The aircraft's part matrices and glow (binding 2 of every bind group). */
   readonly #modelUniform: GPUBuffer;
   readonly #meshes = new Map<MeshSlot, MeshGpu>();
+  /** The HUD's block (binding 3 of every bind group) and its segments, one instance each. */
+  readonly #hudUniform: GPUBuffer;
+  readonly #hudSegments: GPUBuffer;
   /** Per terrain level: the level's uniform buffer, and a bind group of it with the frame's. */
   readonly #levelUniforms: GPUBuffer[] = [];
   readonly #bindGroups: GPUBindGroup[] = [];
@@ -125,6 +131,16 @@ export class WebGpuRenderer implements Renderer {
       size: MODEL_UNIFORM_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
+    this.#hudUniform = device.createBuffer({
+      label: 'hud uniform',
+      size: HUD_UNIFORM_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    this.#hudSegments = device.createBuffer({
+      label: 'hud segments',
+      size: MAX_SEGMENTS * SEGMENT_FLOATS * 4,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
     for (let level = 0; level < TERRAIN_LEVEL_COUNT; level++) {
       const buffer = device.createBuffer({
         label: `terrain level ${String(level)} uniform`,
@@ -139,6 +155,7 @@ export class WebGpuRenderer implements Renderer {
             { binding: 0, resource: { buffer: this.#uniform } },
             { binding: 1, resource: { buffer } },
             { binding: 2, resource: { buffer: this.#modelUniform } },
+            { binding: 3, resource: { buffer: this.#hudUniform } },
           ],
         }),
       );
@@ -245,9 +262,15 @@ export class WebGpuRenderer implements Renderer {
           visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
           buffer: { type: 'uniform' },
         },
+        {
+          binding: 3,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: 'uniform' },
+        },
       ],
     });
     const modules = {
+      hud: device.createShaderModule({ label: 'hud', code: shaders.hudWgsl }),
       mesh: device.createShaderModule({ label: 'aircraft mesh', code: shaders.meshWgsl }),
       sky: device.createShaderModule({ label: 'sky', code: shaders.skyWgsl }),
       terrain: device.createShaderModule({ label: 'terrain patch', code: shaders.terrainWgsl }),
@@ -405,6 +428,16 @@ export class WebGpuRenderer implements Renderer {
       }
     }
     if (frame.model) queue.writeBuffer(this.#modelUniform, 0, frame.modelUniform);
+    if (frame.hud && frame.hudCount > 0) {
+      queue.writeBuffer(this.#hudUniform, 0, frame.hudUniform);
+      queue.writeBuffer(
+        this.#hudSegments,
+        0,
+        frame.hudSegments,
+        0,
+        frame.hudCount * SEGMENT_FLOATS,
+      );
+    }
     if (frame.instanceCount > 0) {
       queue.writeBuffer(
         this.#markerInstances,
@@ -473,6 +506,12 @@ export class WebGpuRenderer implements Renderer {
       pass.setVertexBuffer(0, this.#markerVertices);
       pass.setVertexBuffer(1, this.#markerInstances);
       pass.draw(MARKER_VERTEX_COUNT, frame.instanceCount);
+    }
+    if (frame.hud && frame.hudCount > 0) {
+      // Over everything but the pilot's body: four vertices a segment, no depth.
+      pass.setPipeline(pipelines.hud);
+      pass.setVertexBuffer(0, this.#hudSegments);
+      pass.draw(4, frame.hudCount);
     }
     if (frame.fx) {
       pass.setPipeline(pipelines.fx);
@@ -548,6 +587,8 @@ export class WebGpuRenderer implements Renderer {
       m.indices.destroy();
     }
     this.#modelUniform.destroy();
+    this.#hudUniform.destroy();
+    this.#hudSegments.destroy();
     this.#markerVertices.destroy();
     this.#markerInstances.destroy();
     this.#uniform.destroy();
@@ -559,7 +600,7 @@ export class WebGpuRenderer implements Renderer {
 async function buildPipelines(
   device: GPUDevice,
   format: GPUTextureFormat,
-  modules: Record<'sky' | 'mesh' | 'terrain' | 'marker' | 'fx', GPUShaderModule>,
+  modules: Record<'hud' | 'sky' | 'mesh' | 'terrain' | 'marker' | 'fx', GPUShaderModule>,
   layout: GPUPipelineLayout,
   samples: SampleCount,
 ): Promise<Pipelines> {
@@ -582,13 +623,48 @@ async function buildPipelines(
     depthCompare: 'always',
   };
   const triangle: GPUPrimitiveState = { topology: 'triangle-list', cullMode: 'none' };
-  const [sky, mesh, terrain, marker, fx] = await Promise.all([
+  const [sky, hud, mesh, terrain, marker, fx] = await Promise.all([
     device.createRenderPipelineAsync({
       label: `sky x${String(samples)}`,
       layout,
       vertex: { module: modules.sky, entryPoint: 'vs_main' },
       fragment: { module: modules.sky, entryPoint: 'fs_main', targets: [{ format }] },
       primitive: triangle,
+      depthStencil: overlayDepth,
+      multisample,
+    }),
+    // The HUD: one instance per segment, a capsule of four vertices, alpha blended, no depth.
+    device.createRenderPipelineAsync({
+      label: `hud x${String(samples)}`,
+      layout,
+      vertex: {
+        module: modules.hud,
+        entryPoint: 'vs_main',
+        buffers: [
+          {
+            arrayStride: SEGMENT_FLOATS * 4,
+            stepMode: 'instance',
+            attributes: [
+              { shaderLocation: 0, offset: 0, format: 'float32x4' },
+              { shaderLocation: 1, offset: 16, format: 'float32x4' },
+            ],
+          },
+        ],
+      },
+      fragment: {
+        module: modules.hud,
+        entryPoint: 'fs_main',
+        targets: [
+          {
+            format,
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+            },
+          },
+        ],
+      },
+      primitive: { topology: 'triangle-strip', cullMode: 'none' },
       depthStencil: overlayDepth,
       multisample,
     }),
@@ -689,5 +765,5 @@ async function buildPipelines(
       multisample,
     }),
   ]);
-  return { sky, mesh, terrain, marker, fx };
+  return { hud, sky, mesh, terrain, marker, fx };
 }

@@ -38,6 +38,32 @@
       ]
     }
   },
+  "hud": {
+    "vertex": "hud.vert.glsl",
+    "fragment": "hud.frag.glsl",
+    "blocks": {
+      "vertex": [
+        {
+          "name": "Frame_block_0Vertex",
+          "binding": 0
+        },
+        {
+          "name": "Hud_block_1Vertex",
+          "binding": 3
+        }
+      ],
+      "fragment": [
+        {
+          "name": "Frame_block_0Fragment",
+          "binding": 0
+        },
+        {
+          "name": "Hud_block_1Fragment",
+          "binding": 3
+        }
+      ]
+    }
+  },
   "mesh": {
     "vertex": "mesh.vert.glsl",
     "fragment": "mesh.frag.glsl",

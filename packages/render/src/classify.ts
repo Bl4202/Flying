@@ -18,6 +18,7 @@ export const CLASSIFY_KEYS = {
   marker: [255, 255, 0],
   model: [255, 128, 0],
   cockpit: [128, 0, 255],
+  hud: [255, 0, 0],
 } as const;
 
 export type Rgb = readonly [number, number, number];

@@ -35,6 +35,8 @@ import {
   LEVEL_UNIFORM_FLOATS,
   MARKER_INSTANCE_CAPACITY,
 } from './scene.ts';
+import { HUD_UNIFORM_BYTES } from './hud/hud.ts';
+import { MAX_SEGMENTS, SEGMENT_FLOATS } from './hud/graph.ts';
 import { MESH_VERTEX_BYTES, MODEL_UNIFORM_BYTES, type ModelMesh } from './model-mesh.ts';
 import { VERTEX_BYTES, type TerrainMesh } from './terrain-mesh.ts';
 
@@ -65,6 +67,10 @@ interface MeshGl {
 }
 
 interface Resources {
+  hudProgram: WebGLProgram;
+  hudUbo: WebGLBuffer;
+  hudVao: WebGLVertexArrayObject;
+  hudVbo: WebGLBuffer;
   skyProgram: WebGLProgram;
   meshProgram: WebGLProgram;
   modelUbo: WebGLBuffer;
@@ -228,6 +234,23 @@ export class WebGl2Renderer implements Renderer {
       return v;
     };
     const skyProgram = link(gl, this.#shaders.skyGlsl, 'sky');
+    const hudProgram = link(gl, this.#shaders.hudGlsl, 'hud');
+    const hudUbo = need(gl.createBuffer(), 'the HUD uniform buffer');
+    gl.bindBuffer(gl.UNIFORM_BUFFER, hudUbo);
+    gl.bufferData(gl.UNIFORM_BUFFER, HUD_UNIFORM_BYTES, gl.DYNAMIC_DRAW);
+    // The HUD's segments: one instance each, two vec4s.
+    const hudVao = need(gl.createVertexArray(), 'the HUD VAO');
+    const hudVbo = need(gl.createBuffer(), 'the HUD segment buffer');
+    gl.bindVertexArray(hudVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, hudVbo);
+    gl.bufferData(gl.ARRAY_BUFFER, MAX_SEGMENTS * SEGMENT_FLOATS * 4, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 4, gl.FLOAT, false, SEGMENT_FLOATS * 4, 0);
+    gl.vertexAttribDivisor(0, 1);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 4, gl.FLOAT, false, SEGMENT_FLOATS * 4, 16);
+    gl.vertexAttribDivisor(1, 1);
+    gl.bindVertexArray(null);
     const meshProgram = link(gl, this.#shaders.meshGlsl, 'aircraft mesh');
     const modelUbo = need(gl.createBuffer(), 'the model uniform buffer');
     gl.bindBuffer(gl.UNIFORM_BUFFER, modelUbo);
@@ -298,6 +321,10 @@ export class WebGl2Renderer implements Renderer {
     gl.clearColor(CLEAR_COLOUR[0], CLEAR_COLOUR[1], CLEAR_COLOUR[2], 1);
 
     this.#res = {
+      hudProgram,
+      hudUbo,
+      hudVao,
+      hudVbo,
       skyProgram,
       meshProgram,
       modelUbo,
@@ -521,6 +548,24 @@ export class WebGl2Renderer implements Renderer {
       gl.bindVertexArray(res.markerVao);
       gl.drawArraysInstanced(gl.TRIANGLES, 0, MARKER_VERTEX_COUNT, frame.instanceCount);
     }
+    if (frame.hud && frame.hudCount > 0) {
+      // The HUD: capsules of four vertices, one instance a segment, alpha blended, no depth.
+      gl.bindBuffer(gl.UNIFORM_BUFFER, res.hudUbo);
+      gl.bufferSubData(gl.UNIFORM_BUFFER, 0, frame.hudUniform);
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, 3, res.hudUbo);
+      gl.bindBuffer(gl.ARRAY_BUFFER, res.hudVbo);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, frame.hudSegments, 0, frame.hudCount * SEGMENT_FLOATS);
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.CULL_FACE);
+      gl.enable(gl.BLEND);
+      gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.useProgram(res.hudProgram);
+      gl.bindVertexArray(res.hudVao);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, frame.hudCount);
+      gl.disable(gl.BLEND);
+      gl.enable(gl.DEPTH_TEST);
+      gl.enable(gl.CULL_FACE);
+    }
     if (frame.fx) {
       // Over the finished picture, alpha blended, with no depth test and no culling.
       gl.disable(gl.DEPTH_TEST);
@@ -596,7 +641,11 @@ export class WebGl2Renderer implements Renderer {
     const res = this.#res;
     if (res && !this.#contextLost) {
       const gl = this.#gl;
+      gl.deleteBuffer(res.hudUbo);
+      gl.deleteBuffer(res.hudVbo);
+      gl.deleteVertexArray(res.hudVao);
       for (const p of [
+        res.hudProgram,
         res.skyProgram,
         res.meshProgram,
         res.terrainProgram,

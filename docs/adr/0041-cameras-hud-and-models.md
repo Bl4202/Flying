@@ -6,8 +6,8 @@
 - **Affects:** ADR-20 (amended), ADR-37; GDD 44.8, 54.2, 54.3, 54.10, 54.11, 57.3, 58.5;
   `packages/render`, `packages/input`, `packages/sim-bridge`, `packages/ui`, `packages/app-shell`
 
-This ADR is written in parts as the work packages land. This version holds the camera and view-input
-part (WP4) and the exterior-model and cockpit part (WP5); the HUD part is added with WP6.
+This ADR is written in parts as the work packages land. It holds the camera and view-input part (WP4),
+the exterior-model and cockpit part (WP5) and the HUD part (WP6, which amends ADR-20).
 
 ## Context
 
@@ -116,6 +116,57 @@ consoles, all fixed to the airframe) is drawn only in that view. The baker keeps
 at least 0.35 m from the design eye, over the 0.3 m near plane. One mesh pipeline draws both, in a new
 `mesh.wgsl` with a `Model` block at binding 2; the classify view gives the aircraft and the cockpit
 their own key colours.
+
+### The HUD (amends ADR-20)
+
+**Drawn in the main pass as directions at infinity**, not into a render target. ADR-20 planned a
+2048 x 2048 RGBA16F target for the HUD; that fits MFDs (M3), but a HUD made of line segments is
+cheaper and sharper drawn straight into the picture, and it makes collimation a property of the
+projection instead of something to approximate. Every symbol is a segment in the body-fixed tangent
+plane, in milliradians: the point `(u, v)` is the body direction `(1, u / 1000, -v / 1000)`. The vertex
+shader rotates it to render axes and projects it with `w = 0`, so only the rotation and the projection
+act on it: the eye's position cannot move it, which is collimation (AC-54.4). A test builds the frame
+exactly as the scene does, moves the eye through 100 positions in the eye box and finds no symbol
+moved; a second test shows that symbols placed 10 m away would swim by 0.3 degrees, so the first
+would catch it. Each segment is expanded to a capsule of constant pixel width in the vertex shader
+(`stroke_mrad`, with a small glow); the fragment shader draws it anti-aliased.
+
+**The combiner is analytic.** In the cockpit view each fragment is tested against the glass: the ray
+from the eye (found in body axes from the camera) along the fragment's direction must pass through the
+glass rectangle of the cockpit data, which cuts the symbols at the combiner's edge, and they fade as
+the eye leaves the eye box (120 x 80 x 160 mm). In the chase view the plane is drawn straight on the
+screen as an **overlay** (45 per cent of the half-height at 100 per cent size, 50 to 200 per cent as a
+setting); a setting can also force the overlay in the cockpit.
+
+**What is drawn** is the layer list in `hud/1` (GDD 54.13): the boresight, the flight-path marker
+(caged to the boresight below 20 m/s), the pitch ladder (5 degree steps, labelled every 10, dashed below
+the horizon, thinning above 60 degrees of pitch, zenith and nadir marks, the horizon with a gap at the
+centre of the ladder), the heading, speed and altitude tapes (CAS in knots, Mach from 0.6, radar altitude
+`R` below 1 500 ft), the vertical-speed caret, the g meter with its maximum, the angle-of-attack bracket
+(gear down only), the bank scale, the engine and fuel block, the mode line and up to three warnings in
+GDD 54.8's priority order. Conformal symbols are placed by taking a world direction against the local
+horizon (up away from the Earth's centre, east from the polar axis, north from both) into body axes and
+into the plane. Two twin tests check it over 10 000 random states: every ladder line's ends lie at their
+elevation above the local horizon to 0.1 degrees (the horizon line to 0.01), the ladder is centred on
+the true heading, and the flight-path marker is on the velocity vector to 0.01 degrees (AC-54.1, with the
+clarification that the HUD's 0 degree line is compared with the horizon plus its analytic dip).
+
+**Every symbol has a cue that is not colour** (AC-57.1's spirit): the g meter is boxed and flashes from
+85 per cent of the limit (a double box at 100 per cent), a warning is boxed and flashes, a caution is
+boxed, the angle-of-attack caret has its bracket. Five palettes (the data's green, amber, white, cyan,
+and a thick high-contrast), brightness 20 to 100 per cent in tens, and three declutter levels (full;
+reduced drops the bank scale, engine block and mode line and the ladder's labels; minimum also drops the
+vertical-speed caret, the heading tape and the tapes' scales).
+
+**Text** is an original single-stroke font (`core:fnt/hudstroke`), drawn by the same segment pipeline: no
+glyph atlas or MSDF tool. A number is written digit by digit through a scratch buffer, a string is read
+as character codes, so no string is made per frame. A sweep of 600 random states with every warning and
+every mode finds no character the font lacks. The words (warnings, assist names, labels) come from the
+app's strings; English ones stand in until it supplies them.
+
+**Cost.** Building a frame (state, 800 to 1 500 segments) takes about 15 microseconds in Node (the gate is
+0.3 ms). It makes no object, array or string; V8 still boxes fractional numbers that cross calls it does
+not inline, about 4 KB a frame (240 KB a second), which a test bounds, measured layer by layer.
 
 ## Consequences
 
