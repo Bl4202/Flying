@@ -1,0 +1,600 @@
+{
+  "$defs": {
+    "AeroAudio": {
+      "additionalProperties": false,
+      "description": "Wind, buffet and rolling noise.",
+      "properties": {
+        "airbrake_db": {
+          "description": "Extra wind noise with the airbrake fully out.",
+          "format": "double",
+          "maximum": 12.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "buffet_hz": {
+          "description": "Tone of the buffet's rumble.",
+          "format": "double",
+          "maximum": 100.0,
+          "minimum": 5.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "buffet_level_db": {
+          "description": "Level of the buffet at the stall-warning angle.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -60.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "buffet_margin_deg": {
+          "description": "Buffet starts this far below the stall-warning angle of attack.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "tyre_ref_level_db": {
+          "description": "Rolling noise at that speed.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -60.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "tyre_ref_speed_mps": {
+          "description": "Ground speed at which the tyres are at `tyre_ref_level_db`.",
+          "format": "double",
+          "maximum": 200.0,
+          "minimum": 5.0,
+          "type": "number",
+          "x-unit": "m/s"
+        },
+        "wind_high_hz": {
+          "description": "See `wind_low_hz`.",
+          "format": "double",
+          "maximum": 8000.0,
+          "minimum": 50.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "wind_low_hz": {
+          "description": "Centre of the wind's band at low and at high speed.",
+          "format": "double",
+          "maximum": 8000.0,
+          "minimum": 50.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "wind_ref_level_db": {
+          "description": "Wind level at that pressure.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -60.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "wind_ref_qbar_pa": {
+          "description": "Dynamic pressure at which the wind is at `wind_ref_level_db`.",
+          "format": "double",
+          "maximum": 100000.0,
+          "minimum": 100.0,
+          "type": "number",
+          "x-unit": "Pa"
+        },
+        "wind_slope_db": {
+          "description": "Rise in wind level for ten times the dynamic pressure.",
+          "format": "double",
+          "maximum": 30.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "dB"
+        }
+      },
+      "required": [
+        "wind_ref_qbar_pa",
+        "wind_ref_level_db",
+        "wind_slope_db",
+        "wind_low_hz",
+        "wind_high_hz",
+        "airbrake_db",
+        "buffet_margin_deg",
+        "buffet_level_db",
+        "buffet_hz",
+        "tyre_ref_speed_mps",
+        "tyre_ref_level_db"
+      ],
+      "type": "object"
+    },
+    "Chime": {
+      "additionalProperties": false,
+      "description": "A repeating chime.",
+      "properties": {
+        "freq_hz": {
+          "description": "Tone.",
+          "format": "double",
+          "maximum": 4000.0,
+          "minimum": 100.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "level_db": {
+          "description": "Level.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -40.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "repeat_s": {
+          "description": "Time from the start of one chime to the next while the condition lasts.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.2,
+          "type": "number",
+          "x-unit": "s"
+        }
+      },
+      "required": [
+        "freq_hz",
+        "repeat_s",
+        "level_db"
+      ],
+      "type": "object"
+    },
+    "CockpitAudio": {
+      "additionalProperties": false,
+      "description": "The cockpit mix.",
+      "properties": {
+        "canopy_attenuation_db": {
+          "description": "... and lowers it by this much.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -40.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "canopy_lowpass_hz": {
+          "description": "The canopy cuts sound from outside above this frequency.",
+          "format": "double",
+          "maximum": 20000.0,
+          "minimum": 200.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "interior_hum_db": {
+          "description": "Level of the interior hum.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -60.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "interior_hum_hz": {
+          "description": "Tone of the interior hum.",
+          "format": "double",
+          "maximum": 1000.0,
+          "minimum": 20.0,
+          "type": "number",
+          "x-unit": "Hz"
+        }
+      },
+      "required": [
+        "canopy_lowpass_hz",
+        "canopy_attenuation_db",
+        "interior_hum_db",
+        "interior_hum_hz"
+      ],
+      "type": "object"
+    },
+    "EngineAudio": {
+      "additionalProperties": false,
+      "description": "The engine voice: rotor tones, a hiss and a jet roar, and the afterburner.",
+      "properties": {
+        "blade_count": {
+          "description": "Compressor blades; the blade-pass tone is `rpm / 60 * blade_count`.",
+          "format": "uint32",
+          "maximum": 80,
+          "minimum": 4,
+          "type": "integer"
+        },
+        "blade_level_db": {
+          "description": "Level of the blade-pass tone at military power.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -60.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "burner_roar_db": {
+          "description": "How much louder the afterburner makes the roar (GDD C.13: +6 dB).",
+          "format": "double",
+          "maximum": 12.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "follow_s": {
+          "description": "How quickly the voice follows a change of thrust.",
+          "format": "double",
+          "maximum": 5.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "formants": {
+          "description": "Resonances the roar passes through.",
+          "items": {
+            "$ref": "#/$defs/Formant"
+          },
+          "maxItems": 6,
+          "type": "array"
+        },
+        "harmonic_levels_db": {
+          "description": "Levels of the blade-pass tone's harmonics (1st, 2nd, 3rd, ...), dB below the fundamental.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 6,
+          "minItems": 1,
+          "type": "array",
+          "x-unit": "dB"
+        },
+        "hiss_level_db": {
+          "description": "Level of the turbine hiss at military power.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -60.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "idle_rpm": {
+          "description": "Shaft speed at idle.",
+          "format": "double",
+          "maximum": 30000.0,
+          "minimum": 1000.0,
+          "type": "number",
+          "x-unit": "rpm"
+        },
+        "jet_level_db": {
+          "description": "Level of the jet roar at military power.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -60.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "lightoff_thump_db": {
+          "description": "Level of the light-off thump.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -60.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "lightoff_thump_hz": {
+          "description": "Tone of the light-off thump.",
+          "format": "double",
+          "maximum": 200.0,
+          "minimum": 20.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "military_rpm": {
+          "description": "Shaft speed at military power (a design target).",
+          "format": "double",
+          "maximum": 30000.0,
+          "minimum": 1000.0,
+          "type": "number",
+          "x-unit": "rpm"
+        },
+        "rpm_by_core": {
+          "description": "`[core thrust fraction, rpm]` pairs, rising, from the idle fraction to full military power.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "maxItems": 16,
+          "minItems": 2,
+          "type": "array"
+        },
+        "shaft_level_db": {
+          "description": "Level of the once-per-revolution shaft tone at military power.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -60.0,
+          "type": "number",
+          "x-unit": "dB"
+        }
+      },
+      "required": [
+        "blade_count",
+        "idle_rpm",
+        "military_rpm",
+        "rpm_by_core",
+        "harmonic_levels_db",
+        "blade_level_db",
+        "shaft_level_db",
+        "hiss_level_db",
+        "jet_level_db",
+        "burner_roar_db",
+        "lightoff_thump_db",
+        "lightoff_thump_hz",
+        "formants",
+        "follow_s"
+      ],
+      "type": "object"
+    },
+    "Formant": {
+      "additionalProperties": false,
+      "description": "A resonance.",
+      "properties": {
+        "f_hz": {
+          "description": "Centre frequency.",
+          "format": "double",
+          "maximum": 8000.0,
+          "minimum": 20.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "gain_db": {
+          "description": "Gain at the centre.",
+          "format": "double",
+          "maximum": 24.0,
+          "minimum": -24.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "q": {
+          "description": "Sharpness.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.3,
+          "type": "number"
+        }
+      },
+      "required": [
+        "f_hz",
+        "q",
+        "gain_db"
+      ],
+      "type": "object"
+    },
+    "MixAudio": {
+      "additionalProperties": false,
+      "description": "The mix.",
+      "properties": {
+        "duck_db": {
+          "description": "The aircraft bus is lowered this much while a warning sounds (never the warnings bus).",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -24.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "level_offset_db": {
+          "description": "Overall level offset of the aircraft's voices (GDD A.12 `level_offset_db`).",
+          "format": "double",
+          "maximum": 24.0,
+          "minimum": -24.0,
+          "type": "number",
+          "x-unit": "dB"
+        }
+      },
+      "required": [
+        "duck_db",
+        "level_offset_db"
+      ],
+      "type": "object"
+    },
+    "StallHorn": {
+      "additionalProperties": false,
+      "description": "The stall horn.",
+      "properties": {
+        "freq_hz": {
+          "description": "Tone.",
+          "format": "double",
+          "maximum": 4000.0,
+          "minimum": 100.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "level_db": {
+          "description": "Level.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -40.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "pulse_max_hz": {
+          "description": "Pulses per second three degrees past it.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.5,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "pulse_min_hz": {
+          "description": "Pulses per second at the warning angle of attack.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.5,
+          "type": "number",
+          "x-unit": "Hz"
+        }
+      },
+      "required": [
+        "freq_hz",
+        "pulse_min_hz",
+        "pulse_max_hz",
+        "level_db"
+      ],
+      "type": "object"
+    },
+    "SteadyTone": {
+      "additionalProperties": false,
+      "description": "A steady tone.",
+      "properties": {
+        "freq_hz": {
+          "description": "Tone.",
+          "format": "double",
+          "maximum": 4000.0,
+          "minimum": 100.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "level_db": {
+          "description": "Level.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -40.0,
+          "type": "number",
+          "x-unit": "dB"
+        }
+      },
+      "required": [
+        "freq_hz",
+        "level_db"
+      ],
+      "type": "object"
+    },
+    "Warble": {
+      "additionalProperties": false,
+      "description": "A tone that alternates between two pitches.",
+      "properties": {
+        "high_hz": {
+          "description": "The higher pitch.",
+          "format": "double",
+          "maximum": 4000.0,
+          "minimum": 100.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "level_db": {
+          "description": "Level.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -40.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "low_hz": {
+          "description": "The lower pitch.",
+          "format": "double",
+          "maximum": 4000.0,
+          "minimum": 100.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "rate_hz": {
+          "description": "Alternations per second.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.5,
+          "type": "number",
+          "x-unit": "Hz"
+        }
+      },
+      "required": [
+        "low_hz",
+        "high_hz",
+        "rate_hz",
+        "level_db"
+      ],
+      "type": "object"
+    },
+    "WarningTones": {
+      "additionalProperties": false,
+      "description": "The warning tones (GDD 56.7).",
+      "properties": {
+        "caution_chime": {
+          "$ref": "#/$defs/Chime",
+          "description": "The master caution chime."
+        },
+        "gear_chime": {
+          "$ref": "#/$defs/Chime",
+          "description": "The gear warning chime."
+        },
+        "over_g": {
+          "$ref": "#/$defs/SteadyTone",
+          "description": "The over-g tone."
+        },
+        "pull_up": {
+          "$ref": "#/$defs/Warble",
+          "description": "The ground-collision warble."
+        },
+        "stall_horn": {
+          "$ref": "#/$defs/StallHorn",
+          "description": "The stall horn: a pulsed tone whose pulse rate rises with angle of attack."
+        }
+      },
+      "required": [
+        "stall_horn",
+        "over_g",
+        "pull_up",
+        "gear_chime",
+        "caution_chime"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`audio_profile/1`: how an aircraft sounds (GDD 56.3, A.12). Everything is synthesised from\nthese numbers; there are no samples. Levels are dB relative to the master bus.",
+  "properties": {
+    "aero": {
+      "$ref": "#/$defs/AeroAudio",
+      "description": "Wind, buffet and rolling noise."
+    },
+    "aircraft": {
+      "description": "The aircraft this profile belongs to, `core:ac/<name>`.",
+      "type": "string"
+    },
+    "cockpit": {
+      "$ref": "#/$defs/CockpitAudio",
+      "description": "The cockpit mix."
+    },
+    "engine": {
+      "$ref": "#/$defs/EngineAudio",
+      "description": "The engine."
+    },
+    "id": {
+      "description": "`core:aud/<name>`.",
+      "type": "string"
+    },
+    "mix": {
+      "$ref": "#/$defs/MixAudio",
+      "description": "The mix."
+    },
+    "schema": {
+      "const": "audio_profile/1",
+      "description": "Format tag, always `audio_profile/1`.",
+      "type": "string"
+    },
+    "warnings": {
+      "$ref": "#/$defs/WarningTones",
+      "description": "The warning tones."
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "aircraft",
+    "engine",
+    "aero",
+    "cockpit",
+    "warnings",
+    "mix"
+  ],
+  "title": "AudioFile",
+  "type": "object"
+}

@@ -11,8 +11,17 @@ ADR-30, ADR-34), which is what the sim loads.
 | `core/engines/*.json` | One engine type per file (`engine/1`): thrust deck, TSFC, spool and afterburner dynamics. Derivations in its `README.md` |
 | `core/aero/*.json` | One airframe's aerodynamic tables per file (`aero/1`). `kestrel.json` is **generated** by `kestrel_gen.rs` next to it (see its `README.md`) |
 | `core/fcs/*.json` | One airframe's flight-control gains per file (`fcs/1`): pitch, roll and yaw loops, the Full law, limiter and ground-mode settings, mouse-aim. Derivations and the tuning log in its `README.md` |
+| `core/hud/*.json`, `core/cockpit/*.json`, `core/models/*.json`, `core/fonts/*.json`, `core/audio/*.json` | **Presentation data** (v0.1c, ADR-43): one aircraft's HUD layout, cockpit, exterior model, the HUD stroke font and the audio profile. Baked into `content-out/core.present.json`, **not** into the sim pack. Each directory has a `README.md` with the format and the design *targets* |
 | `core/locales/en.json` | Display strings by key. Every key must be used, every used key must exist |
 | `schemas/*.schema.json` | **Generated** from the Rust types in `tools/content-bake/src/model.rs`; do not edit |
+
+**Presentation data is separate from the sim pack.** The pack's SHA-256 is part of the state hash,
+so a HUD, a model or a sound in the pack would move every determinism golden. The baker writes
+them to their own bundle, which records the SHA-256 of the sim pack it was baked with; the app
+refuses a bundle that does not match the pack it loaded. A test pins the sim pack's hash so a
+presentation file cannot reach it. Presentation files name their aircraft (`"aircraft":
+"core:ac/kestrel"`); ids use the prefixes `hud`, `cpt`, `mdl`, `aud` and `fnt`
+(`core:hud/kestrel`, `core:fnt/hudstroke`).
 
 Add an aircraft by adding files; no code changes (the steps are in
 `docs/architecture/flight.md`). Ids look like `core:ac/kestrel`, `core:eng/f129`,

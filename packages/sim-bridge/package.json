@@ -14,7 +14,8 @@
     "./layout": "./src/layout.gen.ts",
     "./frame-math": "./src/frame-math.ts",
     "./messages": "./src/messages.ts",
-    "./warnings": "./src/warnings.ts"
+    "./warnings": "./src/warnings.ts",
+    "./present": "./src/present.ts"
   },
   "dependencies": {
     "@flying/platform-web": "workspace:*"

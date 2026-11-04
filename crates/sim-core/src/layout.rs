@@ -435,6 +435,18 @@ layouts! {
         SIZE = 465_980,
     }
 
+    /// Where the content pack's header keeps what the host needs to recognise a pack: the magic,
+    /// the format version, and the SHA-256 of the content (the identity the presentation bundle
+    /// records, ADR-43). Equal to `content::cpack::header`, checked when the crate compiles.
+    cpack_header {
+        MAGIC = 0x5043_4746,
+        VERSION = 3,
+        H_MAGIC = 0,
+        H_VERSION = 4,
+        H_CONTENT_HASH = 48,
+        CONTENT_HASH_BYTES = 32,
+    }
+
     /// `CoreState` as exported by `fg_core_state`.
     core_state {
         IDLE = 0,
@@ -596,6 +608,13 @@ const _: () = {
     assert!(stage::PUBLISH + 1 == p::STAGE_COUNT);
     assert!(counter::ASSIST_CHANGES + 1 == p::COUNTER_COUNT);
 
+    // The pack header offsets agree with the content crate's.
+    assert!(cpack_header::H_MAGIC == content::cpack::header::MAGIC);
+    assert!(cpack_header::H_VERSION == content::cpack::header::VERSION);
+    assert!(cpack_header::H_CONTENT_HASH == content::cpack::header::CONTENT_HASH);
+    assert!(cpack_header::VERSION == content::cpack::VERSION as usize);
+    assert!(cpack_header::MAGIC == u32::from_le_bytes(content::cpack::MAGIC) as usize);
+
     // Terrain patch: header, then one packed vertex per post.
     assert!(terrain::VERTEX_COUNT == terrain::POSTS * terrain::POSTS);
     assert!(terrain::SIZE == terrain::HEADER_SIZE + terrain::VERTEX_COUNT * terrain::VERTEX_BYTES);
@@ -612,6 +631,7 @@ mod tests {
         assert_eq!(&tag(snapshot::MAGIC), b"FGSN");
         assert_eq!(&tag(snapshot_sab::MAGIC), b"FGSB");
         assert_eq!(&tag(input_ring::MAGIC), b"FGIR");
+        assert_eq!(&tag(cpack_header::MAGIC), b"FGCP");
     }
 
     #[test]

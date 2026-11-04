@@ -13,7 +13,8 @@
     "./shaders/*": "./shaders/*",
     "./gpu-bench": "./src/gpu-bench.ts",
     "./renderer": "./src/renderer.ts",
-    "./null-renderer": "./src/null-renderer.ts"
+    "./null-renderer": "./src/null-renderer.ts",
+    "./present": "./src/present.ts"
   },
   "dependencies": {
     "@flying/platform-web": "workspace:*",

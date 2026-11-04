@@ -4,6 +4,8 @@
 //!   `f64` world constants of `sim_core::layout::WORLD` as the object `WORLD`.
 //! * `tests/vectors/*.json`: reference data produced by the Rust implementation and consumed by
 //!   Vitest, so the two languages are tested against the same numbers.
+//! * `tests/vectors/present_bundle.json`: the Kestrel's presentation bundle (ADR-43), so the
+//!   TypeScript parsers are tested against what the baker writes without a content build.
 //! * `tests/vectors/rugged_heights.bin` and its description `rugged_heights.json`: the `rugged`
 //!   arena's ground around the airfield, for the camera-clearance test (ADR-39 K1), which runs in
 //!   the `test` job without WebAssembly.
@@ -78,6 +80,7 @@ pub fn run_command(args: &[String]) -> Result<(), String> {
 fn generate() -> Vec<Generated> {
     let root = workspace_root();
     let (heights_bin, heights_json) = rugged_heights();
+    let bundle = present_bundle();
     vec![
         Generated::text(
             root.join("packages/sim-bridge/src/layout.gen.ts"),
@@ -96,11 +99,26 @@ fn generate() -> Vec<Generated> {
             snapshot_vectors(),
         ),
         Generated {
+            path: root.join("tests/vectors/present_bundle.json"),
+            contents: bundle,
+        },
+        Generated {
             path: root.join("tests/vectors/rugged_heights.bin"),
             contents: heights_bin,
         },
         Generated::text(root.join("tests/vectors/rugged_heights.json"), heights_json),
     ]
+}
+
+/// The core pack's presentation bundle, exactly as `content-bake bake` writes it.
+fn present_bundle() -> Vec<u8> {
+    let dir = workspace_root().join("content/core");
+    let baked =
+        content_bake::bake::bake_dir(&dir).unwrap_or_else(|d| panic!("the core pack bakes: {d:?}"));
+    content_bake::present::bake_present_dir(&dir, &baked)
+        .unwrap_or_else(|d| panic!("the presentation files bake: {d:?}"))
+        .expect("the core pack has presentation files")
+        .json
 }
 
 /// Posts per side of the rugged height grid.

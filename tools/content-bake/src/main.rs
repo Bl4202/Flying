@@ -1,8 +1,10 @@
 //! Command line for the content baker.
 //!
 //! ```text
-//! content-bake bake <pack-dir> <out-dir>       validate and write <out-dir>/<id>.cpack
-//!                                              and <out-dir>/content-manifest.json
+//! content-bake bake <pack-dir> <out-dir>       validate and write <out-dir>/<id>.cpack,
+//!                                              <out-dir>/<id>.present.json (the HUD, cockpit,
+//!                                              model, font and audio files, if the pack has
+//!                                              any) and <out-dir>/content-manifest.json
 //! content-bake export <file.cpack>             print the pack as JSON
 //! content-bake schema [--check] <schemas-dir>  write (or verify) the JSON Schemas
 //! ```
@@ -13,7 +15,7 @@ use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
-use content_bake::{bake, export, schema};
+use content_bake::{bake, export, present, schema};
 
 const USAGE: &str = "usage:
   content-bake bake <pack-dir> <out-dir>
@@ -49,11 +51,32 @@ fn run_bake(pack_dir: &Path, out_dir: &Path) -> ExitCode {
             return ExitCode::from(1);
         }
     };
+    let presentation = match present::bake_present_dir(pack_dir, &baked) {
+        Ok(p) => p,
+        Err(problems) => {
+            for p in &problems {
+                eprintln!("{p}");
+            }
+            eprintln!(
+                "\ncontent-bake: {} error(s); nothing was written",
+                problems.len()
+            );
+            return ExitCode::from(1);
+        }
+    };
     let cpack_name = format!("{}.cpack", baked.pack.id);
-    let manifest = bake::manifest(&baked, &cpack_name);
+    let present_name = format!("{}.present.json", baked.pack.id);
+    let mut manifest = bake::manifest(&baked, &cpack_name);
+    if let Some(p) = &presentation {
+        manifest["packs"][0]["presentation"] = present::manifest_entry(p, &present_name);
+    }
     let manifest_text = serde_json::to_string_pretty(&manifest).expect("manifest is JSON") + "\n";
     let written = fs::create_dir_all(out_dir)
         .and_then(|()| fs::write(out_dir.join(&cpack_name), &baked.cpack))
+        .and_then(|()| match &presentation {
+            Some(p) => fs::write(out_dir.join(&present_name), &p.json),
+            None => Ok(()),
+        })
         .and_then(|()| fs::write(out_dir.join("content-manifest.json"), manifest_text));
     if let Err(e) = written {
         eprintln!("content-bake: cannot write to {}: {e}", out_dir.display());
@@ -69,6 +92,18 @@ fn run_bake(pack_dir: &Path, out_dir: &Path) -> ExitCode {
         baked.aero.len(),
         baked.fcs.len()
     );
+    if let Some(p) = &presentation {
+        println!(
+            "content-bake: presentation -> {} ({} bytes: {} HUD, {} cockpit, {} model, {} audio profile, {} font)",
+            out_dir.join(&present_name).display(),
+            p.json.len(),
+            p.huds.len(),
+            p.cockpits.len(),
+            p.models.len(),
+            p.audio.len(),
+            p.fonts.len()
+        );
+    }
     ExitCode::SUCCESS
 }
 
