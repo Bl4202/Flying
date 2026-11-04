@@ -310,6 +310,15 @@ export const TERRAIN = {
   SIZE: 465980,
 } as const;
 
+export const CPACK_HEADER = {
+  MAGIC: 0x50434746,
+  VERSION: 3,
+  H_MAGIC: 0,
+  H_VERSION: 4,
+  H_CONTENT_HASH: 48,
+  CONTENT_HASH_BYTES: 32,
+} as const;
+
 export const CORE_STATE = {
   IDLE: 0,
   LOADING: 1,

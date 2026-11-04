@@ -39,21 +39,21 @@ const BLEND_CLEARANCE_DEG: f64 = 5.0;
 const SPIKE_FRACTION: f64 = 0.5;
 
 /// Collects diagnostics for one file.
-struct Ctx<'a> {
+pub(crate) struct Ctx<'a> {
     file: &'a str,
     out: Vec<Diagnostic>,
     flagged: BTreeSet<String>,
 }
 
 impl Ctx<'_> {
-    fn err(&mut self, ptr: &str, message: impl Into<String>, hint: impl Into<String>) {
+    pub(crate) fn err(&mut self, ptr: &str, message: impl Into<String>, hint: impl Into<String>) {
         self.flagged.insert(ptr.to_owned());
         self.out
             .push(Diagnostic::new(self.file, ptr, message, hint));
     }
 
     /// True if none of the pointers has been flagged yet.
-    fn clean(&self, pointers: &[&str]) -> bool {
+    pub(crate) fn clean(&self, pointers: &[&str]) -> bool {
         pointers.iter().all(|p| !self.flagged.contains(*p))
     }
 
@@ -109,6 +109,17 @@ fn decode<T: serde::de::DeserializeOwned>(file: &str, value: &Value) -> Result<T
                 (
                     format!("unknown key `{key}`"),
                     format!("remove it or fix the spelling; {}", expected_list(&msg)),
+                )
+            } else if let Some(name) = quoted(&msg).filter(|_| msg.starts_with("unknown variant")) {
+                (
+                    format!("unknown type `{name}`"),
+                    format!(
+                        "use one of: {}",
+                        msg.split_once(", expected ")
+                            .map_or("the types the schema lists", |(_, rest)| {
+                                rest.strip_prefix("one of ").unwrap_or(rest)
+                            })
+                    ),
                 )
             } else if let Some(key) = quoted(&msg).filter(|_| msg.starts_with("missing field")) {
                 segments.push(key.to_owned());
@@ -213,7 +224,7 @@ pub fn load_locale(file: &str, text: &str) -> Result<BTreeMap<String, String>, V
 
 /// Parses `text`, decodes it into `T`, checks numeric ranges against `schema` and `f32`
 /// exactness, then runs `semantics`. Returns the decoded value or every problem found.
-fn load<T: serde::de::DeserializeOwned>(
+pub(crate) fn load<T: serde::de::DeserializeOwned>(
     file: &str,
     text: &str,
     schema: &Value,
@@ -349,11 +360,30 @@ fn resolve<'a>(root: &'a Value, schema: &'a Value) -> &'a Value {
         .unwrap_or(schema)
 }
 
+/// For a tagged enum (`oneOf` variants that each fix a `const` tag such as `"type": "boresight"`),
+/// the variant that `map` selects.
+fn pick_variant<'a>(schema: &'a Value, map: &serde_json::Map<String, Value>) -> Option<&'a Value> {
+    let variants = schema
+        .get("oneOf")
+        .or_else(|| schema.get("anyOf"))?
+        .as_array()?;
+    variants.iter().find(|v| {
+        v.get("properties")
+            .and_then(Value::as_object)
+            .is_some_and(|props| {
+                props
+                    .iter()
+                    .any(|(k, p)| p.get("const").is_some_and(|tag| map.get(k) == Some(tag)))
+            })
+    })
+}
+
 /// Checks `minimum`/`maximum` of every numeric value the schema describes.
 fn check_ranges(c: &mut Ctx<'_>, root: &Value, schema: &Value, value: &Value, at: &str) {
     let schema = resolve(root, schema);
     match value {
         Value::Object(map) => {
+            let schema = pick_variant(schema, map).unwrap_or(schema);
             let Some(props) = schema.get("properties").and_then(Value::as_object) else {
                 return;
             };
@@ -1344,7 +1374,7 @@ fn check_fcs(c: &mut Ctx<'_>, f: &FcsGainsFile, pack_id: &str, locale: &BTreeMap
 }
 
 /// `namespace:type/name`, each part lower-case letters, digits, `_` or `-`, starting with a letter.
-fn check_id(id: &str, pack_id: &str, kind: &str) -> Result<(), String> {
+pub(crate) fn check_id(id: &str, pack_id: &str, kind: &str) -> Result<(), String> {
     let shape = "ids look like `core:ac/kestrel` (namespace:type/name; lower-case letters, digits, `_` and `-`)";
     let (ns, rest) = id.split_once(':').ok_or_else(|| shape.to_owned())?;
     let (ty, name) = rest.split_once('/').ok_or_else(|| shape.to_owned())?;
@@ -1362,13 +1392,13 @@ fn check_id(id: &str, pack_id: &str, kind: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn is_segment(s: &str) -> bool {
+pub(crate) fn is_segment(s: &str) -> bool {
     let mut chars = s.chars();
     chars.next().is_some_and(|c| c.is_ascii_lowercase())
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
 }
 
-fn is_slug(s: &str) -> bool {
+pub(crate) fn is_slug(s: &str) -> bool {
     is_segment(s) && !s.contains('-')
 }
 

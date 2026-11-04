@@ -8,6 +8,7 @@ use schemars::schema_for;
 use serde_json::Value;
 
 use crate::model::{AeroFile, AircraftFile, EngineFile, FcsGainsFile, PackFile};
+use crate::present_model::{AudioFile, CockpitFile, FontFile, HudFile, ModelFile};
 
 /// Key suffixes that say what a number is measured in (GDD 62.5, Appendix A).
 pub const UNIT_SUFFIXES: &[&str] = &[
@@ -29,6 +30,18 @@ pub const UNIT_SUFFIXES: &[&str] = &[
     "_nspm",
     "_per_s",
     "_per_g",
+    // Presentation data (ADR-43).
+    "_mrad",
+    "_mm",
+    "_ft",
+    "_fpm",
+    "_kn",
+    "_hz",
+    "_db",
+    "_rpm",
+    "_px",
+    "_pa",
+    "_per_unit",
 ];
 
 /// Numeric keys that have no unit. Table grids (`x`, `y`) name their units in `axes`; an envelope
@@ -68,6 +81,19 @@ pub const DIMENSIONLESS: &[&str] = &[
     "flap_ld_cl",
     "x",
     "y",
+    // Presentation data (ADR-43). `yaw`, `pitch_up` and `pitch_down` take the unit of their parent
+    // key (`head_limits_deg`), as in GDD A.11; `axis` is a direction; `cell` and `advance` are in
+    // glyph-grid units; `q` is a filter's sharpness.
+    "yaw",
+    "pitch_up",
+    "pitch_down",
+    "axis",
+    "cell",
+    "advance",
+    "q",
+    "mach_from",
+    "max_lines",
+    "blade_count",
 ];
 
 fn render_schema<T: schemars::JsonSchema>() -> Value {
@@ -114,6 +140,56 @@ pub fn fcs_schema() -> Value {
     CACHE.get_or_init(render_schema::<FcsGainsFile>).clone()
 }
 
+/// The schema of `hud/*.json`.
+///
+/// # Panics
+/// Never in practice.
+#[must_use]
+pub fn hud_schema() -> Value {
+    static CACHE: OnceLock<Value> = OnceLock::new();
+    CACHE.get_or_init(render_schema::<HudFile>).clone()
+}
+
+/// The schema of `cockpit/*.json`.
+///
+/// # Panics
+/// Never in practice.
+#[must_use]
+pub fn cockpit_schema() -> Value {
+    static CACHE: OnceLock<Value> = OnceLock::new();
+    CACHE.get_or_init(render_schema::<CockpitFile>).clone()
+}
+
+/// The schema of `models/*.json`.
+///
+/// # Panics
+/// Never in practice.
+#[must_use]
+pub fn model_schema() -> Value {
+    static CACHE: OnceLock<Value> = OnceLock::new();
+    CACHE.get_or_init(render_schema::<ModelFile>).clone()
+}
+
+/// The schema of `fonts/*.json`.
+///
+/// # Panics
+/// Never in practice.
+#[must_use]
+pub fn font_schema() -> Value {
+    static CACHE: OnceLock<Value> = OnceLock::new();
+    CACHE.get_or_init(render_schema::<FontFile>).clone()
+}
+
+/// The schema of `audio/*.json`.
+///
+/// # Panics
+/// Never in practice.
+#[must_use]
+pub fn audio_schema() -> Value {
+    static CACHE: OnceLock<Value> = OnceLock::new();
+    CACHE.get_or_init(render_schema::<AudioFile>).clone()
+}
+
 /// The schema of `pack.json`.
 ///
 /// # Panics
@@ -129,8 +205,13 @@ pub fn all() -> Vec<(&'static str, Value)> {
     vec![
         ("aero.schema.json", aero_schema()),
         ("aircraft.schema.json", aircraft_schema()),
+        ("audio.schema.json", audio_schema()),
+        ("cockpit.schema.json", cockpit_schema()),
         ("engine.schema.json", engine_schema()),
         ("fcs.schema.json", fcs_schema()),
+        ("font.schema.json", font_schema()),
+        ("hud.schema.json", hud_schema()),
+        ("model.schema.json", model_schema()),
         ("pack.schema.json", pack_schema()),
     ]
 }

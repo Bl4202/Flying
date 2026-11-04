@@ -1,0 +1,85 @@
+{
+  "$defs": {
+    "Glyph": {
+      "additionalProperties": false,
+      "description": "One character as strokes.",
+      "properties": {
+        "ch": {
+          "description": "The character (one Unicode scalar).",
+          "type": "string"
+        },
+        "strokes": {
+          "description": "Polylines of `[x, y]` points in grid units, `y` up from the baseline; a space has none.",
+          "items": {
+            "items": {
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "ch",
+        "strokes"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`stroke_font/1`: the HUD's text, drawn as strokes (no glyph atlas). Each glyph is polylines on\na small grid; the HUD scales the grid to its text height.",
+  "properties": {
+    "advance": {
+      "description": "Distance from one glyph's origin to the next, in grid units.",
+      "format": "uint32",
+      "maximum": 64,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "cell": {
+      "description": "Width and height of the glyph grid, in grid units.",
+      "items": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "glyphs": {
+      "description": "The glyphs.",
+      "items": {
+        "$ref": "#/$defs/Glyph"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "type": "array"
+    },
+    "id": {
+      "description": "`core:fnt/<name>`.",
+      "type": "string"
+    },
+    "schema": {
+      "const": "stroke_font/1",
+      "description": "Format tag, always `stroke_font/1`.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "cell",
+    "advance",
+    "glyphs"
+  ],
+  "title": "FontFile",
+  "type": "object"
+}

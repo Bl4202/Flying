@@ -1,0 +1,752 @@
+{
+  "$defs": {
+    "HudLayer": {
+      "description": "One HUD element, by `type`. The registry of types is this enum: an unknown type is an error.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The aircraft datum: a small cross at the boresight.",
+          "properties": {
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "size_mrad": {
+              "description": "Size of the cross.",
+              "format": "double",
+              "maximum": 60.0,
+              "minimum": 2.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "type": {
+              "const": "boresight",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "size_mrad"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Where the aircraft is going (velocity vector), caged to the boresight at low speed.",
+          "properties": {
+            "cage_below_mps": {
+              "description": "Below this ground speed the marker is caged to the boresight.",
+              "format": "double",
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "type": "number",
+              "x-unit": "m/s"
+            },
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "size_mrad": {
+              "description": "Size of the circle.",
+              "format": "double",
+              "maximum": 60.0,
+              "minimum": 2.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "type": {
+              "const": "flight_path_marker",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "size_mrad",
+            "cage_below_mps"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Pitch ladder with the horizon line.",
+          "properties": {
+            "declutter_above_deg": {
+              "description": "Above this pitch the ladder is thinned to the numbered bars.",
+              "format": "double",
+              "maximum": 90.0,
+              "minimum": 10.0,
+              "type": "number",
+              "x-unit": "deg"
+            },
+            "gap_mrad": {
+              "description": "Gap in the horizon line round the flight-path marker.",
+              "format": "double",
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "half_width_mrad": {
+              "description": "Half the length of a bar.",
+              "format": "double",
+              "maximum": 200.0,
+              "minimum": 5.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "label_step_deg": {
+              "description": "Angle between numbered bars.",
+              "format": "double",
+              "maximum": 90.0,
+              "minimum": 1.0,
+              "type": "number",
+              "x-unit": "deg"
+            },
+            "step_deg": {
+              "description": "Angle between ladder bars.",
+              "format": "double",
+              "maximum": 30.0,
+              "minimum": 1.0,
+              "type": "number",
+              "x-unit": "deg"
+            },
+            "type": {
+              "const": "pitch_ladder",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "step_deg",
+            "label_step_deg",
+            "half_width_mrad",
+            "gap_mrad",
+            "declutter_above_deg"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "True heading, a horizontal tape.",
+          "properties": {
+            "at_mrad": {
+              "description": "Centre of the tape.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "mrad"
+            },
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "label_deg": {
+              "description": "Spacing of numbers.",
+              "format": "double",
+              "maximum": 90.0,
+              "minimum": 1.0,
+              "type": "number",
+              "x-unit": "deg"
+            },
+            "span_mrad": {
+              "description": "Length of the tape.",
+              "format": "double",
+              "maximum": 480.0,
+              "minimum": 20.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "tick_deg": {
+              "description": "Spacing of ticks.",
+              "format": "double",
+              "maximum": 45.0,
+              "minimum": 1.0,
+              "type": "number",
+              "x-unit": "deg"
+            },
+            "type": {
+              "const": "heading_tape",
+              "type": "string"
+            },
+            "window_deg": {
+              "description": "Heading shown across the whole tape.",
+              "format": "double",
+              "maximum": 180.0,
+              "minimum": 10.0,
+              "type": "number",
+              "x-unit": "deg"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "at_mrad",
+            "span_mrad",
+            "window_deg",
+            "tick_deg",
+            "label_deg"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Airspeed, a vertical tape.",
+          "properties": {
+            "at_mrad": {
+              "description": "Centre of the tape.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "mrad"
+            },
+            "channel": {
+              "description": "What it shows: one of `cas`, `tas`, `ground_speed`.",
+              "type": "string"
+            },
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "label_kn": {
+              "description": "Spacing of numbers.",
+              "format": "double",
+              "maximum": 500.0,
+              "minimum": 1.0,
+              "type": "number",
+              "x-unit": "kn"
+            },
+            "mach_from": {
+              "description": "Mach number is shown beside the speed from this Mach number.",
+              "format": "double",
+              "maximum": 5.0,
+              "minimum": 0.1,
+              "type": "number"
+            },
+            "span_mrad": {
+              "description": "Length of the tape.",
+              "format": "double",
+              "maximum": 480.0,
+              "minimum": 20.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "tick_kn": {
+              "description": "Spacing of ticks.",
+              "format": "double",
+              "maximum": 200.0,
+              "minimum": 1.0,
+              "type": "number",
+              "x-unit": "kn"
+            },
+            "type": {
+              "const": "speed_tape",
+              "type": "string"
+            },
+            "window_kn": {
+              "description": "Speed shown across the whole tape.",
+              "format": "double",
+              "maximum": 1000.0,
+              "minimum": 10.0,
+              "type": "number",
+              "x-unit": "kn"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "at_mrad",
+            "span_mrad",
+            "channel",
+            "window_kn",
+            "tick_kn",
+            "label_kn",
+            "mach_from"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Altitude, a vertical tape, with the radar altitude when low.",
+          "properties": {
+            "at_mrad": {
+              "description": "Centre of the tape.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "mrad"
+            },
+            "channel": {
+              "description": "What it shows: `altitude_msl`.",
+              "type": "string"
+            },
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "label_ft": {
+              "description": "Spacing of numbers.",
+              "format": "double",
+              "maximum": 20000.0,
+              "minimum": 1.0,
+              "type": "number",
+              "x-unit": "ft"
+            },
+            "radar_below_ft": {
+              "description": "Below this height above the ground the radar altitude is shown (`R 450`).",
+              "format": "double",
+              "maximum": 10000.0,
+              "minimum": 0.0,
+              "type": "number",
+              "x-unit": "ft"
+            },
+            "span_mrad": {
+              "description": "Length of the tape.",
+              "format": "double",
+              "maximum": 480.0,
+              "minimum": 20.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "tick_ft": {
+              "description": "Spacing of ticks.",
+              "format": "double",
+              "maximum": 10000.0,
+              "minimum": 1.0,
+              "type": "number",
+              "x-unit": "ft"
+            },
+            "type": {
+              "const": "altitude_tape",
+              "type": "string"
+            },
+            "window_ft": {
+              "description": "Altitude shown across the whole tape.",
+              "format": "double",
+              "maximum": 100000.0,
+              "minimum": 50.0,
+              "type": "number",
+              "x-unit": "ft"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "at_mrad",
+            "span_mrad",
+            "channel",
+            "window_ft",
+            "tick_ft",
+            "label_ft",
+            "radar_below_ft"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Vertical speed caret beside the altitude tape.",
+          "properties": {
+            "at_mrad": {
+              "description": "Centre of the scale.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "mrad"
+            },
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "range_fpm": {
+              "description": "Vertical speed at the ends of the scale (both directions).",
+              "format": "double",
+              "maximum": 60000.0,
+              "minimum": 500.0,
+              "type": "number",
+              "x-unit": "fpm"
+            },
+            "span_mrad": {
+              "description": "Length of the scale.",
+              "format": "double",
+              "maximum": 480.0,
+              "minimum": 20.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "type": {
+              "const": "vs_caret",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "at_mrad",
+            "span_mrad",
+            "range_fpm"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Load factor, with the maximum so far.",
+          "properties": {
+            "amber_pct": {
+              "description": "Amber from this share of the aircraft's current load limit.",
+              "format": "double",
+              "maximum": 100.0,
+              "minimum": 10.0,
+              "type": "number",
+              "x-unit": "pct"
+            },
+            "at_mrad": {
+              "description": "Where the readout starts.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "mrad"
+            },
+            "channel": {
+              "description": "What it shows: one of `nz`, `g_lagged`.",
+              "type": "string"
+            },
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "red_pct": {
+              "description": "Red from this share of the limit.",
+              "format": "double",
+              "maximum": 150.0,
+              "minimum": 10.0,
+              "type": "number",
+              "x-unit": "pct"
+            },
+            "type": {
+              "const": "g_meter",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "at_mrad",
+            "channel",
+            "amber_pct",
+            "red_pct"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Angle-of-attack bracket, shown with the gear down.",
+          "properties": {
+            "at_mrad": {
+              "description": "Centre of the bracket.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "mrad"
+            },
+            "half_range_deg": {
+              "description": "Angle of attack shown either side of on-speed.",
+              "format": "double",
+              "maximum": 20.0,
+              "minimum": 0.5,
+              "type": "number",
+              "x-unit": "deg"
+            },
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "on_speed_deg": {
+              "description": "The on-speed angle of attack for an approach (a design target of the aircraft).",
+              "format": "double",
+              "maximum": 40.0,
+              "minimum": 1.0,
+              "type": "number",
+              "x-unit": "deg"
+            },
+            "type": {
+              "const": "aoa_bracket",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "at_mrad",
+            "on_speed_deg",
+            "half_range_deg"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Bank angle arc.",
+          "properties": {
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "radius_mrad": {
+              "description": "Radius of the arc round the boresight.",
+              "format": "double",
+              "maximum": 400.0,
+              "minimum": 20.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "tick_deg": {
+              "description": "Spacing of ticks.",
+              "format": "double",
+              "maximum": 45.0,
+              "minimum": 5.0,
+              "type": "number",
+              "x-unit": "deg"
+            },
+            "type": {
+              "const": "bank_scale",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "radius_mrad",
+            "tick_deg"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Throttle, afterburner, fuel and flow.",
+          "properties": {
+            "at_mrad": {
+              "description": "Where the block starts.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "mrad"
+            },
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "type": {
+              "const": "engine_fuel_block",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "at_mrad"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Navigation mode, assist level and the gear, flap and brake state.",
+          "properties": {
+            "at_mrad": {
+              "description": "Where the line starts.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "mrad"
+            },
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "type": {
+              "const": "mode_line",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "at_mrad"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The most urgent warnings (at most `max_lines`).",
+          "properties": {
+            "at_mrad": {
+              "description": "Where the first line is centred.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "mrad"
+            },
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "max_lines": {
+              "description": "Most warnings shown at once (GDD 54.8 says three).",
+              "format": "uint32",
+              "maximum": 3,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "type": {
+              "const": "warnings",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "at_mrad",
+            "max_lines"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`hud/1`: one aircraft's head-up display (GDD 54.13). Symbology is conformal and collimated by\nconstruction; the layers say which elements are drawn and where.",
+  "properties": {
+    "aircraft": {
+      "description": "The aircraft this HUD belongs to, `core:ac/<name>`.",
+      "type": "string"
+    },
+    "colour": {
+      "description": "Default colour, `#rrggbb` (the player's palette setting overrides it).",
+      "type": "string"
+    },
+    "eye_box_mm": {
+      "description": "Eye box (width, height, depth) outside which the HUD fades.",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-unit": "mm"
+    },
+    "font": {
+      "description": "The stroke font, `core:fnt/<name>`.",
+      "type": "string"
+    },
+    "glow_px": {
+      "description": "Glow around a stroke.",
+      "format": "double",
+      "maximum": 4.0,
+      "minimum": 0.0,
+      "type": "number",
+      "x-unit": "px"
+    },
+    "id": {
+      "description": "`core:hud/<name>`.",
+      "type": "string"
+    },
+    "layers": {
+      "description": "The elements, drawn in this order.",
+      "items": {
+        "$ref": "#/$defs/HudLayer"
+      },
+      "maxItems": 32,
+      "minItems": 1,
+      "type": "array"
+    },
+    "schema": {
+      "const": "hud/1",
+      "description": "Format tag, always `hud/1`.",
+      "type": "string"
+    },
+    "stroke_mrad": {
+      "description": "Stroke width.",
+      "format": "double",
+      "maximum": 5.0,
+      "minimum": 0.3,
+      "type": "number",
+      "x-unit": "mrad"
+    },
+    "text_mrad": {
+      "description": "Text height.",
+      "format": "double",
+      "maximum": 40.0,
+      "minimum": 4.0,
+      "type": "number",
+      "x-unit": "mrad"
+    },
+    "tfov_deg": {
+      "description": "Total field of view of the combiner, horizontal then vertical.",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array",
+      "x-unit": "deg"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "aircraft",
+    "tfov_deg",
+    "eye_box_mm",
+    "font",
+    "colour",
+    "glow_px",
+    "stroke_mrad",
+    "text_mrad",
+    "layers"
+  ],
+  "title": "HudFile",
+  "type": "object"
+}
