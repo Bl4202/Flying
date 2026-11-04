@@ -19,6 +19,8 @@ import { SnapshotReader } from '@flying/sim-bridge/snapshot';
 export interface SceneState {
   tick: number;
   coreState: number;
+  /** The test arena the world is (`ARENA`): it decides where the globe sits. */
+  arena: number;
   /** When the newest snapshot was published (shared clock) and when its input was sampled. */
   publishTimeMs: number;
   inputTimeMs: number;
@@ -71,6 +73,7 @@ export class SnapshotInterpolator {
   readonly state: SceneState = {
     tick: 0,
     coreState: 0,
+    arena: 0,
     publishTimeMs: 0,
     inputTimeMs: 0,
     ownshipPosBf: new Float64Array(3),
@@ -173,6 +176,7 @@ export class SnapshotInterpolator {
 
     s.tick = this.#currTick;
     s.coreState = cur.coreState();
+    s.arena = cur.arena();
     s.publishTimeMs = cur.publishTimeMs();
     s.inputTimeMs = cur.inputTimeMs();
     s.ownshipSpeed = cur.ownshipTas();

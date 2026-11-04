@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { differences, uniformBlocks } from './wgsl-gen.ts';
+import { blocksWithBindings, differences, uniformBlocks, wgslUniformBindings } from './wgsl-gen.ts';
 
 describe('uniformBlocks', () => {
   it('finds the block name naga gave each stage', () => {
@@ -14,6 +14,53 @@ layout(std140) uniform Other_block { vec4 v; };`;
   });
   it('finds none in a shader without uniforms', () => {
     expect(uniformBlocks('void main() {}')).toEqual([]);
+  });
+});
+
+describe('wgslUniformBindings', () => {
+  it('maps each uniform struct type to its binding', () => {
+    const wgsl = `
+struct Frame { v : vec4<f32>, };
+struct TerrainLevel { v : vec4<f32>, };
+@group(0) @binding(0) var<uniform> frame : Frame;
+@group(0)
+@binding(1) var<uniform>   level : TerrainLevel;
+@group(1) @binding(0) var<storage> not_a_uniform : Frame;`;
+    expect([...wgslUniformBindings(wgsl)]).toEqual([
+      ['Frame', 0],
+      ['TerrainLevel', 1],
+    ]);
+  });
+  it('refuses a type that is bound twice', () => {
+    expect(() =>
+      wgslUniformBindings(
+        '@group(0) @binding(0) var<uniform> a : Frame;\n@group(0) @binding(1) var<uniform> b : Frame;',
+      ),
+    ).toThrow(/bound twice/);
+  });
+});
+
+describe('blocksWithBindings', () => {
+  const bindings = new Map([
+    ['Frame', 0],
+    ['TerrainLevel', 1],
+  ]);
+  it('gives every block of a stage the binding of its WGSL variable', () => {
+    const glsl = `layout(std140) uniform Frame_block_0Vertex { Frame _group_0_binding_0_vs; };
+layout(std140) uniform TerrainLevel_block_1Vertex { TerrainLevel _group_0_binding_1_vs; };`;
+    expect(blocksWithBindings(glsl, bindings)).toEqual([
+      { name: 'Frame_block_0Vertex', binding: 0 },
+      { name: 'TerrainLevel_block_1Vertex', binding: 1 },
+    ]);
+  });
+  it('is empty for a stage without uniforms', () => {
+    expect(blocksWithBindings('void main() {}', bindings)).toEqual([]);
+  });
+  it('names the block it cannot place', () => {
+    expect(() =>
+      blocksWithBindings('uniform Mystery_block_0Fragment { int a; };', bindings),
+    ).toThrow(/Mystery_block_0Fragment/);
+    expect(() => blocksWithBindings('uniform Odd { int a; };', bindings)).toThrow(/Odd/);
   });
 });
 

@@ -1,19 +1,52 @@
 /**
- * Keeps the terrain patch under the aircraft. The renderer draws one 32 km patch (129 x 129
- * posts, 250 m apart); once the ownship is more than `TERRAIN_RECENTRE_M` from its centre, the
- * Sim Worker generates a new patch around it, snapped to a 1 km grid so that small wanderings do
- * not refill it, and sends it to the renderer.
+ * Keeps the four terrain levels under the aircraft (ADR-40). The Sim Worker holds one centre per
+ * level; once the aircraft is further from a level's centre than the level's distance
+ * (`TERRAIN_LEVELS`), that level is regenerated around it, snapped so the finer footprints keep
+ * their edges on the coarser grid.
+ *
+ * At most one level is refreshed per check, nearest first. That keeps each check cheap (a fill is
+ * about 17 000 terrain samples) and, because the re-centre distances leave room for it, a finer
+ * footprint is still inside the coarser one while a refresh is waiting its turn.
  */
-import { TERRAIN_RECENTRE_M, TERRAIN_SNAP_M } from './constants.ts';
+import {
+  nextLevelCentre,
+  TERRAIN_LEVEL_COUNT,
+  type Centre,
+} from '@flying/sim-bridge/terrain-levels';
 
-/** The new patch centre if the ownship at `pos` (BF east, north) has left the old one's middle. */
-export function nextPatchCentre(
-  centre: readonly [number, number],
-  pos: readonly [number, number],
-): [number, number] | undefined {
-  const [x, y] = pos;
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
-  if (Math.hypot(x - centre[0], y - centre[1]) <= TERRAIN_RECENTRE_M) return undefined;
-  const snap = (v: number): number => Math.round(v / TERRAIN_SNAP_M) * TERRAIN_SNAP_M;
-  return [snap(x), snap(y)];
+/** A level to regenerate and the centre to regenerate it around. */
+export interface LevelFill {
+  level: number;
+  centre: [number, number];
+}
+
+export class TerrainFollower {
+  readonly #centres: (Centre | undefined)[] = Array.from(
+    { length: TERRAIN_LEVEL_COUNT },
+    () => undefined,
+  );
+
+  /** Forgets every centre: the next checks refill all the levels. */
+  reset(): void {
+    this.#centres.fill(undefined);
+  }
+
+  /** The centre a level was last filled around, or undefined if it has none. */
+  centre(level: number): Centre | undefined {
+    return this.#centres[level];
+  }
+
+  /** Records that `level` was filled around `centre`. */
+  filled(level: number, centre: Centre): void {
+    this.#centres[level] = centre;
+  }
+
+  /** The one level to refresh now for an aircraft at BF `pos`, if any. Does not record it. */
+  next(pos: Centre): LevelFill | undefined {
+    for (let level = 0; level < TERRAIN_LEVEL_COUNT; level++) {
+      const centre = nextLevelCentre(level, this.#centres[level], pos);
+      if (centre !== undefined) return { level, centre };
+    }
+    return undefined;
+  }
 }

@@ -3,9 +3,8 @@ import { CONTENDED, type SnapshotSource } from '@flying/sim-bridge';
 import { SnapshotInterpolator } from './interp.ts';
 import { NullRenderer } from './null-renderer.ts';
 import { RenderLoop } from './render-loop.ts';
-import { SceneBuilder } from './scene.ts';
+import { FRAME_AT, SceneBuilder } from './scene.ts';
 import { makeSnapshot } from './snapshot-fixture.ts';
-import { buildTerrainMesh } from './terrain-mesh.ts';
 import { makeTestPatch } from './terrain-test-patch.ts';
 
 function rig() {
@@ -85,13 +84,14 @@ describe('RenderLoop', () => {
     t.loop.resize(320, 180);
     t.publish(1);
     t.loop.frame();
-    expect(t.renderer.lastFrame?.uniform[24]).toBe(0); // no patch yet: no offset
-    t.loop.setTerrain(buildTerrainMesh(makeTestPatch({ centreEast: 0, centreNorth: 0 })));
+    expect(t.renderer.lastFrame?.levelMask).toBe(0); // no terrain yet
+    t.loop.setTerrain(0, makeTestPatch({ centreEast: 0, centreNorth: 0 }));
     t.advance(8);
     t.loop.frame();
+    expect(t.renderer.lastFrame?.levelMask).toBe(1);
     // The observer is 8 km south of the patch centre at 1.5 km up: the patch is 8 km ahead in -z... plus 1.5 km below.
-    expect(t.renderer.lastFrame?.uniform[25]).toBeCloseTo(-1000, 5);
-    expect(t.renderer.lastFrame?.uniform[26]).toBeCloseTo(-6000, 5);
+    expect(t.renderer.lastFrame?.levelUniform[1]).toBeCloseTo(-1000, 5);
+    expect(t.renderer.lastFrame?.levelUniform[2]).toBeCloseTo(-6000, 5);
   });
 
   it('reports frame rate, render cost, snapshot age and input-to-draw latency', () => {
@@ -137,12 +137,12 @@ describe('RenderLoop', () => {
   it('moves everything to a new backend: size and terrain', () => {
     const t = rig();
     t.loop.resize(640, 360);
-    t.loop.setTerrain(buildTerrainMesh(makeTestPatch()));
+    t.loop.setTerrain(0, makeTestPatch());
     const next = new NullRenderer();
     t.loop.setRenderer(next);
     expect(t.loop.renderer).toBe(next);
     expect([next.width, next.height]).toEqual([640, 360]);
-    expect(next.terrain?.vertexCount).toBe(16_641);
+    expect(next.levels[0]?.gridVertexCount).toBe(16_641);
   });
 
   it('clamps nonsense sizes', () => {
@@ -155,16 +155,71 @@ describe('RenderLoop', () => {
     const t = rig();
     t.publish(1, { ownship: { pos: [0, 0, 1000], gStress: 0.8 } });
     t.loop.frame();
-    expect(t.renderer.lastFrame?.uniform[34]).toBe(1); // the default is full strength
+    expect(t.renderer.lastFrame?.uniform[FRAME_AT.FX + 2]).toBe(1); // the default is full strength
     expect(t.renderer.lastFrame?.fx).toBe(true);
     t.loop.setSettings({ gfxStrength: 25 });
     t.loop.frame();
-    expect(t.renderer.lastFrame?.uniform[34]).toBeCloseTo(0.25, 6);
+    expect(t.renderer.lastFrame?.uniform[FRAME_AT.FX + 2]).toBeCloseTo(0.25, 6);
     t.loop.setSettings({ gfxStrength: 0 });
     t.loop.frame();
     expect(t.renderer.lastFrame?.fx).toBe(false);
     t.loop.setSettings({ gfxStrength: 900 });
     t.loop.frame();
-    expect(t.renderer.lastFrame?.uniform[34]).toBe(1);
+    expect(t.renderer.lastFrame?.uniform[FRAME_AT.FX + 2]).toBe(1);
+  });
+
+  it('uploads a level when it arrives, and the coarser one again when its hole moves', () => {
+    const t = rig();
+    t.loop.setTerrain(1, makeTestPatch({ spacingM: 1000 }));
+    expect(t.renderer.levels[1]?.hole).toBeUndefined();
+    const before = t.renderer.levels[1];
+    t.loop.setTerrain(0, makeTestPatch({ spacingM: 250 }));
+    expect(t.renderer.levels[0]?.level).toBe(0);
+    // Level 1 now has a hole where level 0 is, so it was sent again.
+    expect(t.renderer.levels[1]).not.toBe(before);
+    expect(t.renderer.levels[1]?.hole).toEqual({ i0: 48, i1: 80, j0: 48, j1: 80 });
+  });
+
+  it('draws every level it has, and tells the renderer which', () => {
+    const t = rig();
+    t.publish(1);
+    t.loop.setTerrain(0, makeTestPatch({ spacingM: 250 }));
+    t.loop.setTerrain(2, makeTestPatch({ spacingM: 4000 }));
+    t.loop.frame();
+    expect(t.renderer.lastFrame?.levelMask).toBe(0b101);
+  });
+
+  it('hands the sample count, the classify view and the seeded fault on', () => {
+    const t = rig();
+    t.publish(1);
+    t.loop.setSettings({
+      gfxStrength: 100,
+      sampleCount: 4,
+      debugView: 'classify',
+      fault: 'flat-earth',
+    });
+    expect(t.renderer.sampleCount).toBe(4);
+    t.loop.frame();
+    const u = t.renderer.lastFrame?.uniform;
+    expect([u?.[FRAME_AT.DEBUG], u?.[FRAME_AT.DEBUG + 1]]).toEqual([1, 1]);
+    t.loop.setSettings({ gfxStrength: 100 });
+    expect(t.renderer.sampleCount).toBe(1);
+    t.loop.frame();
+    expect([
+      t.renderer.lastFrame?.uniform[FRAME_AT.DEBUG],
+      t.renderer.lastFrame?.uniform[FRAME_AT.DEBUG + 1],
+    ]).toEqual([0, 0]);
+  });
+
+  it('gives a new backend the sample count and every level', () => {
+    const t = rig();
+    t.loop.setTerrain(1, makeTestPatch({ spacingM: 1000 }));
+    t.loop.setTerrain(0, makeTestPatch({ spacingM: 250 }));
+    t.loop.setSettings({ gfxStrength: 100, sampleCount: 4 });
+    const next = new NullRenderer();
+    t.loop.setRenderer(next);
+    expect(next.sampleCount).toBe(4);
+    expect(next.levels[0]?.level).toBe(0);
+    expect(next.levels[1]?.hole).toBeDefined();
   });
 });

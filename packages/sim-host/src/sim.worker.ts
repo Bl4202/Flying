@@ -14,7 +14,9 @@ import {
   openInputSource,
   openSnapshotSink,
   parseSimCommand,
+  levelSpec,
   SnapshotReader,
+  TERRAIN_LEVEL_COUNT,
   type SimEvent,
   type SimHandle,
   type SimInit,
@@ -27,10 +29,9 @@ import {
   STATS_INTERVAL_MS,
   TERRAIN_CHECK_MS,
   TERRAIN_FILL_WARN_MS,
-  TERRAIN_SPACING_M,
 } from './constants.ts';
 import { SimLoop } from './sim-loop.ts';
-import { nextPatchCentre } from './terrain-follow.ts';
+import { TerrainFollower } from './terrain-follow.ts';
 import { createSleeper, type Sleeper } from './sleeper.ts';
 
 interface WorkerScope {
@@ -45,9 +46,9 @@ let loop: SimLoop | undefined;
 let sleeper: Sleeper | undefined;
 let allowStall = false;
 let stopped = false;
-/** Where the renderer's terrain patch comes from, and the BF east/north of its centre. */
+/** Where the renderer's terrain levels go, and where each was last filled around. */
 let terrainPort: MessagePort | null = null;
-let patchCentre: [number, number] = [0, 0];
+const terrain = new TerrainFollower();
 const closers: (() => void)[] = [];
 
 function post(event: SimEvent): void {
@@ -81,8 +82,8 @@ async function handle(command: ReturnType<typeof parseSimCommand>): Promise<void
       if (!sim.setInputScript(command.script)) {
         throw new Error(`SYS-004: unknown input script ${String(command.script)}`);
       }
-      // The arena decides the ground, so the renderer's terrain is generated again.
-      sendPatch(sim, [0, 0]);
+      // The arena decides the ground, so every terrain level is generated again.
+      refillTerrain(sim);
       post({ type: 'state', coreState: sim.coreState() });
       break;
     case 'reset':
@@ -163,7 +164,7 @@ async function init(cmd: SimInit): Promise<void> {
 
   if (cmd.terrainPort !== null) {
     terrainPort = cmd.terrainPort;
-    sendPatch(handle, [0, 0]);
+    refillTerrain(handle);
     closers.push(() => {
       terrainPort?.close();
       terrainPort = null;
@@ -199,30 +200,36 @@ async function init(cmd: SimInit): Promise<void> {
   void run();
 }
 
-/** Generates the terrain patch around `centre` and sends it to the renderer. */
-function sendPatch(handle: SimHandle, centre: [number, number]): void {
+/** Generates terrain `level` around `centre` and sends it to the renderer. */
+function sendLevel(handle: SimHandle, level: number, centre: [number, number]): void {
   if (terrainPort === null) return;
   const t0 = monotonicMs();
-  const patch = handle.fillTerrain(centre[0], centre[1], TERRAIN_SPACING_M);
+  const patch = handle.fillTerrain(centre[0], centre[1], levelSpec(level).spacingM);
   if (patch === undefined) {
-    throw new Error('SYS-008: terrain patch could not be generated');
+    throw new Error(`SYS-008: terrain level ${String(level)} could not be generated`);
   }
   const spent = monotonicMs() - t0;
   if (spent > TERRAIN_FILL_WARN_MS) {
-    console.warn(`terrain patch took ${spent.toFixed(1)} ms to generate`);
+    console.warn(`terrain level ${String(level)} took ${spent.toFixed(1)} ms to generate`);
   }
-  patchCentre = centre;
+  terrain.filled(level, centre);
   const copy = patch.slice().buffer;
-  terrainPort.postMessage({ type: 'terrain', patch: copy }, [copy]);
+  terrainPort.postMessage({ type: 'terrain', level, patch: copy }, [copy]);
 }
 
-/** Moves the terrain patch under the aircraft when it has flown away from the middle. */
+/** Generates every terrain level around the airfield (the world changed, or it is the first). */
+function refillTerrain(handle: SimHandle): void {
+  terrain.reset();
+  for (let level = 0; level < TERRAIN_LEVEL_COUNT; level++) sendLevel(handle, level, [0, 0]);
+}
+
+/** Moves one terrain level under the aircraft if it has flown away from the middle of it. */
 function followTerrain(handle: SimHandle): void {
   if (terrainPort === null) return;
   const pos = new Float64Array(3);
   new SnapshotReader(handle.snapshot()).ownshipPos(pos);
-  const next = nextPatchCentre(patchCentre, [pos[0] ?? 0, pos[1] ?? 0]);
-  if (next !== undefined) sendPatch(handle, next);
+  const next = terrain.next([pos[0] ?? 0, pos[1] ?? 0]);
+  if (next !== undefined) sendLevel(handle, next.level, next.centre);
 }
 
 /** Lets the worker's message events run: a message-port round trip is one macrotask. */

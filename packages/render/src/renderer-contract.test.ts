@@ -6,7 +6,7 @@ import { LOOKING_DOWN, LOOKING_UP } from './snapshot-fixture.ts';
 import { airfieldShifted, SceneBuilder } from './scene.ts';
 import { SnapshotInterpolator } from './interp.ts';
 import { makeSnapshot } from './snapshot-fixture.ts';
-import { buildTerrainMesh } from './terrain-mesh.ts';
+import { TerrainSet } from './terrain-levels.ts';
 import { makeTestPatch } from './terrain-test-patch.ts';
 
 describe('the renderer contract', () => {
@@ -43,7 +43,15 @@ describe('the renderer contract', () => {
     });
     const names = checks.map((c) => c.name);
     expect(names).toContain('the same scene moved 400 km draws the same picture (relative-to-eye)');
-    expect(names).toContain('looking at the sky shows only the sky colour');
+    expect(names).toContain('looking at the sky shows only the sky (classify view)');
+    expect(names).toContain(
+      'with no terrain the globe starts at the horizon dip (10 km: 3.2 degrees)',
+    );
+    expect(names).toContain('the flat-earth fault puts the horizon on the eye line');
+    expect(names).toContain('terrain levels draw in their own colours');
+    expect(names).toContain(
+      '4x MSAA changes only edges, and the count asked for is the count in use',
+    );
     expect(names).toContain('many patch instances draw without breaking the frame');
     expect(names).toContain('a pilot at full g stress sees a dark picture');
     expect(names).toContain('a pilot in red-out sees a red picture');
@@ -82,7 +90,8 @@ describe('the scene the contract draws', () => {
           bodies: [{ pos: [shift + 400, shift - 3800, 1450] }],
         }),
       );
-      const mesh = buildTerrainMesh(makeTestPatch({ centreEast: shift, centreNorth: shift }));
+      const terrain = new TerrainSet();
+      terrain.set(0, makeTestPatch({ centreEast: shift, centreNorth: shift }));
       const frame = new SceneBuilder().build(
         interp.sample(2000) ??
           (() => {
@@ -92,14 +101,14 @@ describe('the scene the contract draws', () => {
           aspect: 16 / 9,
           zRange: '0to1',
           timeS: 0,
-          patchOriginBf: mesh.originBf,
-          spacingM: mesh.spacingM,
-          // The airfield moves with the rest of the scene.
+          terrain,
+          // The airfield and the globe move with the rest of the scene.
           airfield: airfieldShifted(shift, shift),
+          anchorBf: [shift, shift],
         },
       );
       return {
-        uniform: Float32Array.from(frame.uniform),
+        uniform: Float32Array.from([...frame.uniform, ...frame.levelUniform]),
         instances: Float32Array.from(frame.instances.subarray(0, 8)),
       };
     };

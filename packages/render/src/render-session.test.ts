@@ -14,6 +14,7 @@ import {
   type CanvasLike,
   type ShaderSources,
 } from './renderer.ts';
+import { FRAME_AT } from './scene.ts';
 import { makeSnapshot } from './snapshot-fixture.ts';
 import { makeTestPatch } from './terrain-test-patch.ts';
 
@@ -228,8 +229,8 @@ describe('RenderSession', () => {
   it('passes the terrain patch to the renderer, and keeps it across a backend change', async () => {
     const t = session();
     await t.s.start(100, 100);
-    t.s.setTerrain(makeTestPatch().buffer);
-    expect((t.s.renderer as Fake).terrain?.triangleCount).toBe(32_768);
+    t.s.setTerrain(0, makeTestPatch().buffer);
+    expect((t.s.renderer as Fake).levels[0]?.surfaceTriangleCount).toBe(32_768);
   });
 
   it('keeps the rendering settings from before it started, and applies later ones', async () => {
@@ -239,11 +240,11 @@ describe('RenderSession', () => {
     t.publish(1);
     t.advance(16.7);
     t.s.frame();
-    expect((t.s.renderer as Fake).lastFrame?.uniform[34]).toBeCloseTo(0.3, 6);
+    expect((t.s.renderer as Fake).lastFrame?.uniform[FRAME_AT.FX + 2]).toBeCloseTo(0.3, 6);
     t.s.setSettings({ gfxStrength: 60 });
     t.advance(16.7);
     t.s.frame();
-    expect((t.s.renderer as Fake).lastFrame?.uniform[34]).toBeCloseTo(0.6, 6);
+    expect((t.s.renderer as Fake).lastFrame?.uniform[FRAME_AT.FX + 2]).toBeCloseTo(0.6, 6);
   });
 
   it('summarises what was drawn', async () => {

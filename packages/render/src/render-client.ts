@@ -12,7 +12,8 @@ import {
   openSnapshotSource,
 } from '@flying/sim-bridge';
 import { MainThreadRenderHost } from './main-thread-host.ts';
-import type { RenderCommand, RenderEvent, RenderInit } from './messages.ts';
+import type { RenderCommand, RenderEvent, RenderInit, RenderSettings } from './messages.ts';
+import { drawingSize, QUALITY_UNSET, qualityFor, type Quality } from './quality.ts';
 import type { RendererFactories } from './render-session.ts';
 import type { ShaderSources } from './renderer.ts';
 
@@ -28,7 +29,7 @@ export interface RenderClientOptions {
   container: HTMLElement;
   /** URL of `render.worker.ts` as built. */
   workerUrl: string;
-  flags: Pick<Flags, 'renderer' | 'mainrender' | 'stall'>;
+  flags: Pick<Flags, 'renderer' | 'mainrender' | 'stall' | 'res' | 'quality' | 'fault'>;
   snapshot: SnapshotEndpoint;
   /** The end of the terrain channel that comes here; the other end is with the Sim Worker. */
   terrainPort: MessagePort | null;
@@ -84,7 +85,12 @@ export class RenderClient {
   #pending = new Map<number, (s: PixelSummary) => void>();
   #nextId = 1;
   #opts: RenderClientOptions;
+  /** The drawing buffer's size last given to the renderer. */
   #size = { width: 1, height: 1 };
+  /** The canvas's size in device pixels, as the browser last said. */
+  #device = { width: 1, height: 1 };
+  #quality: Quality = QUALITY_UNSET;
+  #settings: RenderSettings = { gfxStrength: 100 };
 
   private constructor(
     opts: RenderClientOptions,
@@ -102,21 +108,25 @@ export class RenderClient {
       typeof OffscreenCanvas !== 'undefined' &&
       'transferControlToOffscreen' in HTMLCanvasElement.prototype;
     const useWorker = canTransfer && !opts.flags.mainrender;
-    const startSize = devicePixelSize(undefined, opts.container);
+    const device = devicePixelSize(undefined, opts.container);
+    const quality = opts.flags.quality ? qualityFor(opts.flags.quality) : QUALITY_UNSET;
+    const startSize = drawingSize(device, quality.resolutionScale, opts.flags.res);
 
     if (useWorker) {
-      const attempt = await RenderClient.#startWorker(opts, startSize);
+      const attempt = await RenderClient.#startWorker(opts, startSize, device, quality);
       if (attempt !== 'need-main-thread') {
         return attempt;
       }
       // The canvas was transferred to a worker that cannot draw; the main thread starts with a new one.
     }
-    return RenderClient.#startMain(opts, startSize);
+    return RenderClient.#startMain(opts, startSize, device, quality);
   }
 
   static async #startWorker(
     opts: RenderClientOptions,
     size: { width: number; height: number },
+    device: { width: number; height: number },
+    quality: Quality,
   ): Promise<RenderClient | 'need-main-thread'> {
     const canvas = newCanvas();
     opts.container.append(canvas);
@@ -127,6 +137,8 @@ export class RenderClient {
     const client = new RenderClient(opts, 'worker', canvas);
     client.#worker = worker;
     client.#size = size;
+    client.#device = device;
+    client.#quality = quality;
 
     const outcome = await new Promise<'ready' | 'need-main-thread'>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -184,12 +196,15 @@ export class RenderClient {
       client.#receive(event.data as RenderEvent);
     };
     client.#observe();
+    client.#sendSettings();
     return client;
   }
 
   static async #startMain(
     opts: RenderClientOptions,
     size: { width: number; height: number },
+    device: { width: number; height: number },
+    quality: Quality,
   ): Promise<RenderClient> {
     if (!opts.shaders) {
       throw new Error('SYS-108: rendering on the main thread needs shader sources');
@@ -213,12 +228,19 @@ export class RenderClient {
     const client = new RenderClient(opts, 'main', mainHost.canvas);
     client.#mainHost = mainHost;
     client.#size = size;
+    client.#device = device;
+    client.#quality = quality;
     if (opts.terrainPort) {
-      opts.terrainPort.onmessage = (event: MessageEvent<{ type: string; patch: ArrayBuffer }>) => {
-        if (event.data.type === 'terrain') mainHost.session.setTerrain(event.data.patch);
+      opts.terrainPort.onmessage = (
+        event: MessageEvent<{ type: string; level: number; patch: ArrayBuffer }>,
+      ) => {
+        if (event.data.type === 'terrain') {
+          mainHost.session.setTerrain(event.data.level, event.data.patch);
+        }
       };
     }
     client.#observe();
+    client.#sendSettings();
     return client;
   }
 
@@ -240,7 +262,15 @@ export class RenderClient {
     }
   }
 
-  #resize(size: { width: number; height: number }): void {
+  /** The canvas changed size on screen: the drawing buffer follows, at the chosen scale. */
+  #resize(device: { width: number; height: number }): void {
+    this.#device = device;
+    this.#applySize();
+  }
+
+  /** Gives the renderer a drawing buffer of the right size for the canvas and the quality. */
+  #applySize(): void {
+    const size = drawingSize(this.#device, this.#quality.resolutionScale, this.#opts.flags.res);
     if (size.width === this.#size.width && size.height === this.#size.height) return;
     this.#size = size;
     if (this.#worker) {
@@ -302,8 +332,27 @@ export class RenderClient {
   }
 
   /** Tells the renderer the player's rendering settings. */
-  setSettings(settings: { gfxStrength: number }): void {
-    if (this.#worker) this.#send({ type: 'settings', gfxStrength: settings.gfxStrength });
+  setSettings(settings: RenderSettings): void {
+    this.#settings = settings;
+    this.#sendSettings();
+  }
+
+  /** Chooses the graphics quality: the resolution scale and the sample count. */
+  setQuality(quality: Quality): void {
+    this.#quality = quality;
+    this.#sendSettings();
+    this.#applySize();
+  }
+
+  /** The settings the renderer should have: the player's, the quality's sample count, the flags'. */
+  #sendSettings(): void {
+    const fault = this.#opts.flags.fault;
+    const settings: RenderSettings = {
+      ...this.#settings,
+      sampleCount: this.#quality.sampleCount,
+      ...(fault === undefined ? {} : { fault }),
+    };
+    if (this.#worker) this.#send({ type: 'settings', ...settings });
     else this.#mainHost?.session.setSettings(settings);
   }
 

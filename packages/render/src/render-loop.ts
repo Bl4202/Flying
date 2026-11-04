@@ -6,10 +6,10 @@
 import { Histogram } from '@flying/platform-web/metrics';
 import { CONTENDED, SNAPSHOT, type Quantiles, type SnapshotSource } from '@flying/sim-bridge';
 import type { SnapshotInterpolator } from './interp.ts';
-import type { RenderStats } from './messages.ts';
+import type { RenderSettings, RenderStats } from './messages.ts';
 import type { Renderer } from './renderer.ts';
 import type { SceneBuilder } from './scene.ts';
-import type { TerrainMesh } from './terrain-mesh.ts';
+import { TerrainSet } from './terrain-levels.ts';
 
 export interface RenderLoopDeps {
   source: SnapshotSource;
@@ -44,7 +44,7 @@ export class RenderLoop {
   readonly #latencyRun = new Histogram(200, 400);
   readonly #age = new Histogram(200, 400);
   #renderer: Renderer;
-  #terrain: TerrainMesh | undefined;
+  readonly #terrain = new TerrainSet();
   #lastPublication = 0;
   #lastFrameAt = Number.NaN;
   #windowStart: number;
@@ -52,6 +52,7 @@ export class RenderLoop {
   #aspect = 1;
   /** How strongly the pilot's g and red-out show on the screen, 0 to 100 per cent. */
   #gfxStrength = 100;
+  #settings: RenderSettings = { gfxStrength: 100 };
   width = 1;
   height = 1;
   frames = 0;
@@ -74,12 +75,28 @@ export class RenderLoop {
   setRenderer(renderer: Renderer): void {
     this.#renderer = renderer;
     renderer.resize(this.width, this.height);
-    if (this.#terrain) renderer.setTerrainPatch(this.#terrain);
+    renderer.setSampleCount(this.#settings.sampleCount ?? 1);
+    this.#terrain.installed().forEach((mesh) => {
+      renderer.setTerrainLevel(mesh.level, mesh);
+    });
   }
 
-  setTerrain(mesh: TerrainMesh): void {
-    this.#terrain = mesh;
-    this.#renderer.setTerrainPatch(mesh);
+  /** The terrain levels as installed so far. */
+  get terrain(): TerrainSet {
+    return this.#terrain;
+  }
+
+  /**
+   * Installs terrain level `level` from the sim's bytes and uploads it, and the next coarser level
+   * if its hole moved.
+   *
+   * @throws RangeError (`SYS-040`) if the bytes are not a terrain patch.
+   */
+  setTerrain(level: number, patch: Uint8Array): void {
+    for (const changed of this.#terrain.set(level, patch)) {
+      const mesh = this.#terrain.mesh(changed);
+      if (mesh) this.#renderer.setTerrainLevel(changed, mesh);
+    }
   }
 
   resize(widthPx: number, heightPx: number): void {
@@ -90,8 +107,10 @@ export class RenderLoop {
   }
 
   /** Applies the player's rendering settings. */
-  setSettings(settings: { gfxStrength: number }): void {
+  setSettings(settings: RenderSettings): void {
+    this.#settings = settings;
     this.#gfxStrength = Math.min(Math.max(settings.gfxStrength, 0), 100);
+    this.#renderer.setSampleCount(settings.sampleCount ?? 1);
   }
 
   resetRun(): void {
@@ -122,9 +141,10 @@ export class RenderLoop {
       aspect: this.#aspect,
       zRange: this.#renderer.zRange,
       timeS: now / 1000,
-      patchOriginBf: this.#terrain?.originBf ?? null,
-      spacingM: this.#terrain?.spacingM ?? 1,
+      terrain: this.#terrain,
       gfxStrength: this.#gfxStrength,
+      debugView: this.#settings.debugView ?? 'normal',
+      fault: this.#settings.fault ?? null,
     });
     const t0 = d.monoMs();
     this.#renderer.render(frame);

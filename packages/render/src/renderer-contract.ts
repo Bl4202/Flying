@@ -3,16 +3,27 @@
  * results instead of asserting, so the same checks run under Vitest against the null renderer and
  * in the browser against WebGPU and WebGL2 (the `renderer` end-to-end spec, and `?selftest=renderer`).
  *
- * The drawing checks look at pixels: sky only when looking up; terrain, fog and markers when
- * looking at the world; the same picture twice; and, the one that matters for the exit line, the
- * same picture when the whole scene is moved 400 km, which holds only if positions are made
- * relative to the eye before they are rounded to f32. The pilot's body has its checks too: a
+ * The drawing checks look at pixels: sky only when looking up (in the classify view, which draws
+ * flat key colours); terrain, haze and markers when looking at the world; the same picture twice;
+ * the horizon at the dip the height calls for, and not with the flat-earth fault; terrain levels
+ * in their own colours; 4x MSAA that changes only edges; and, the one that matters for the exit
+ * line, the same picture when the whole scene is moved 400 km (the globe with it), which holds
+ * only if positions are made relative to the eye before they are rounded to f32. The pilot's body has its checks too: a
  * stressed pilot sees a dark picture, a pilot in red-out a red one, the effect strength switches
  * them off; and the runway paints its asphalt and its paint, and the mouse-aim cues show.
  */
+import { CLASSIFY_KEYS, countKey, isKey } from './classify.ts';
 import { SnapshotInterpolator } from './interp.ts';
-import { CLEAR_COLOUR, type Renderer } from './renderer.ts';
-import { airfieldShifted, SceneBuilder, type FrameData } from './scene.ts';
+import { type Renderer } from './renderer.ts';
+import {
+  airfieldShifted,
+  SceneBuilder,
+  type DebugView,
+  type FrameData,
+  type RenderFault,
+} from './scene.ts';
+import { FOV_Y } from './camera.ts';
+import { horizonDip } from './sky.ts';
 import {
   LOOKING_DOWN,
   LOOKING_UP,
@@ -22,7 +33,7 @@ import {
   type FixtureSnapshot,
 } from './snapshot-fixture.ts';
 import { OWNSHIP_FLAG2 } from '@flying/sim-bridge/layout';
-import { buildTerrainMesh } from './terrain-mesh.ts';
+import { TerrainSet } from './terrain-levels.ts';
 import { makeTestPatch } from './terrain-test-patch.ts';
 
 export interface ContractCheck {
@@ -37,8 +48,6 @@ export interface ContractOptions {
   width?: number;
   height?: number;
 }
-
-const SKY = CLEAR_COLOUR.map((c) => Math.round(c * 255));
 
 /**
  * Eye position and the six bodies in front of it, all offset by `shift` metres east and north.
@@ -152,35 +161,51 @@ export async function runRendererContract(
 
   const renderer = await make();
   const scene = new SceneBuilder();
-  const patchAt = (shift: number) =>
-    buildTerrainMesh(makeTestPatch({ centreEast: shift, centreNorth: shift }));
+  /** One terrain level 0 patch around `(shift, shift)`, the whole scene's offset. */
+  const patchAt = (shift: number): TerrainSet => {
+    const set = new TerrainSet();
+    set.set(0, makeTestPatch({ centreEast: shift, centreNorth: shift }));
+    return set;
+  };
+  const upload = (set: TerrainSet): void => {
+    for (const mesh of set.installed()) renderer.setTerrainLevel(mesh.level, mesh);
+  };
+  type FrameOptions = Parameters<typeof world>[3] & {
+    gfxStrength?: number;
+    aspect?: number;
+    debugView?: DebugView;
+    fault?: RenderFault;
+    terrain?: TerrainSet;
+  };
   const frameFor = (
     shift: number,
     looking: 'ahead' | 'up' | 'down',
     bodies: boolean,
-    options: Parameters<typeof world>[3] & { gfxStrength?: number; aspect?: number } = {},
+    options: FrameOptions = {},
   ): FrameData => {
-    const mesh = patchAt(shift);
     const { state } = world(shift, looking, bodies, options);
     return scene.build(state, {
       aspect: options.aspect ?? width / height,
       zRange: renderer.zRange,
       timeS: 0,
-      patchOriginBf: mesh.originBf,
-      spacingM: mesh.spacingM,
-      // The airfield is part of the scene: it moves with it.
+      terrain: options.terrain ?? patchAt(shift),
+      // The airfield and the globe are part of the scene: they move with it.
       airfield: airfieldShifted(shift, shift),
+      anchorBf: [shift, shift],
       ...(options.gfxStrength === undefined ? {} : { gfxStrength: options.gfxStrength }),
+      ...(options.debugView === undefined ? {} : { debugView: options.debugView }),
+      ...(options.fault === undefined ? {} : { fault: options.fault }),
     });
   };
   const pixelsFor = async (
     shift: number,
     looking: 'ahead' | 'up' | 'down',
     bodies: boolean,
-    options: Parameters<typeof frameFor>[3] = {},
+    options: FrameOptions = {},
   ): Promise<Uint8Array> => {
-    renderer.setTerrainPatch(patchAt(shift));
-    renderer.render(frameFor(shift, looking, bodies, options));
+    const terrain = options.terrain ?? patchAt(shift);
+    upload(terrain);
+    renderer.render(frameFor(shift, looking, bodies, { ...options, terrain }));
     return renderer.debugReadPixels();
   };
 
@@ -203,14 +228,31 @@ export async function runRendererContract(
     });
 
     if (opts.draws) {
-      await check('looking at the sky shows only the sky colour', async () => {
-        const px = await pixelsFor(0, 'up', false);
-        const colours = distinctColours(px);
-        const first = [px[0], px[1], px[2]];
-        const near = first.every((c, k) => Math.abs((c ?? 0) - (SKY[k] ?? 0)) <= 1);
-        return colours === 1 && near
+      await check('looking at the sky shows only the sky (classify view)', async () => {
+        const px = await pixelsFor(0, 'up', false, { debugView: 'classify' });
+        const sky = countKey(px, CLASSIFY_KEYS.sky);
+        return sky === width * height
           ? undefined
-          : `${String(colours)} colours, first pixel ${first.join(',')}, sky ${SKY.join(',')}`;
+          : `${String(sky)} of ${String(width * height)} pixels are the sky key`;
+      });
+
+      await check('the sky is lighter at the horizon than overhead', async () => {
+        const w = 64;
+        const h = 64;
+        renderer.resize(w, h);
+        const up = await pixelsFor(0, 'up', false);
+        // Straight ahead from 1.5 km with no terrain: the horizon is a little below the middle.
+        const empty = new TerrainSet();
+        const ahead = await pixelsFor(0, 'ahead', false, { terrain: empty });
+        renderer.resize(width, height);
+        const luma = (px: Uint8Array, at: number): number =>
+          0.2126 * (px[at] ?? 0) + 0.7152 * (px[at + 1] ?? 0) + 0.0722 * (px[at + 2] ?? 0);
+        const overhead = luma(up, (h / 2) * w * 4 + (w / 2) * 4);
+        // The row just above the horizon (the dip at 1.5 km is 1.2 degrees, 1.7 rows at 64 rows).
+        const nearHorizon = luma(ahead, (h / 2 - 3) * w * 4 + (w / 2) * 4);
+        return nearHorizon > overhead + 10
+          ? undefined
+          : `luma ${nearHorizon.toFixed(0)} near the horizon, ${overhead.toFixed(0)} overhead`;
       });
 
       await check(
@@ -223,16 +265,13 @@ export async function runRendererContract(
       );
 
       await check('terrain fills the lower part of the picture and sky the top', async () => {
-        const px = await pixelsFor(0, 'ahead', false);
-        const at = (x: number, y: number): number[] =>
-          [0, 1, 2].map((c) => px[(y * width + x) * 4 + c] ?? 0);
-        const top = at(width >> 1, 2);
-        const bottom = at(width >> 1, height - 3);
-        const topIsSky = top.every((c, k) => Math.abs(c - (SKY[k] ?? 0)) <= 1);
-        const bottomIsSky = bottom.every((c, k) => Math.abs(c - (SKY[k] ?? 0)) <= 1);
-        return topIsSky && !bottomIsSky
+        const px = await pixelsFor(0, 'ahead', false, { debugView: 'classify' });
+        const at = (x: number, y: number): number => (y * width + x) * 4;
+        const topIsSky = isKey(px, at(width >> 1, 2), CLASSIFY_KEYS.sky);
+        const bottomIsTerrain = isKey(px, at(width >> 1, height - 3), CLASSIFY_KEYS.terrain[0]);
+        return topIsSky && bottomIsTerrain
           ? undefined
-          : `top ${top.join(',')} bottom ${bottom.join(',')}`;
+          : `top ${[0, 1, 2].map((c) => String(px[at(width >> 1, 2) + c])).join(',')} bottom ${[0, 1, 2].map((c) => String(px[at(width >> 1, height - 3) + c])).join(',')}`;
       });
 
       await check('markers change the picture', async () => {
@@ -264,15 +303,98 @@ export async function runRendererContract(
 
     await check('finish resolves, also with nothing drawn yet and after drawing', async () => {
       await renderer.finish();
-      renderer.setTerrainPatch(patchAt(0));
+      upload(patchAt(0));
       renderer.render(frameFor(0, 'ahead', true));
       await renderer.finish();
       return undefined;
     });
 
     if (opts.draws) {
+      /** The first row, from the top, of the centre column that is the key `key`; -1 if none. */
+      const firstRowOf = (px: Uint8Array, w: number, h: number, key: readonly number[]): number => {
+        for (let y = 0; y < h; y++) {
+          if (isKey(px, (y * w + (w >> 1)) * 4, key as readonly [number, number, number])) return y;
+        }
+        return -1;
+      };
+      /** Where the horizon should be: `dipRad` below the middle of a picture `h` rows tall. */
+      const horizonRow = (h: number, dipRad: number): number =>
+        ((1 + Math.tan(dipRad) / Math.tan(FOV_Y / 2)) / 2) * h;
+
+      await check(
+        'with no terrain the globe starts at the horizon dip (10 km: 3.2 degrees)',
+        async () => {
+          const [w, h] = [160, 180];
+          renderer.resize(w, h);
+          const px = await pixelsFor(0, 'ahead', false, {
+            terrain: new TerrainSet(),
+            eye: [0, 0, 10_000],
+            debugView: 'classify',
+            aspect: w / h,
+          });
+          renderer.resize(width, height);
+          const row = firstRowOf(px, w, h, CLASSIFY_KEYS.globe);
+          const want = horizonRow(h, horizonDip(10_000));
+          // 3.2 degrees is 8 rows at this size, and a flat world would put it at row 90.
+          return Math.abs(row - want) <= 1.5
+            ? undefined
+            : `the globe starts at row ${String(row)}, expected ${want.toFixed(1)}`;
+        },
+      );
+
+      await check('the flat-earth fault puts the horizon on the eye line', async () => {
+        const [w, h] = [160, 180];
+        renderer.resize(w, h);
+        const px = await pixelsFor(0, 'ahead', false, {
+          terrain: new TerrainSet(),
+          eye: [0, 0, 10_000],
+          debugView: 'classify',
+          fault: 'flat-earth',
+          aspect: w / h,
+        });
+        renderer.resize(width, height);
+        const row = firstRowOf(px, w, h, CLASSIFY_KEYS.globe);
+        return Math.abs(row - h / 2) <= 1.5
+          ? undefined
+          : `the flat world starts at row ${String(row)}, expected ${String(h / 2)}`;
+      });
+
+      await check('terrain levels draw in their own colours', async () => {
+        const set = new TerrainSet();
+        set.set(1, makeTestPatch({ spacingM: 1000 }));
+        set.set(0, makeTestPatch({ spacingM: 250 }));
+        const px = await pixelsFor(0, 'ahead', false, {
+          terrain: set,
+          eye: [0, -8000, 1500],
+          debugView: 'classify',
+        });
+        const [l0, l1] = [
+          countKey(px, CLASSIFY_KEYS.terrain[0]),
+          countKey(px, CLASSIFY_KEYS.terrain[1]),
+        ];
+        return l0 > 1000 && l1 > 100
+          ? undefined
+          : `${String(l0)} level 0 pixels and ${String(l1)} level 1 pixels`;
+      });
+
+      await check(
+        '4x MSAA changes only edges, and the count asked for is the count in use',
+        async () => {
+          const terrain = patchAt(0);
+          const before = await pixelsFor(0, 'ahead', false, { terrain, debugView: 'classify' });
+          const got = renderer.setSampleCount(4);
+          if (renderer.sampleCount !== got)
+            return `sampleCount ${String(renderer.sampleCount)} after asking for 4 got ${String(got)}`;
+          const after = await pixelsFor(0, 'ahead', false, { terrain, debugView: 'classify' });
+          renderer.setSampleCount(1);
+          if (got === 1) return undefined; // this backend has no MSAA
+          const f = differingFraction(before, after, 8);
+          return f < 0.1 ? undefined : `${(f * 100).toFixed(1)} % of pixels differ with 4x MSAA`;
+        },
+      );
+
       await check('many patch instances draw without breaking the frame', async () => {
-        renderer.setTerrainPatch(patchAt(0));
+        upload(patchAt(0));
         const frame = frameFor(0, 'ahead', true);
         frame.patchInstances = 64;
         renderer.render(frame);
@@ -329,17 +451,16 @@ export async function runRendererContract(
         const w = 480;
         const h = 270;
         renderer.resize(w, h);
-        const mesh = patchAt(0);
+        const terrain = patchAt(0);
         const ground = 450; // the test patch's height at its centre
-        renderer.setTerrainPatch(mesh);
+        upload(terrain);
         const { state } = world(0, 'down', false, { eye: [0, 0, ground + 50] });
         renderer.render(
           scene.build(state, {
             aspect: w / h,
             zRange: renderer.zRange,
             timeS: 0,
-            patchOriginBf: mesh.originBf,
-            spacingM: mesh.spacingM,
+            terrain,
             // The runway lies 1500 m north of its threshold, so move the threshold 1500 m south of
             // the middle of the patch.
             airfield: airfieldShifted(0, 4500),
@@ -360,7 +481,6 @@ export async function runRendererContract(
         const w = 640;
         const h = 360;
         renderer.resize(w, h);
-        renderer.setTerrainPatch(patchAt(0));
         const without = await pixelsFor(0, 'ahead', false, { aspect: w / h });
         const withCue = await pixelsFor(0, 'ahead', false, {
           aspect: w / h,

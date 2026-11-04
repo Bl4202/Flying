@@ -3,7 +3,7 @@
  * should still run (the sim, the overlay, the input), and what tests use for the render loop.
  */
 import type { ZRange } from './camera.ts';
-import { CLEAR_COLOUR, type Backend, type Renderer } from './renderer.ts';
+import { CLEAR_COLOUR, type Backend, type Renderer, type SampleCount } from './renderer.ts';
 import type { FrameData } from './scene.ts';
 import type { TerrainMesh } from './terrain-mesh.ts';
 
@@ -14,7 +14,9 @@ export class NullRenderer implements Renderer {
   width = 1;
   height = 1;
   frames = 0;
-  terrain: TerrainMesh | undefined;
+  sampleCount: SampleCount = 1;
+  /** The terrain levels uploaded, by level. */
+  readonly levels: (TerrainMesh | undefined)[] = [];
   lastFrame: FrameData | undefined;
   disposed = false;
   readonly #lost: ((reason: string) => void)[] = [];
@@ -24,8 +26,13 @@ export class NullRenderer implements Renderer {
     this.height = Math.max(1, Math.floor(heightPx));
   }
 
-  setTerrainPatch(mesh: TerrainMesh): void {
-    this.terrain = mesh;
+  setSampleCount(count: SampleCount): SampleCount {
+    this.sampleCount = count;
+    return count;
+  }
+
+  setTerrainLevel(level: number, mesh: TerrainMesh): void {
+    this.levels[level] = mesh;
   }
 
   render(frame: FrameData): void {
@@ -61,7 +68,7 @@ export class NullRenderer implements Renderer {
 
   dispose(): void {
     this.disposed = true;
-    this.terrain = undefined;
+    this.levels.length = 0;
     this.lastFrame = undefined;
   }
 }

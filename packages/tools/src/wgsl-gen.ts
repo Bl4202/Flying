@@ -11,9 +11,10 @@
  * `--keep-coordinate-space` leaves clip space as WebGPU defines it (depth 0..1, y up). The WebGL2
  * backend asks for the same with `EXT_clip_control`, or else uses a projection for -1..1.
  *
- * It also writes `gen/manifest.json`, which records the uniform block name naga gave each stage
- * (null for a stage that reads none: the screen-effect vertex shader) so the backend does not have
- * to guess it.
+ * It also writes `gen/manifest.json`, which records, for each stage, every uniform block naga
+ * emitted with the binding the WGSL gave its variable (`@group(0) @binding(n)`), so the backend
+ * does not have to guess either. A stage that reads no uniforms (the screen-effect vertex shader)
+ * has an empty list.
  *
  * Usage: node wgsl-gen.ts [--check] [shaders-dir]
  */
@@ -30,11 +31,19 @@ export interface ShaderEntry {
   fragment: string;
 }
 
+/** A uniform block of a generated stage and the uniform binding point it reads. */
+export interface GeneratedBlock {
+  /** The block name naga chose, for `getUniformBlockIndex`. */
+  name: string;
+  /** The `@binding` of the WGSL variable; the WebGL2 backend binds the block to this index. */
+  binding: number;
+}
+
 export interface GeneratedShader {
   vertex: string;
   fragment: string;
-  /** Uniform block names naga chose, by stage; `null` for a stage that reads no uniforms. */
-  blocks: { vertex: string | null; fragment: string | null };
+  /** Uniform blocks by stage; empty for a stage that reads no uniforms. */
+  blocks: { vertex: GeneratedBlock[]; fragment: GeneratedBlock[] };
 }
 
 /** The uniform blocks declared in GLSL text. */
@@ -42,6 +51,38 @@ export function uniformBlocks(glsl: string): string[] {
   return [...glsl.matchAll(/\buniform\s+(\w+)\s*\{/g)].flatMap((m) =>
     m[1] === undefined ? [] : [m[1]],
   );
+}
+
+/** `@binding` of each uniform variable in (expanded) WGSL, by the name of its struct type. */
+export function wgslUniformBindings(wgsl: string): Map<string, number> {
+  const out = new Map<string, number>();
+  const declaration =
+    /@group\(\s*0\s*\)\s*@binding\(\s*(\d+)\s*\)\s*var<uniform>\s+\w+\s*:\s*(\w+)\s*;/g;
+  for (const m of wgsl.matchAll(declaration)) {
+    const [, binding, type] = m;
+    if (binding === undefined || type === undefined) continue;
+    if (out.has(type)) throw new Error(`uniform type ${type} is bound twice`);
+    out.set(type, Number(binding));
+  }
+  return out;
+}
+
+/**
+ * Pairs the blocks of a GLSL stage with their bindings. naga names a block
+ * `<Type>_block_<n><Stage>`, so the struct type is everything before `_block_`.
+ */
+export function blocksWithBindings(
+  glsl: string,
+  bindings: ReadonlyMap<string, number>,
+): GeneratedBlock[] {
+  return uniformBlocks(glsl).map((name) => {
+    const type = /^(\w+?)_block_\d+(?:Vertex|Fragment)$/.exec(name)?.[1];
+    const binding = type === undefined ? undefined : bindings.get(type);
+    if (binding === undefined) {
+      throw new Error(`cannot tell which @binding the uniform block ${name} reads`);
+    }
+    return { name, binding };
+  });
 }
 
 function naga(args: string[]): void {
@@ -67,7 +108,8 @@ export function generate(shaderDir: string, outDir: string): void {
     const result: Record<string, GeneratedShader> = {};
     for (const s of manifest.shaders) {
       const expanded = join(scratch, `${s.name}.wgsl`);
-      writeFileSync(expanded, preprocess(join(shaderDir, s.wgsl)));
+      const wgsl = preprocess(join(shaderDir, s.wgsl));
+      writeFileSync(expanded, wgsl);
       const out = {
         vertex: `${s.name}.vert.glsl`,
         fragment: `${s.name}.frag.glsl`,
@@ -80,14 +122,15 @@ export function generate(shaderDir: string, outDir: string): void {
       naga([expanded, f, '--entry-point', s.fragment, ...flags]);
       const vText = readFileSync(v, 'utf8');
       const fText = readFileSync(f, 'utf8');
-      const [vBlock] = uniformBlocks(vText);
-      const [fBlock] = uniformBlocks(fText);
-      if (vBlock === undefined && fBlock === undefined) {
+      const bindings = wgslUniformBindings(wgsl);
+      const vBlocks = blocksWithBindings(vText, bindings);
+      const fBlocks = blocksWithBindings(fText, bindings);
+      if (vBlocks.length === 0 && fBlocks.length === 0) {
         throw new Error(`${s.name}: expected a uniform block in at least one stage`);
       }
       writeFileSync(join(outDir, out.vertex), vText);
       writeFileSync(join(outDir, out.fragment), fText);
-      result[s.name] = { ...out, blocks: { vertex: vBlock ?? null, fragment: fBlock ?? null } };
+      result[s.name] = { ...out, blocks: { vertex: vBlocks, fragment: fBlocks } };
     }
     writeFileSync(join(outDir, 'manifest.json'), `${JSON.stringify(result, null, 2)}\n`);
   } finally {

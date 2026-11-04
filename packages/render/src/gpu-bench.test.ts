@@ -41,7 +41,8 @@ describe('measureGpu', () => {
     expect(result.levels.map((l) => l.msPerFrame)).toEqual([0.25, 4, 16]);
     expect(result).toMatchObject({ backend: 'null', width: 1920, height: 1080 });
     expect([r.width, r.height]).toEqual([1920, 1080]);
-    expect(r.terrain).toBeDefined();
+    expect(r.levels[0]).toBeDefined();
+    expect(r.levels[1]).toBeUndefined(); // the benchmark draws the finest level alone
   });
 
   it('draws the requested number of patches in every timed frame', async () => {

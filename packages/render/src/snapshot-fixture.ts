@@ -13,6 +13,8 @@ export interface FixtureSnapshot {
   inputMs?: number;
   lastInputSeq?: number;
   coreState?: number;
+  /** The test arena (`ARENA`): 0 rugged, 1 plain. */
+  arena?: number;
   ownship?: FixtureBody & {
     speed?: number;
     throttle?: number;
@@ -82,6 +84,7 @@ export function makeSnapshot(s: FixtureSnapshot = {}): Uint8Array {
   dv.setUint32(SNAPSHOT.H_LAST_INPUT_SEQ, s.lastInputSeq ?? 0, true);
   dv.setUint32(SNAPSHOT.H_CORE_STATE, s.coreState ?? 2, true);
   dv.setFloat64(SNAPSHOT.H_INPUT_T_MS, s.inputMs ?? 0, true);
+  dv.setUint8(SNAPSHOT.O_ARENA, s.arena ?? 0);
   const o = s.ownship ?? { pos: [0, -6000, 1000] };
   o.pos.forEach((v, k) => {
     dv.setFloat64(SNAPSHOT.O_POS_BF + 8 * k, v, true);

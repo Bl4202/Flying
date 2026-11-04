@@ -15,7 +15,7 @@
 import type { RendererChoice } from '@flying/platform-web/flags';
 import type { SnapshotSource } from '@flying/sim-bridge';
 import { SnapshotInterpolator } from './interp.ts';
-import type { RenderEvent } from './messages.ts';
+import type { RenderEvent, RenderSettings } from './messages.ts';
 import { NullRenderer } from './null-renderer.ts';
 import { RenderLoop } from './render-loop.ts';
 import {
@@ -26,7 +26,6 @@ import {
   type ShaderSources,
 } from './renderer.ts';
 import { SceneBuilder } from './scene.ts';
-import { buildTerrainMesh } from './terrain-mesh.ts';
 import { WebGl2Renderer } from './webgl2-renderer.ts';
 import { WebGpuRenderer } from './webgpu-renderer.ts';
 
@@ -104,7 +103,7 @@ export class RenderSession {
   #nextReport = 0;
   #webgpuLosses = 0;
   #stopped = false;
-  #settings: { gfxStrength: number } | undefined;
+  #settings: RenderSettings | undefined;
 
   constructor(options: RenderSessionOptions) {
     this.#o = options;
@@ -146,9 +145,9 @@ export class RenderSession {
     });
   }
 
-  /** Installs a terrain patch from the sim (the bytes in `TERRAIN` layout). */
-  setTerrain(patch: ArrayBuffer): void {
-    this.#loop?.setTerrain(buildTerrainMesh(new Uint8Array(patch)));
+  /** Installs terrain level `level` from the sim (the bytes in `TERRAIN` layout). */
+  setTerrain(level: number, patch: ArrayBuffer): void {
+    this.#loop?.setTerrain(level, new Uint8Array(patch));
   }
 
   resize(widthPx: number, heightPx: number): void {
@@ -156,7 +155,7 @@ export class RenderSession {
   }
 
   /** Applies the player's rendering settings (before the renderer exists they are kept). */
-  setSettings(settings: { gfxStrength: number }): void {
+  setSettings(settings: RenderSettings): void {
     this.#settings = settings;
     this.#loop?.setSettings(settings);
   }

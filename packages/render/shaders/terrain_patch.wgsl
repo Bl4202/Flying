@@ -3,6 +3,15 @@
 // Height above MSL at which the lowland colour has fully become the highland colour.
 #define HIGHLAND_M 1200.0
 
+// One terrain level (ADR-40). Four of them are drawn each frame, finest first, each with its own copy.
+struct TerrainLevel {
+  offset : vec4<f32>,  // xyz: patch origin minus eye, render axes, metres; w: level, 0 the finest
+  info   : vec4<f32>,  // x: post spacing in metres, y: patch span in metres, zw: reserved
+  runway : vec4<f32>,  // x, y: runway threshold centre in patch-local east and south, metres; z: length (0: no runway); w: width
+};
+
+@group(0) @binding(1) var<uniform> level : TerrainLevel;
+
 // Extra instances lay further copies of the patch out on a grid, east then south, one patch apart.
 // The first instance is the patch itself; more of them are how the benchmark loads the GPU.
 const PATCH_GRID_COLUMNS : u32 = 8u;
@@ -26,15 +35,24 @@ fn vs_main(
 ) -> VsOut {
   // The patch is positioned per draw: its origin relative to the eye was subtracted in f64.
   let step = vec3<f32>(f32(instance % PATCH_GRID_COLUMNS), 0.0, f32(instance / PATCH_GRID_COLUMNS));
-  let pos_rel = pos_local + frame.patch_offset.xyz + step * frame.params.z;
+  var pos_rel = pos_local + level.offset.xyz + step * level.info.y;
+  if (frame.debug.y > 0.5) {
+    // The seeded fault: put back the drop of the sphere that the sim's terrain has built in, so
+    // the ground is flat. The vertex's BF east and north are the eye's plus its offset from the eye.
+    let east = frame.debug.z + pos_rel.x;
+    let north = frame.debug.w - pos_rel.z;
+    let d2 = east * east + north * north;
+    let radius = frame.earth.y;
+    pos_rel.y = pos_rel.y + d2 / (radius + sqrt(max(radius * radius - d2, 0.0)));
+  }
   var out : VsOut;
   out.clip = frame.view_proj * vec4<f32>(pos_rel, 1.0);
   out.normal = normal;
   out.height_m = height;
-  out.cell = pos_local.xz / frame.params.y;
+  out.cell = pos_local.xz / level.info.x;
   out.distance_m = length(pos_rel);
   out.local_xz = pos_local.xz;
-  out.runway_on = select(0.0, 1.0, instance == 0u);
+  out.runway_on = select(0.0, 1.0, instance == 0u && level.runway.z > 0.0);
   return out;
 }
 
@@ -69,11 +87,11 @@ fn visible(width_m : f32, aa : f32) -> f32 {
 /// The runway at a patch-local point: rgb, and alpha 1 on the runway, 0 off it. `aa_x` and `aa_z`
 /// are the size of a pixel on the ground along each axis.
 fn runway_colour(local_xz : vec2<f32>, aa_x : f32, aa_z : f32) -> vec4<f32> {
-  let length_m = frame.runway.z;
-  let half_width = frame.runway.w * 0.5;
+  let length_m = level.runway.z;
+  let half_width = level.runway.w * 0.5;
   // Along runs from the threshold towards the far end (north, which is -z in render axes).
-  let along = frame.runway.y - local_xz.y;
-  let across = local_xz.x - frame.runway.x;
+  let along = level.runway.y - local_xz.y;
+  let across = local_xz.x - level.runway.x;
   let aa_across = max(aa_x, 0.001);
   let aa_along = max(aa_z, 0.001);
   let abs_across = abs(across);
@@ -111,6 +129,9 @@ fn runway_colour(local_xz : vec2<f32>, aa_x : f32, aa_z : f32) -> vec4<f32> {
 
 @fragment
 fn fs_main(in : VsOut) -> @location(0) vec4<f32> {
+  if (frame.debug.x > 0.5) {
+    return vec4<f32>(key_level(level.offset.w), 1.0);
+  }
   // Derivatives have to be taken where every fragment of a quad takes them.
   let aa_x = fwidth(in.local_xz.x);
   let aa_z = fwidth(in.local_xz.y);
@@ -119,14 +140,17 @@ fn fs_main(in : VsOut) -> @location(0) vec4<f32> {
   let lowland = vec3<f32>(0.20, 0.35, 0.15);
   let highland = vec3<f32>(0.55, 0.50, 0.45);
   var base = mix(lowland, highland, clamp(in.height_m / HIGHLAND_M, 0.0, 1.0));
-  // Faint cell grid so the patch structure is visible before real terrain exists.
-  let edge = max(fract(in.cell.x), fract(in.cell.y));
-  var grid = 1.0 - 0.07 * step(0.96, edge);
-  if (frame.runway.z > 0.0 && in.runway_on > 0.5) {
+  // Faint cell grid on the finest level, so the patch structure is visible before real terrain exists.
+  var grid = 1.0;
+  if (level.offset.w < 0.5) {
+    let edge = max(fract(in.cell.x), fract(in.cell.y));
+    grid = 1.0 - 0.07 * step(0.96, edge);
+  }
+  if (in.runway_on > 0.5) {
     let r = runway_colour(in.local_xz, aa_x, aa_z);
     base = mix(base, r.rgb, r.a);
     grid = mix(grid, 1.0, r.a);
   }
   let lit = base * (0.25 + 0.75 * shade) * grid;
-  return vec4<f32>(fog(lit, in.distance_m), 1.0);
+  return vec4<f32>(apply_haze(lit, in.distance_m, frame.params.w, in.height_m), 1.0);
 }
