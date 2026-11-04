@@ -88,6 +88,7 @@
   },
   "mix": {
     "duck_db": -6,
-    "level_offset_db": 0
+    "level_offset_db": 16.4,
+    "chase_offset_db": -20
   }
 }

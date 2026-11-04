@@ -37,8 +37,11 @@ function threadsInitialPages(command: 'build' | 'serve'): number {
 }
 
 function requireContent(command: 'build' | 'serve'): void {
-  if (command === 'build' && !existsSync(resolve(repoRoot, 'content-out/core.cpack'))) {
-    throw new Error('content-out/core.cpack is missing: run `cargo xtask content` first');
+  if (command !== 'build') return;
+  for (const file of ['core.cpack', 'core.present.json']) {
+    if (!existsSync(resolve(repoRoot, 'content-out', file))) {
+      throw new Error(`content-out/${file} is missing: run \`cargo xtask content\` first`);
+    }
   }
 }
 

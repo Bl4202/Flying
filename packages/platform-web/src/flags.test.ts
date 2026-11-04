@@ -35,6 +35,7 @@ describe('parseFlags', () => {
   it('maps the short forms', () => {
     expect(parseFlags('debug=1').debug).toBe('overlay');
     expect(parseFlags('selftest=1').selftest).toBe('hash');
+    expect(parseFlags('selftest=audio').selftest).toBe('audio');
     expect(parseFlags('bench=full').bench).toBe('full');
     for (const r of ['auto', 'webgpu', 'webgl2', 'null'] as const) {
       expect(parseFlags(`renderer=${r}`).renderer).toBe(r);

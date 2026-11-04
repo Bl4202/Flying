@@ -46,6 +46,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-39](0039-v0-1c-gates.md) | v0.1c gates: screenshots, cameras, HUD, audio, frame rate and app flow | Accepted |
 | [ADR-40](0040-custom-renderer-stays.md) | The renderer stays custom; sky, terrain levels and quality presets | Proposed |
 | [ADR-41](0041-cameras-hud-and-models.md) | Cameras, view input, the HUD and the procedural aircraft | Proposed |
+| [ADR-42](0042-flight-audio.md) | Flight audio: synthesis in an AudioWorklet | Proposed |
 
 ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist before any tuning
 (AC-66.4).

@@ -29,6 +29,7 @@ import {
   type FlowEvent,
   type FlowState,
 } from '@flying/ui';
+import { runAudioSelfTest } from './audio-selftest.ts';
 import { runBenchmarkPage } from './benchmark-page.ts';
 import { codeOf, startDemo, type Demo } from './demo.ts';
 import { runPerfPage } from './perf-run.ts';
@@ -87,6 +88,11 @@ async function main(): Promise<void> {
 
   if (flags.selftest === 'renderer') {
     await runRendererSelfTest({ root: element('selftest-root'), features });
+    return;
+  }
+
+  if (flags.selftest === 'audio') {
+    await runAudioSelfTest(element('selftest-root'));
     return;
   }
 

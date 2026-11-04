@@ -372,6 +372,14 @@
       "additionalProperties": false,
       "description": "The mix.",
       "properties": {
+        "chase_offset_db": {
+          "description": "The aircraft's voices in the chase view, relative to the cockpit view. The cockpit hears the\noutside through the canopy; the chase view has no canopy, and without this it would be\nlouder by the canopy's attenuation.",
+          "format": "double",
+          "maximum": 24.0,
+          "minimum": -24.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
         "duck_db": {
           "description": "The aircraft bus is lowered this much while a warning sounds (never the warnings bus).",
           "format": "double",
@@ -391,7 +399,8 @@
       },
       "required": [
         "duck_db",
-        "level_offset_db"
+        "level_offset_db",
+        "chase_offset_db"
       ],
       "type": "object"
     },
