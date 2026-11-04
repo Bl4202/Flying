@@ -222,4 +222,60 @@ describe('RenderLoop', () => {
     expect(next.levels[0]?.level).toBe(0);
     expect(next.levels[1]?.hole).toBeDefined();
   });
+
+  describe('the camera rig', () => {
+    const cockpit = {
+      eyeBodyM: [3.6, 0, -0.85] as const,
+      headLimits: { yawDeg: 135, pitchUpDeg: 60, pitchDownDeg: 60 },
+    };
+
+    it('leaves the eye at the aircraft until it is told anything about the view', () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.setTerrain(0, makeTestPatch({ centreEast: 0, centreNorth: 0 }));
+      t.loop.frame();
+      // The aircraft is at (0, -6000, 1000) in BF; level 0's origin is (0, 0, 0): north is -z in
+      // render axes, so the patch is 6000 m ahead (-z) and 1000 m below (-y).
+      expect(t.renderer.lastFrame?.levelUniform[2]).toBeCloseTo(-6000, 3);
+      expect(t.renderer.lastFrame?.levelUniform[1]).toBeCloseTo(-1000, 3);
+    });
+
+    it('puts the eye at the cockpit eye once it has a cockpit: 3.6 m ahead and 0.85 m up', () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.setTerrain(0, makeTestPatch({ centreEast: 0, centreNorth: 0 }));
+      t.loop.setCockpit(cockpit);
+      t.advance(16);
+      t.loop.frame();
+      expect(t.renderer.lastFrame?.levelUniform[2]).toBeCloseTo(-6000 + 3.6, 3);
+      expect(t.renderer.lastFrame?.levelUniform[1]).toBeCloseTo(-1000 - 0.85, 3);
+    });
+
+    it('moves to the chase camera when the view says so, behind and above the aircraft', () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.setTerrain(0, makeTestPatch({ centreEast: 0, centreNorth: 0 }));
+      t.loop.setCockpit(cockpit);
+      t.loop.setView({ ...t.loop.view, camera: 'chase' });
+      t.advance(16);
+      t.loop.frame();
+      // 45 m behind (south) and 9 m above: the patch, which is north (-z in render axes), is that
+      // much further ahead, and lower.
+      expect(t.renderer.lastFrame?.levelUniform[2]).toBeCloseTo(-6000 - 45, 1);
+      expect(t.renderer.lastFrame?.levelUniform[1]).toBeCloseTo(-1000 - 9, 1);
+    });
+
+    it('draws with the field of view the rig gives, in the frame', () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.setCockpit(cockpit);
+      t.loop.setView({ ...t.loop.view, fovDeg: 100 });
+      for (let i = 0; i < 60; i++) {
+        t.advance(16);
+        t.loop.frame();
+      }
+      const half = t.renderer.lastFrame?.uniform[FRAME_AT.PARAMS + 1] ?? 0;
+      expect(Math.atan(half) * 2 * (180 / Math.PI)).toBeCloseTo(100, 1);
+    });
+  });
 });

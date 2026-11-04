@@ -4,6 +4,8 @@
  */
 import type { RendererChoice } from '@flying/platform-web/flags';
 import type { Quantiles, SnapshotEndpoint } from '@flying/sim-bridge';
+import type { ViewState } from '@flying/sim-bridge/view-channel';
+import type { CockpitView } from './camera-rig.ts';
 import type { Backend, SampleCount } from './renderer.ts';
 import type { DebugView, RenderFault } from './scene.ts';
 
@@ -26,6 +28,8 @@ export interface RenderInit {
   snapshot: SnapshotEndpoint;
   /** Where the terrain levels arrive (`{ type: 'terrain', level, patch }`), or `null` for none. */
   terrainPort: MessagePort | null;
+  /** The view channel (`sim-bridge/view-channel`), if the page is isolated; else views arrive as messages. */
+  viewBuffer: SharedArrayBuffer | null;
   /** Drawing-buffer size in device pixels. */
   width: number;
   height: number;
@@ -39,6 +43,10 @@ export type RenderCommand =
   | { type: 'canvas'; canvas: OffscreenCanvas }
   | { type: 'resize'; width: number; height: number }
   | ({ type: 'settings' } & RenderSettings)
+  /** What the player is doing with the view, when there is no shared channel. */
+  | { type: 'view'; state: ViewState }
+  /** The cockpit to look out of. */
+  | { type: 'cockpit'; cockpit: CockpitView }
   | { type: 'read-pixels'; id: number }
   | { type: 'reset-run' }
   | { type: 'stall'; ms: number }

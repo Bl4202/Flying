@@ -12,7 +12,7 @@
  * It copes with having none, one, a stale newest, a gap of several ticks, and a body or the
  * ownship teleporting between snapshots (it snaps instead of sweeping across the map).
  */
-import { SNAPSHOT } from '@flying/sim-bridge/layout';
+import { OWNSHIP_FLAG2, SNAPSHOT } from '@flying/sim-bridge/layout';
 import { SnapshotReader } from '@flying/sim-bridge/snapshot';
 
 /** What the scene builder needs: the interpolated world, in BF. */
@@ -29,6 +29,19 @@ export interface SceneState {
   ownshipQuat: Float32Array;
   /** True airspeed, m/s. */
   ownshipSpeed: number;
+  /** Velocity in BF (east, north, up), m/s: the camera's chase direction. */
+  ownshipVelBf: Float32Array;
+  /** Speed over the ground, m/s. */
+  groundSpeed: number;
+  /** The load factor the pilot feels, lagged (g): the cockpit camera's sag. */
+  gLagged: number;
+  /** Angle of attack and the angle at which the warning starts, radians: the buffet's drive. */
+  alpha: number;
+  alphaWarn: number;
+  /** Afterburner level, 0 to 1. */
+  abLevel: number;
+  /** Weight is on the wheels. */
+  onGround: boolean;
   ownshipThrottle: number;
   /** `OWNSHIP_FLAG2` bits. */
   ownshipFlags2: number;
@@ -79,6 +92,13 @@ export class SnapshotInterpolator {
     ownshipPosBf: new Float64Array(3),
     ownshipQuat: new Float32Array([1, 0, 0, 0]),
     ownshipSpeed: 0,
+    ownshipVelBf: new Float32Array(3),
+    groundSpeed: 0,
+    gLagged: 1,
+    alpha: 0,
+    alphaWarn: 0,
+    abLevel: 0,
+    onGround: false,
     ownshipThrottle: 0,
     ownshipFlags2: 0,
     gStress: 0,
@@ -180,9 +200,16 @@ export class SnapshotInterpolator {
     s.publishTimeMs = cur.publishTimeMs();
     s.inputTimeMs = cur.inputTimeMs();
     s.ownshipSpeed = cur.ownshipTas();
+    cur.ownshipVel(s.ownshipVelBf);
+    s.groundSpeed = cur.ownshipGroundSpeed();
+    s.gLagged = cur.ownshipGLagged();
+    s.alpha = cur.ownshipAlpha();
+    s.alphaWarn = cur.ownshipAlphaWarn();
+    s.abLevel = cur.ownshipAbLevel();
     s.ownshipThrottle = cur.ownshipThrottle();
     // What the pilot's body does to the picture changes slowly and is not blended.
     s.ownshipFlags2 = cur.ownshipFlags2();
+    s.onGround = (s.ownshipFlags2 & OWNSHIP_FLAG2.WOW) !== 0;
     s.gStress = cur.ownshipGStress();
     s.redout = cur.ownshipRedout();
     cur.ownshipAim(this.#aim);

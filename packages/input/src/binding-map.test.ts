@@ -56,7 +56,20 @@ describe('compileBindings: layout', () => {
     for (const code of ['KeyW', 'KeyS', 'ShiftLeft', 'ControlRight', 'PageUp', 'F8', 'Escape']) {
       expect(map.keyCodes.has(code), code).toBe(true);
     }
-    expect(map.keyCodes.has('KeyX')).toBe(false);
+    // The view keys are claimed too, so the browser does not scroll or search on them.
+    for (const code of [
+      'KeyC',
+      'KeyX',
+      'KeyI',
+      'ArrowUp',
+      'ArrowDown',
+      'Comma',
+      'Period',
+      'Slash',
+    ]) {
+      expect(map.keyCodes.has(code), code).toBe(true);
+    }
+    expect(map.keyCodes.has('KeyM')).toBe(false);
     // Mouse and pad bindings are not keys.
     const pad = compileBindings(
       profileOf([

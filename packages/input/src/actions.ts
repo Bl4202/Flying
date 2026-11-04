@@ -51,6 +51,30 @@ const def = <const I extends string>(
   ...(extra.range !== undefined ? { range: extra.range } : {}),
 });
 
+/**
+ * The version of this catalogue. A profile records the version it was made for (`catalogue`; none
+ * means 1, the v0.1b catalogue), so that actions added later can be given their default bindings
+ * once, where the inputs are free, and not again if the player removes them.
+ */
+export const ACTION_CATALOGUE_VERSION = 2;
+
+/** The actions added in each catalogue version after the first. */
+export const ACTIONS_ADDED_IN: Readonly<Record<number, readonly string[]>> = {
+  2: [
+    'flight.camera_cycle',
+    'flight.free_look',
+    'flight.zoom',
+    'flight.look_left',
+    'flight.look_right',
+    'flight.look_up',
+    'flight.look_down',
+    'flight.look_recentre',
+    'flight.hud_declutter',
+    'flight.hud_brightness_up',
+    'flight.hud_brightness_down',
+  ],
+};
+
 /** Every action, in the order the binding editor shows them. */
 export const ACTIONS = [
   def('flight.pitch', 'axis', 'axes', { range: 'bipolar' }),
@@ -75,6 +99,18 @@ export const ACTIONS = [
   def('flight.recover', 'hold', 'systems'),
   def('flight.mouse_mode', 'button', 'view'),
   def('flight.assist_cycle', 'button', 'systems'),
+  // The view (ADR-41): none of these reach the input frame; the pump reports them as `ViewInput`.
+  def('flight.camera_cycle', 'button', 'view'),
+  def('flight.free_look', 'hold', 'view'),
+  def('flight.zoom', 'hold', 'view'),
+  def('flight.look_left', 'hold', 'view'),
+  def('flight.look_right', 'hold', 'view'),
+  def('flight.look_up', 'hold', 'view'),
+  def('flight.look_down', 'hold', 'view'),
+  def('flight.look_recentre', 'button', 'view'),
+  def('flight.hud_declutter', 'button', 'view'),
+  def('flight.hud_brightness_up', 'button', 'view'),
+  def('flight.hud_brightness_down', 'button', 'view'),
   def('system.respawn', 'button', 'system'),
   def('system.pause', 'button', 'system', { context: 'menu' }),
 ] as const satisfies readonly ActionDef[];

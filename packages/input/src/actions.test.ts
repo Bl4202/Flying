@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { ACTION_COUNT, ACTIONS, actionDef, DEVICE_CLASSES, isActionId } from './actions.ts';
+import {
+  ACTION_CATALOGUE_VERSION,
+  ACTION_COUNT,
+  ACTIONS,
+  ACTIONS_ADDED_IN,
+  actionDef,
+  DEVICE_CLASSES,
+  isActionId,
+} from './actions.ts';
 
 describe('the action catalogue', () => {
   it('has unique ids of the form group.name', () => {
@@ -45,6 +53,42 @@ describe('the action catalogue', () => {
     for (const id of ['flight.gear', 'flight.flaps_cycle', 'system.respawn']) {
       expect(kind(id)).toBe('button');
     }
+  });
+
+  it('has the view actions in their own group, as presses and holds the pump reports as view input', () => {
+    const view = ACTIONS.filter((a) => a.group === 'view').map((a) => a.id);
+    expect(view).toEqual([
+      'flight.mouse_mode',
+      'flight.camera_cycle',
+      'flight.free_look',
+      'flight.zoom',
+      'flight.look_left',
+      'flight.look_right',
+      'flight.look_up',
+      'flight.look_down',
+      'flight.look_recentre',
+      'flight.hud_declutter',
+      'flight.hud_brightness_up',
+      'flight.hud_brightness_down',
+    ]);
+    const kind = (id: string) => actionDef(id)?.kind;
+    for (const id of ['flight.free_look', 'flight.zoom', 'flight.look_up', 'flight.look_left']) {
+      expect(kind(id)).toBe('hold');
+    }
+    for (const id of ['flight.camera_cycle', 'flight.look_recentre', 'flight.hud_declutter']) {
+      expect(kind(id)).toBe('button');
+    }
+  });
+
+  it('records which actions each catalogue version added, all of them real', () => {
+    expect(ACTION_CATALOGUE_VERSION).toBe(2);
+    for (const [version, ids] of Object.entries(ACTIONS_ADDED_IN)) {
+      expect(Number(version)).toBeLessThanOrEqual(ACTION_CATALOGUE_VERSION);
+      for (const id of ids) expect(isActionId(id), id).toBe(true);
+    }
+    // Everything in the catalogue was in version 1 or was added later, once.
+    const added = Object.values(ACTIONS_ADDED_IN).flat();
+    expect(new Set(added).size).toBe(added.length);
   });
 
   it('looks actions up by id', () => {

@@ -34,6 +34,7 @@ import {
   viewRotation,
   type ZRange,
 } from './camera.ts';
+import type { CameraPose } from './camera-rig.ts';
 import { MARKER_INSTANCE_FLOATS, MARKER_SIZE_M } from './markers.ts';
 import type { SceneState } from './interp.ts';
 import { eyeGeometry, globeFloorM, newEyeGeometry } from './sky.ts';
@@ -156,6 +157,9 @@ export class SceneBuilder {
   readonly #rel = new Float64Array(3);
   readonly #sun = sunDirection();
   readonly #eye = newEyeGeometry();
+  /** The eye (BF) and field of view of the frame being built. */
+  #eyeBf: ArrayLike<number> = new Float64Array(3);
+  #fovY = FOV_Y;
 
   /**
    * Fills (and returns, for reuse next frame) the frame data for `state`.
@@ -183,16 +187,17 @@ export class SceneBuilder {
       fault?: RenderFault | null;
       /** Draw the sky pass (default true). */
       sky?: boolean;
+      /** Where the eye is and how it looks; without one, the aircraft's reference point and attitude. */
+      camera?: CameraPose;
     },
   ): FrameData {
     const f = this.#frame;
-    projection(this.#proj, FOV_Y, opts.aspect, NEAR_M, opts.zRange);
-    viewRotation(this.#view, [
-      state.ownshipQuat[0] ?? 1,
-      state.ownshipQuat[1] ?? 0,
-      state.ownshipQuat[2] ?? 0,
-      state.ownshipQuat[3] ?? 0,
-    ]);
+    const cam = opts.camera;
+    const q = cam?.quatBf ?? state.ownshipQuat;
+    projection(this.#proj, cam?.fovY ?? FOV_Y, opts.aspect, cam?.near ?? NEAR_M, opts.zRange);
+    viewRotation(this.#view, [q[0] ?? 1, q[1] ?? 0, q[2] ?? 0, q[3] ?? 0]);
+    this.#eyeBf = cam?.eyeBf ?? state.ownshipPosBf;
+    this.#fovY = cam?.fovY ?? FOV_Y;
     mul4(this.#vp, this.#proj, this.#view);
     f.sky = opts.sky ?? true;
     f.patchInstances = Math.min(
@@ -200,7 +205,7 @@ export class SceneBuilder {
       Math.max(1, Math.floor(opts.patchInstances ?? 1)),
     );
     this.#frameBlock(f.uniform, state, opts);
-    this.#levelBlocks(f, state, opts);
+    this.#levelBlocks(f, opts);
     f.fx = f.uniform[FRAME_AT.FX + 2] !== 0 && this.#fxActive(state);
     this.#bodies(f, state);
     return f;
@@ -247,13 +252,13 @@ export class SceneBuilder {
     const anchor = opts.anchorBf ?? ORIGIN;
     const eye = eyeGeometry(
       this.#eye,
-      state.ownshipPosBf,
+      this.#eyeBf,
       anchor,
       opts.globeFloorM ?? globeFloorM(state.arena),
       flat,
     );
     u[FRAME_AT.PARAMS] = opts.timeS;
-    u[FRAME_AT.PARAMS + 1] = Math.tan(FOV_Y / 2);
+    u[FRAME_AT.PARAMS + 1] = Math.tan(this.#fovY / 2);
     u[FRAME_AT.PARAMS + 2] = opts.aspect;
     u[FRAME_AT.PARAMS + 3] = eye.eyeMslM;
     u[FRAME_AT.EARTH] = eye.heightM;
@@ -274,16 +279,12 @@ export class SceneBuilder {
 
     u[FRAME_AT.DEBUG] = opts.debugView === 'classify' ? 1 : 0;
     u[FRAME_AT.DEBUG + 1] = flat ? 1 : 0;
-    u[FRAME_AT.DEBUG + 2] = (state.ownshipPosBf[0] ?? 0) - anchor[0];
-    u[FRAME_AT.DEBUG + 3] = (state.ownshipPosBf[1] ?? 0) - anchor[1];
+    u[FRAME_AT.DEBUG + 2] = (this.#eyeBf[0] ?? 0) - anchor[0];
+    u[FRAME_AT.DEBUG + 3] = (this.#eyeBf[1] ?? 0) - anchor[1];
   }
 
   /** Fills one `TerrainLevel` block per level that has a mesh, and the mask of those. */
-  #levelBlocks(
-    f: FrameData,
-    state: SceneState,
-    opts: { terrain: LevelSet; airfield?: Airfield | null },
-  ): void {
+  #levelBlocks(f: FrameData, opts: { terrain: LevelSet; airfield?: Airfield | null }): void {
     const airfield = opts.airfield === undefined ? TEST_AIRFIELD : opts.airfield;
     f.levelMask = 0;
     for (let level = 0; level < TERRAIN_LEVEL_COUNT; level++) {
@@ -293,7 +294,7 @@ export class SceneBuilder {
       const mesh = opts.terrain.mesh(level);
       if (mesh === undefined) continue;
       f.levelMask |= 1 << level;
-      relativeToEye(this.#rel, 0, mesh.originBf, 0, state.ownshipPosBf);
+      relativeToEye(this.#rel, 0, mesh.originBf, 0, this.#eyeBf);
       u[at] = this.#rel[0] ?? 0;
       u[at + 1] = this.#rel[1] ?? 0;
       u[at + 2] = this.#rel[2] ?? 0;
@@ -316,20 +317,20 @@ export class SceneBuilder {
     const n = Math.min(state.bodyCount, SNAPSHOT.BODY_CAPACITY);
     for (let i = 0; i < n; i++) {
       const at = i * MARKER_INSTANCE_FLOATS;
-      relativeToEye(f.instances, at, state.bodyPosBf, i * 3, state.ownshipPosBf);
+      relativeToEye(f.instances, at, state.bodyPosBf, i * 3, this.#eyeBf);
       f.instances[at + 3] = MARKER_SIZE_M;
-      // Body axes -> render axes is the BF rotation of the body, after the BF -> render change.
-      const q = quatMul(BF_TO_RENDER, [
-        state.bodyQuat[i * 4] ?? 1,
-        state.bodyQuat[i * 4 + 1] ?? 0,
-        state.bodyQuat[i * 4 + 2] ?? 0,
-        state.bodyQuat[i * 4 + 3] ?? 0,
-      ]);
+      // Body axes -> render axes is the BF rotation of the body, after the BF -> render change:
+      // q = BF_TO_RENDER * bodyQuat, in scalars (this runs every frame and makes no arrays).
+      const bw = state.bodyQuat[i * 4] ?? 1;
+      const bx = state.bodyQuat[i * 4 + 1] ?? 0;
+      const by = state.bodyQuat[i * 4 + 2] ?? 0;
+      const bz = state.bodyQuat[i * 4 + 3] ?? 0;
+      const s = Math.SQRT1_2;
       // The shader takes (x, y, z, w).
-      f.instances[at + 4] = q[1];
-      f.instances[at + 5] = q[2];
-      f.instances[at + 6] = q[3];
-      f.instances[at + 7] = q[0];
+      f.instances[at + 4] = s * (bx - bw);
+      f.instances[at + 5] = s * (by + bz);
+      f.instances[at + 6] = s * (bz - by);
+      f.instances[at + 7] = s * (bw + bx);
       // No tint of its own: the shader colours a body by its index.
       f.instances[at + 8] = f.instances[at + 9] = f.instances[at + 10] = f.instances[at + 11] = 0;
     }

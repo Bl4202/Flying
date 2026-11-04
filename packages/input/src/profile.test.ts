@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIONS, type ActionId } from './actions.ts';
+import { ACTION_CATALOGUE_VERSION, ACTIONS, ACTIONS_ADDED_IN, type ActionId } from './actions.ts';
 import {
   BUILTIN_IDS,
   builtinProfile,
   builtinProfiles,
   calibrationKey,
   chooseProfile,
+  type Binding,
   type ControlsProfile,
   defaultShape,
   MAX_BINDINGS_PER_ACTION,
+  migrateProfile,
   parseControlsProfile,
   parseControlsProfileText,
   profileDevices,
@@ -16,6 +18,7 @@ import {
   serializeProfile,
   shapeFor,
 } from './profile.ts';
+import { findConflicts } from './conflicts.ts';
 import { LINEAR_SHAPE, STICK_SHAPE } from './shaping.ts';
 import { sourceKey } from './sources.ts';
 
@@ -476,5 +479,146 @@ describe('choosing a profile for the devices connected', () => {
     const joy = builtinProfile('generic-joystick');
     expect(profileSatisfied(joy, ['joy:046d:c215'])).toBe(true);
     expect(profileSatisfied(joy, [])).toBe(false);
+  });
+});
+
+describe('the view bindings and the action catalogue version', () => {
+  const VIEW_ACTIONS = ACTIONS_ADDED_IN[2] as readonly ActionId[];
+  const stripped = (p: ControlsProfile): ControlsProfile => {
+    const rest = { ...p };
+    delete rest.catalogue;
+    return { ...rest, bindings: p.bindings.filter((b) => !VIEW_ACTIONS.includes(b.action)) };
+  };
+
+  it('gives every built-in profile the view keys, outside the browser chords, and the current catalogue', () => {
+    for (const p of builtinProfiles()) {
+      expect(p.catalogue, p.id).toBe(ACTION_CATALOGUE_VERSION);
+      const keys = new Map(
+        p.bindings.filter((b) => b.source.kind === 'key').map((b) => [b.action, b.source]),
+      );
+      const code = (a: ActionId): string | undefined => {
+        const s = keys.get(a);
+        return s?.kind === 'key' ? s.code : undefined;
+      };
+      expect(code('flight.camera_cycle'), p.id).toBe('KeyC');
+      expect(code('flight.free_look'), p.id).toBe('KeyX');
+      expect(code('flight.look_up'), p.id).toBe('ArrowUp');
+      expect(code('flight.look_down'), p.id).toBe('ArrowDown');
+      expect(code('flight.look_left'), p.id).toBe('Comma');
+      expect(code('flight.look_right'), p.id).toBe('Period');
+      expect(code('flight.look_recentre'), p.id).toBe('Slash');
+      expect(code('flight.hud_declutter'), p.id).toBe('KeyI');
+      expect(code('flight.hud_brightness_down'), p.id).toBe('Minus');
+      expect(code('flight.hud_brightness_up'), p.id).toBe('Equal');
+    }
+  });
+
+  it("puts zoom on the right mouse button and the camera on the pad's right stick", () => {
+    const km = builtinProfile('default-km');
+    const zoom = km.bindings.find((b) => b.action === 'flight.zoom');
+    expect(zoom?.source).toEqual({ kind: 'mouse-button', button: 2 });
+    const pad = builtinProfile('gamepad-standard');
+    const cycle = pad.bindings.filter((b) => b.action === 'flight.camera_cycle');
+    expect(cycle.map((b) => sourceKey(b.source))).toContain(
+      sourceKey({ kind: 'pad-button', device: 'pad', index: 11 }),
+    );
+  });
+
+  it('writes the catalogue version, and reads it back, and refuses one it does not know', () => {
+    const p = builtinProfile('default-km');
+    const text = serializeProfile(p);
+    expect(JSON.parse(text)).toMatchObject({ catalogue: 2 });
+    const back = parseControlsProfileText(text);
+    expect(back.ok && back.profile.catalogue).toBe(2);
+    expect(serializeProfile(back.ok ? back.profile : p)).toBe(text);
+    // A profile without one (a v0.1b file) reads as it is, with none.
+    const v1 = JSON.parse(text) as Record<string, unknown>;
+    delete v1['catalogue'];
+    const old = parseControlsProfile(v1);
+    expect(old.ok && old.profile.catalogue).toBeUndefined();
+    const newer = parseControlsProfile({ ...JSON.parse(text), catalogue: 3 });
+    expect(newer.ok).toBe(false);
+    expect(!newer.ok && newer.errors[0]?.pointer).toBe('/catalogue');
+  });
+
+  describe('migrateProfile', () => {
+    it('adds the default view bindings to a v0.1b profile, once', () => {
+      const old = stripped(builtinProfile('default-km'));
+      expect(old.catalogue).toBeUndefined();
+      const m = migrateProfile(old);
+      expect(m.migrated).toBe(true);
+      expect(m.profile.catalogue).toBe(2);
+      expect(m.unbound).toEqual([]);
+      const want = builtinProfile('default-km').bindings.filter((b) =>
+        VIEW_ACTIONS.includes(b.action),
+      );
+      const byKey = (a: Binding, b: Binding): number =>
+        JSON.stringify(a).localeCompare(JSON.stringify(b));
+      expect([...m.added].sort(byKey)).toEqual([...want].sort(byKey));
+      expect(m.profile.bindings.slice(0, old.bindings.length)).toEqual(old.bindings);
+      expect(m.profile.bindings).toHaveLength(old.bindings.length + want.length);
+      // The old profile is untouched, and migrating again does nothing.
+      expect(old.bindings.some((b) => VIEW_ACTIONS.includes(b.action))).toBe(false);
+      const again = migrateProfile(m.profile);
+      expect(again.migrated).toBe(false);
+      expect(again.profile).toBe(m.profile);
+    });
+
+    it("leaves the player's own bindings alone and leaves an action unbound if its keys are taken", () => {
+      const old = stripped(builtinProfile('default-km'));
+      // The player had put the landing gear on C and the parking brake on X.
+      old.bindings = old.bindings.filter(
+        (b) => b.action !== 'flight.gear' && b.action !== 'flight.parking_brake',
+      );
+      old.bindings.push(
+        { action: 'flight.gear', source: { kind: 'key', code: 'KeyC' } },
+        { action: 'flight.parking_brake', source: { kind: 'key', code: 'KeyX' } },
+      );
+      const m = migrateProfile(old);
+      expect(m.unbound).toEqual(['flight.camera_cycle', 'flight.free_look']);
+      expect(m.profile.bindings.filter((b) => b.action === 'flight.camera_cycle')).toEqual([]);
+      // Their own choices stand, and the free inputs were still given out.
+      expect(m.profile.bindings).toContainEqual({
+        action: 'flight.gear',
+        source: { kind: 'key', code: 'KeyC' },
+      });
+      expect(m.profile.bindings.some((b) => b.action === 'flight.look_up')).toBe(true);
+      expect(findConflicts(m.profile)).toEqual([]);
+    });
+
+    it("takes the defaults of the profile's device class", () => {
+      const old = stripped(builtinProfile('gamepad-standard'));
+      const m = migrateProfile(old);
+      expect(
+        m.added.some((b) => b.action === 'flight.camera_cycle' && b.source.kind === 'pad-button'),
+      ).toBe(true);
+      expect(
+        m.added.some((b) => b.action === 'flight.camera_cycle' && b.source.kind === 'key'),
+      ).toBe(true);
+      expect(
+        m.profile.bindings.filter((b) => b.action === 'flight.camera_cycle').length,
+      ).toBeLessThanOrEqual(MAX_BINDINGS_PER_ACTION);
+    });
+
+    it('does not bring back a binding the player removed after the migration', () => {
+      const migrated = migrateProfile(stripped(builtinProfile('default-km'))).profile;
+      const without = {
+        ...migrated,
+        bindings: migrated.bindings.filter((b) => b.action !== 'flight.camera_cycle'),
+      };
+      const m = migrateProfile(without);
+      expect(m.migrated).toBe(false);
+      expect(m.profile.bindings.some((b) => b.action === 'flight.camera_cycle')).toBe(false);
+    });
+
+    it('keeps the profile valid: it round-trips through JSON and has no conflicts', () => {
+      for (const id of ['default-km', 'gamepad-standard', 'generic-joystick'] as const) {
+        const m = migrateProfile(stripped(builtinProfile(id)));
+        expect(findConflicts(m.profile), id).toEqual([]);
+        const back = parseControlsProfileText(serializeProfile(m.profile));
+        expect(back.ok, id).toBe(true);
+        expect(back.ok && back.profile).toEqual(m.profile);
+      }
+    });
   });
 });

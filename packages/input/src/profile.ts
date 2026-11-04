@@ -18,7 +18,9 @@
  * order, two-space indent), so export, import and export again give the same bytes.
  */
 import {
+  ACTION_CATALOGUE_VERSION,
   ACTIONS,
+  ACTIONS_ADDED_IN,
   actionDef,
   type ActionId,
   DEVICE_CLASSES,
@@ -35,7 +37,7 @@ import {
   LINEAR_SHAPE,
   STICK_SHAPE,
 } from './shaping.ts';
-import { deviceMatches, type HatDirection, type Half, type Source } from './sources.ts';
+import { deviceMatches, type HatDirection, type Half, type Source, sourceKey } from './sources.ts';
 
 export const PROFILE_SCHEMA = 'controls/1';
 /** The most bindings one action can have (the editor shows this many chips). */
@@ -80,6 +82,11 @@ export interface ControlsProfile {
   id: string;
   name: string;
   deviceClass: DeviceClass;
+  /**
+   * The version of the action catalogue the profile was made for (`ACTION_CATALOGUE_VERSION`);
+   * none means 1, the v0.1b catalogue. `migrateProfile` brings an older one up to date.
+   */
+  catalogue?: number;
   bindings: Binding[];
   /** Shaping per axis or rate action; an action without an entry uses `defaultShape`. */
   axes: Partial<Record<ActionId, AxisShape>>;
@@ -214,8 +221,32 @@ function keyboardBindings(compact = false): Binding[] {
     bind('flight.recover', key('KeyU')),
     bind('flight.mouse_mode', key('KeyO')),
     bind('flight.assist_cycle', key('F8')),
+    ...viewBindings(),
     bind('system.respawn', key('KeyR')),
     bind('system.pause', key('Escape')),
+  ];
+}
+
+/**
+ * The view keys (ADR-41), all outside the browser's Ctrl chords and function keys. C cycles the
+ * camera, X held lets the mouse turn the view, the right mouse button held zooms, the arrow keys
+ * look up and down and the comma and full stop look left and right (the left and right arrows are
+ * Ctrl chords of the browser, and Ctrl is the throttle), the slash centres the view, I steps the
+ * HUD declutter, and the minus and equals keys dim and brighten it.
+ */
+function viewBindings(): Binding[] {
+  return [
+    bind('flight.camera_cycle', key('KeyC')),
+    bind('flight.free_look', key('KeyX')),
+    bind('flight.zoom', { kind: 'mouse-button', button: 2 }),
+    bind('flight.look_up', key('ArrowUp')),
+    bind('flight.look_down', key('ArrowDown')),
+    bind('flight.look_left', key('Comma')),
+    bind('flight.look_right', key('Period')),
+    bind('flight.look_recentre', key('Slash')),
+    bind('flight.hud_declutter', key('KeyI')),
+    bind('flight.hud_brightness_down', key('Minus')),
+    bind('flight.hud_brightness_up', key('Equal')),
   ];
 }
 
@@ -239,6 +270,7 @@ function gamepadBindings(): Binding[] {
     bind('flight.airbrake', padButton(d, PAD_BUTTON.B)),
     bind('flight.parking_brake', padButton(d, PAD_BUTTON.A)),
     bind('flight.recover', padButton(d, PAD_BUTTON.LEFT_BUMPER)),
+    bind('flight.camera_cycle', padButton(d, PAD_BUTTON.RIGHT_STICK)),
     bind('system.respawn', padButton(d, PAD_BUTTON.BACK)),
     bind('system.pause', padButton(d, PAD_BUTTON.START)),
   ];
@@ -285,6 +317,7 @@ function cloneShape(s: AxisShape): AxisShape {
 export function builtinProfile(id: BuiltinId): ControlsProfile {
   const common = {
     schema: PROFILE_SCHEMA,
+    catalogue: ACTION_CATALOGUE_VERSION,
     axes: defaultAxes(),
     calibration: {},
     keyboard: { ...DEFAULT_EMULATION },
@@ -636,6 +669,7 @@ export function parseControlsProfile(json: unknown): ParseResult {
     'id',
     'name',
     'deviceClass',
+    'catalogue',
     'bindings',
     'axes',
     'calibration',
@@ -666,6 +700,11 @@ export function parseControlsProfile(json: unknown): ParseResult {
       ? r.oneOf(root['deviceClass'], '/deviceClass', DEVICE_CLASSES)
       : undefined;
   if (!('deviceClass' in root)) r.add('/deviceClass', 'missing');
+
+  const catalogue =
+    'catalogue' in root
+      ? r.integer(root['catalogue'], '/catalogue', 1, ACTION_CATALOGUE_VERSION)
+      : undefined;
 
   const bindings: Binding[] = [];
   const rawBindings = root['bindings'];
@@ -793,6 +832,7 @@ export function parseControlsProfile(json: unknown): ParseResult {
       id,
       name,
       deviceClass,
+      ...(catalogue === undefined ? {} : { catalogue }),
       bindings,
       axes,
       calibration,
@@ -869,6 +909,7 @@ export function profileToJson(p: ControlsProfile): Record<string, unknown> {
     id: p.id,
     name: p.name,
     deviceClass: p.deviceClass,
+    ...(p.catalogue === undefined ? {} : { catalogue: p.catalogue }),
     bindings: p.bindings.map((b) => ({
       action: b.action,
       source: sourceJson(b.source),
@@ -894,4 +935,67 @@ export function profileToJson(p: ControlsProfile): Record<string, unknown> {
 /** Canonical JSON text: export, import and export again give identical bytes. */
 export function serializeProfile(p: ControlsProfile): string {
   return `${JSON.stringify(profileToJson(p), null, 2)}\n`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Migration
+// ---------------------------------------------------------------------------------------------
+
+export interface Migration {
+  /** The profile brought up to the current catalogue (the same object if nothing was needed). */
+  profile: ControlsProfile;
+  /** Bindings that were added. */
+  added: Binding[];
+  /** Actions of the new catalogue that stay unbound because every default input is taken. */
+  unbound: ActionId[];
+  /** True if the profile was older and is now current. */
+  migrated: boolean;
+}
+
+const BUILTIN_FOR_CLASS: Readonly<Record<DeviceClass, BuiltinId>> = {
+  'keyboard-mouse': 'default-km',
+  gamepad: 'gamepad-standard',
+  joystick: 'generic-joystick',
+};
+
+/**
+ * Brings a profile made for an older action catalogue up to date. Each action added since gets
+ * the default bindings a built-in profile of the same device class gives it, except where that
+ * control is already bound in this profile (the player's own choices are never taken over), and
+ * never beyond the bindings an action may have. An action with no free default input stays
+ * unbound and is listed, so the editor can say so. The profile then records the new version, so
+ * the migration happens once: a player who later removes a binding does not get it back.
+ */
+export function migrateProfile(p: ControlsProfile): Migration {
+  const from = p.catalogue ?? 1;
+  if (from >= ACTION_CATALOGUE_VERSION)
+    return { profile: p, added: [], unbound: [], migrated: false };
+  const defaults = builtinProfile(BUILTIN_FOR_CLASS[p.deviceClass]).bindings;
+  const bindings = [...p.bindings];
+  const taken = new Set(bindings.map((b) => sourceKey(b.source)));
+  const count = new Map<string, number>();
+  for (const b of bindings) count.set(b.action, (count.get(b.action) ?? 0) + 1);
+  const added: Binding[] = [];
+  const unbound: ActionId[] = [];
+  for (let version = from + 1; version <= ACTION_CATALOGUE_VERSION; version++) {
+    for (const id of ACTIONS_ADDED_IN[version] ?? []) {
+      if (!isActionId(id)) continue;
+      for (const b of defaults) {
+        if (b.action !== id) continue;
+        const key = sourceKey(b.source);
+        if (taken.has(key) || (count.get(id) ?? 0) >= MAX_BINDINGS_PER_ACTION) continue;
+        bindings.push(b);
+        added.push(b);
+        taken.add(key);
+        count.set(id, (count.get(id) ?? 0) + 1);
+      }
+      if ((count.get(id) ?? 0) === 0) unbound.push(id);
+    }
+  }
+  return {
+    profile: { ...p, catalogue: ACTION_CATALOGUE_VERSION, bindings },
+    added,
+    unbound,
+    migrated: true,
+  };
 }

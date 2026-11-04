@@ -13,6 +13,8 @@ import {
 } from '@flying/sim-bridge';
 import { MainThreadRenderHost } from './main-thread-host.ts';
 import type { RenderCommand, RenderEvent, RenderInit, RenderSettings } from './messages.ts';
+import type { ViewState } from '@flying/sim-bridge/view-channel';
+import type { CockpitView } from './camera-rig.ts';
 import { drawingSize, QUALITY_UNSET, qualityFor, type Quality } from './quality.ts';
 import type { RendererFactories } from './render-session.ts';
 import type { ShaderSources } from './renderer.ts';
@@ -33,6 +35,8 @@ export interface RenderClientOptions {
   snapshot: SnapshotEndpoint;
   /** The end of the terrain channel that comes here; the other end is with the Sim Worker. */
   terrainPort: MessagePort | null;
+  /** The view channel, if the page is isolated (else call `setView` when the view changes). */
+  viewBuffer?: SharedArrayBuffer | null;
   onEvent: (event: RenderEvent) => void;
   /** Used only when rendering on the main thread. */
   shaders?: ShaderSources;
@@ -174,6 +178,7 @@ export class RenderClient {
         renderer: opts.flags.renderer,
         snapshot: opts.snapshot,
         terrainPort: opts.terrainPort,
+        viewBuffer: opts.viewBuffer ?? null,
         width: size.width,
         height: size.height,
         allowStall: opts.flags.stall,
@@ -241,6 +246,7 @@ export class RenderClient {
     }
     client.#observe();
     client.#sendSettings();
+    if (opts.viewBuffer) mainHost.session.setViewBuffer(opts.viewBuffer);
     return client;
   }
 
@@ -335,6 +341,18 @@ export class RenderClient {
   setSettings(settings: RenderSettings): void {
     this.#settings = settings;
     this.#sendSettings();
+  }
+
+  /** Tells the renderer what the player is doing with the view (when there is no shared channel). */
+  setView(state: ViewState): void {
+    if (this.#worker) this.#send({ type: 'view', state });
+    else this.#mainHost?.session.setView(state);
+  }
+
+  /** Tells the renderer which cockpit to look out of. */
+  setCockpit(cockpit: CockpitView): void {
+    if (this.#worker) this.#send({ type: 'cockpit', cockpit });
+    else this.#mainHost?.session.setCockpit(cockpit);
   }
 
   /** Chooses the graphics quality: the resolution scale and the sample count. */

@@ -5,6 +5,13 @@
  */
 import { Histogram } from '@flying/platform-web/metrics';
 import { CONTENDED, SNAPSHOT, type Quantiles, type SnapshotSource } from '@flying/sim-bridge';
+import {
+  copyViewState,
+  newViewState,
+  type ViewReader,
+  type ViewState,
+} from '@flying/sim-bridge/view-channel';
+import { CameraRig, DEFAULT_COCKPIT, type CameraPose, type CockpitView } from './camera-rig.ts';
 import type { SnapshotInterpolator } from './interp.ts';
 import type { RenderSettings, RenderStats } from './messages.ts';
 import type { Renderer } from './renderer.ts';
@@ -45,6 +52,12 @@ export class RenderLoop {
   readonly #age = new Histogram(200, 400);
   #renderer: Renderer;
   readonly #terrain = new TerrainSet();
+  readonly #rig: CameraRig;
+  readonly #view: ViewState = newViewState();
+  #viewReader: ViewReader | undefined;
+  /** The camera rig drives the picture once it is told anything about the view (else the eye is the reference point). */
+  #rigActive = false;
+  #lastRigAt = Number.NaN;
   #lastPublication = 0;
   #lastFrameAt = Number.NaN;
   #windowStart: number;
@@ -64,6 +77,7 @@ export class RenderLoop {
   constructor(deps: RenderLoopDeps, renderer: Renderer) {
     this.#d = deps;
     this.#renderer = renderer;
+    this.#rig = new CameraRig(DEFAULT_COCKPIT, this.#terrain);
     this.#windowStart = deps.monoMs();
   }
 
@@ -79,6 +93,34 @@ export class RenderLoop {
     this.#terrain.installed().forEach((mesh) => {
       renderer.setTerrainLevel(mesh.level, mesh);
     });
+  }
+
+  /** The camera rig. */
+  get rig(): CameraRig {
+    return this.#rig;
+  }
+
+  /** The view the rig last used (what the player is asking of the camera). */
+  get view(): Readonly<ViewState> {
+    return this.#view;
+  }
+
+  /** Takes the view from a shared channel, read every frame; switches the camera rig on. */
+  setViewReader(reader: ViewReader | undefined): void {
+    this.#viewReader = reader;
+    this.#rigActive = true;
+  }
+
+  /** Takes the view from a message (no shared channel); switches the camera rig on. */
+  setView(state: ViewState): void {
+    copyViewState(this.#view, state);
+    this.#rigActive = true;
+  }
+
+  /** The cockpit to look out of (from the presentation data); switches the camera rig on. */
+  setCockpit(cockpit: CockpitView): void {
+    this.#rig.setCockpit(cockpit);
+    this.#rigActive = true;
   }
 
   /** The terrain levels as installed so far. */
@@ -137,7 +179,15 @@ export class RenderLoop {
       return false;
     }
 
+    let camera: CameraPose | undefined;
+    if (this.#rigActive) {
+      this.#viewReader?.read(this.#view);
+      const dt = Number.isNaN(this.#lastRigAt) ? 0 : (now - this.#lastRigAt) / 1000;
+      this.#lastRigAt = now;
+      camera = this.#rig.step(state, this.#view, dt);
+    }
     const frame = d.scene.build(state, {
+      ...(camera ? { camera } : {}),
       aspect: this.#aspect,
       zRange: this.#renderer.zRange,
       timeS: now / 1000,

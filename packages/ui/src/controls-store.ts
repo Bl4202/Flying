@@ -17,6 +17,8 @@ import {
   builtinProfiles,
   type ControlsProfile,
   isBuiltinId,
+  type ActionId,
+  migrateProfile,
   parseControlsProfileText,
   type ProfileError,
   serializeProfile,
@@ -32,6 +34,12 @@ export interface StoreProblem {
   errors: ProfileError[];
 }
 
+/** Actions a migration could not give a default input, for a profile of the player's. */
+export interface MigrationNote {
+  id: string;
+  unbound: ActionId[];
+}
+
 export type ImportResult =
   { ok: true; profile: ControlsProfile } | { ok: false; errors: ProfileError[] };
 
@@ -41,6 +49,7 @@ export class ControlsStore {
   #user: ControlsProfile[] = [];
   #active: string | undefined;
   #problems: StoreProblem[] = [];
+  #notes: MigrationNote[] = [];
 
   constructor(kv: Kv) {
     this.#kv = kv;
@@ -70,6 +79,14 @@ export class ControlsStore {
     return this.#problems;
   }
 
+  /**
+   * Profiles that were brought up to the current action catalogue on load and have actions left
+   * without a binding because every default input was already in use.
+   */
+  get migrationNotes(): readonly MigrationNote[] {
+    return this.#notes;
+  }
+
   find(id: string): ControlsProfile | undefined {
     return this.all().find((p) => p.id === id);
   }
@@ -82,6 +99,7 @@ export class ControlsStore {
   async load(): Promise<void> {
     this.#user = [];
     this.#problems = [];
+    this.#notes = [];
     let index: unknown;
     try {
       index = await this.#kv.get<unknown>(INDEX_KEY);
@@ -113,7 +131,16 @@ export class ControlsStore {
           ],
         });
       } else {
-        this.#user.push(parsed.profile);
+        // A profile made for an older action catalogue gets the new actions' default bindings
+        // where the inputs are free, once, and is stored again as it now is.
+        const m = migrateProfile(parsed.profile);
+        this.#user.push(m.profile);
+        if (m.migrated) {
+          if (m.unbound.length > 0) this.#notes.push({ id, unbound: m.unbound });
+          await this.#write(async () => {
+            await this.#kv.set(profileKey(id), serializeProfile(m.profile));
+          });
+        }
       }
     }
     try {
@@ -180,9 +207,10 @@ export class ControlsStore {
     const id = taken.includes(parsed.profile.id)
       ? uniqueProfileId(taken, parsed.profile.id)
       : parsed.profile.id;
-    const profile = { ...parsed.profile, id };
-    await this.save(profile);
-    return { ok: true, profile };
+    const m = migrateProfile({ ...parsed.profile, id });
+    if (m.migrated && m.unbound.length > 0) this.#notes.push({ id, unbound: m.unbound });
+    await this.save(m.profile);
+    return { ok: true, profile: m.profile };
   }
 
   exportText(profile: ControlsProfile): string {
