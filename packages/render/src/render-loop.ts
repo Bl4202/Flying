@@ -11,7 +11,16 @@ import {
   type ViewReader,
   type ViewState,
 } from '@flying/sim-bridge/view-channel';
-import { CameraRig, DEFAULT_COCKPIT, type CameraPose, type CockpitView } from './camera-rig.ts';
+import {
+  CameraRig,
+  cockpitView,
+  DEFAULT_COCKPIT,
+  type CameraPose,
+  type CockpitView,
+} from './camera-rig.ts';
+import { buildCockpitMesh, buildModelMesh } from './model-mesh.ts';
+import { ModelRig } from './model-rig.ts';
+import type { RenderPresentation } from './present.ts';
 import type { SnapshotInterpolator } from './interp.ts';
 import type { RenderSettings, RenderStats } from './messages.ts';
 import type { Renderer } from './renderer.ts';
@@ -55,6 +64,9 @@ export class RenderLoop {
   readonly #rig: CameraRig;
   readonly #view: ViewState = newViewState();
   #viewReader: ViewReader | undefined;
+  /** The aircraft's presentation, once known: its meshes are uploaded and its parts animated. */
+  #presentation: RenderPresentation | undefined;
+  #modelRig: ModelRig | undefined;
   /** The camera rig drives the picture once it is told anything about the view (else the eye is the reference point). */
   #rigActive = false;
   #lastRigAt = Number.NaN;
@@ -90,6 +102,7 @@ export class RenderLoop {
     this.#renderer = renderer;
     renderer.resize(this.width, this.height);
     renderer.setSampleCount(this.#settings.sampleCount ?? 1);
+    this.#uploadAircraft(renderer);
     this.#terrain.installed().forEach((mesh) => {
       renderer.setTerrainLevel(mesh.level, mesh);
     });
@@ -115,6 +128,27 @@ export class RenderLoop {
   setView(state: ViewState): void {
     copyViewState(this.#view, state);
     this.#rigActive = true;
+  }
+
+  /**
+   * The aircraft's presentation: builds its exterior and cockpit meshes and uploads them, animates
+   * its parts from the snapshot, and looks out of its cockpit (which switches the camera rig on).
+   *
+   * @throws RangeError (`SYS-040`) if a mesh does not fit its limits.
+   */
+  setPresentation(presentation: RenderPresentation): void {
+    this.#presentation = presentation;
+    this.#modelRig = new ModelRig(presentation.model);
+    this.#uploadAircraft(this.#renderer);
+    this.setCockpit(cockpitView(presentation.cockpit));
+  }
+
+  /** Builds the aircraft's meshes and gives them to `renderer`. */
+  #uploadAircraft(renderer: Renderer): void {
+    const p = this.#presentation;
+    if (!p) return;
+    renderer.setMesh('exterior', buildModelMesh(p.model));
+    renderer.setMesh('cockpit', buildCockpitMesh(p.cockpit));
   }
 
   /** The cockpit to look out of (from the presentation data); switches the camera rig on. */
@@ -188,6 +222,7 @@ export class RenderLoop {
     }
     const frame = d.scene.build(state, {
       ...(camera ? { camera } : {}),
+      ...(this.#modelRig ? { model: this.#modelRig } : {}),
       aspect: this.#aspect,
       zRange: this.#renderer.zRange,
       timeS: now / 1000,

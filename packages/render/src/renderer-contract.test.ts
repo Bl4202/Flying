@@ -48,6 +48,11 @@ describe('the renderer contract', () => {
       'with no terrain the globe starts at the horizon dip (10 km: 3.2 degrees)',
     );
     expect(names).toContain('the flat-earth fault puts the horizon on the eye line');
+    expect(names).toContain('the chase view draws the aircraft, canopy and all');
+    expect(names).toContain('the cockpit view draws the cockpit and the airframe ahead of the eye');
+    expect(names).toContain(
+      'the parts move with the sim: elevator and afterburner change the chase picture',
+    );
     expect(names).toContain('terrain levels draw in their own colours');
     expect(names).toContain(
       '4x MSAA changes only edges, and the count asked for is the count in use',

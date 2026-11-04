@@ -16,6 +16,7 @@ import type { RendererChoice } from '@flying/platform-web/flags';
 import type { SnapshotSource } from '@flying/sim-bridge';
 import { ViewReader, type ViewState } from '@flying/sim-bridge/view-channel';
 import type { CockpitView } from './camera-rig.ts';
+import type { RenderPresentation } from './present.ts';
 import { SnapshotInterpolator } from './interp.ts';
 import type { RenderEvent, RenderSettings } from './messages.ts';
 import { NullRenderer } from './null-renderer.ts';
@@ -110,6 +111,7 @@ export class RenderSession {
   #viewBuffer: SharedArrayBuffer | undefined;
   #view: ViewState | undefined;
   #cockpit: CockpitView | undefined;
+  #presentation: RenderPresentation | undefined;
 
   constructor(options: RenderSessionOptions) {
     this.#o = options;
@@ -143,6 +145,7 @@ export class RenderSession {
     if (this.#viewBuffer) loop.setViewReader(new ViewReader(this.#viewBuffer));
     if (this.#view) loop.setView(this.#view);
     if (this.#cockpit) loop.setCockpit(this.#cockpit);
+    if (this.#presentation) loop.setPresentation(this.#presentation);
     this.#loop = loop;
     this.#watch(renderer);
     this.#nextReport = o.monoMs() + 250;
@@ -185,6 +188,12 @@ export class RenderSession {
   setCockpit(cockpit: CockpitView): void {
     this.#cockpit = cockpit;
     this.#loop?.setCockpit(cockpit);
+  }
+
+  /** The aircraft's presentation data (before the renderer exists it is kept). */
+  setPresentation(presentation: RenderPresentation): void {
+    this.#presentation = presentation;
+    this.#loop?.setPresentation(presentation);
   }
 
   resetRun(): void {

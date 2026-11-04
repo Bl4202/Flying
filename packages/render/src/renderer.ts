@@ -6,12 +6,16 @@
  */
 import type { ZRange } from './camera.ts';
 import type { FrameData } from './scene.ts';
+import type { ModelMesh } from './model-mesh.ts';
 import type { TerrainMesh } from './terrain-mesh.ts';
 
 export type Backend = 'webgpu' | 'webgl2' | 'null';
 
 /** The colour the frame is cleared to before the sky pass draws over it. */
 export const CLEAR_COLOUR: readonly [number, number, number] = [0.74, 0.82, 0.92];
+
+/** The two meshes of an aircraft the renderer holds. */
+export type MeshSlot = 'exterior' | 'cockpit';
 
 /** Samples per pixel: 1 (off) or 4 (4x MSAA). */
 export type SampleCount = 1 | 4;
@@ -33,6 +37,8 @@ export interface Renderer {
   setSampleCount(count: SampleCount): SampleCount;
   /** Uploads terrain level `level` (0 is the finest), replacing any earlier one. */
   setTerrainLevel(level: number, mesh: TerrainMesh): void;
+  /** Uploads the aircraft's exterior or its cockpit interior (none removes it). */
+  setMesh(slot: MeshSlot, mesh: ModelMesh | undefined): void;
   /** Draws a frame. Does not wait for the GPU. */
   render(frame: FrameData): void;
   /** Resolves once the GPU has finished every frame drawn so far (for timing, never per frame). */
@@ -67,6 +73,9 @@ export interface ShaderSources {
   /** The sky and globe pass, drawn first. */
   skyWgsl: string;
   skyGlsl: GlslProgram;
+  /** The aircraft's exterior and cockpit. */
+  meshWgsl: string;
+  meshGlsl: GlslProgram;
   terrainWgsl: string;
   markerWgsl: string;
   terrainGlsl: GlslProgram;

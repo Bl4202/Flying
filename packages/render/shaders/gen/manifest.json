@@ -38,6 +38,32 @@
       ]
     }
   },
+  "mesh": {
+    "vertex": "mesh.vert.glsl",
+    "fragment": "mesh.frag.glsl",
+    "blocks": {
+      "vertex": [
+        {
+          "name": "Frame_block_0Vertex",
+          "binding": 0
+        },
+        {
+          "name": "Model_block_1Vertex",
+          "binding": 2
+        }
+      ],
+      "fragment": [
+        {
+          "name": "Frame_block_0Fragment",
+          "binding": 0
+        },
+        {
+          "name": "Model_block_1Fragment",
+          "binding": 2
+        }
+      ]
+    }
+  },
   "marker": {
     "vertex": "marker.vert.glsl",
     "fragment": "marker.frag.glsl",

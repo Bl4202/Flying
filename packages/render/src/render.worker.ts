@@ -10,6 +10,7 @@ import { monotonicMs, sharedNowMs } from '@flying/platform-web';
 import { openSnapshotSource } from '@flying/sim-bridge';
 import type { ViewState } from '@flying/sim-bridge/view-channel';
 import type { CockpitView } from './camera-rig.ts';
+import type { RenderPresentation } from './present.ts';
 import type { RenderCommand, RenderEvent, RenderInit, RenderSettings } from './messages.ts';
 import { RenderSession, type CanvasSource } from './render-session.ts';
 import { SHADERS } from './shader-sources.ts';
@@ -38,6 +39,7 @@ let settings: RenderSettings | undefined;
 /** The view and the cockpit that arrive before the session exists. */
 let pendingView: ViewState | undefined;
 let pendingCockpit: CockpitView | undefined;
+let pendingPresentation: RenderPresentation | undefined;
 let waitingForCanvas: ((c: OffscreenCanvas) => void) | undefined;
 
 function post(event: RenderEvent): void {
@@ -80,6 +82,10 @@ async function handle(command: RenderCommand): Promise<void> {
     case 'cockpit':
       if (session) session.setCockpit(command.cockpit);
       else pendingCockpit = command.cockpit;
+      break;
+    case 'presentation':
+      if (session) session.setPresentation(command.presentation);
+      else pendingPresentation = command.presentation;
       break;
     case 'read-pixels': {
       const summary = (await session?.pixelSummary()) ?? {
@@ -153,6 +159,7 @@ async function init(cmd: RenderInit): Promise<void> {
   if (cmd.viewBuffer) s.setViewBuffer(cmd.viewBuffer);
   if (pendingView) s.setView(pendingView);
   if (pendingCockpit) s.setCockpit(pendingCockpit);
+  if (pendingPresentation) s.setPresentation(pendingPresentation);
   await s.start(cmd.width, cmd.height);
   session = s;
   for (const { level, patch } of pending.splice(0)) s.setTerrain(level, patch);

@@ -6,6 +6,7 @@ import type { RendererChoice } from '@flying/platform-web/flags';
 import type { Quantiles, SnapshotEndpoint } from '@flying/sim-bridge';
 import type { ViewState } from '@flying/sim-bridge/view-channel';
 import type { CockpitView } from './camera-rig.ts';
+import type { RenderPresentation } from './present.ts';
 import type { Backend, SampleCount } from './renderer.ts';
 import type { DebugView, RenderFault } from './scene.ts';
 
@@ -47,6 +48,8 @@ export type RenderCommand =
   | { type: 'view'; state: ViewState }
   /** The cockpit to look out of. */
   | { type: 'cockpit'; cockpit: CockpitView }
+  /** The aircraft's presentation data: its meshes, HUD and font. */
+  | { type: 'presentation'; presentation: RenderPresentation }
   | { type: 'read-pixels'; id: number }
   | { type: 'reset-run' }
   | { type: 'stall'; ms: number }
