@@ -4,14 +4,27 @@
  */
 import type { RendererChoice } from '@flying/platform-web/flags';
 import type { Quantiles, SnapshotEndpoint } from '@flying/sim-bridge';
-import type { Backend } from './renderer.ts';
+import type { Backend, SampleCount } from './renderer.ts';
+import type { DebugView, RenderFault } from './scene.ts';
+
+/** Rendering settings the player (or a test) chose. */
+export interface RenderSettings {
+  /** How strongly the pilot's g and red-out show, 0 to 100 per cent. */
+  gfxStrength: number;
+  /** 4 for 4x MSAA (default 1, none). A backend that cannot do it stays at 1. */
+  sampleCount?: SampleCount;
+  /** `classify` draws flat key colours (tests); default `normal`. */
+  debugView?: DebugView;
+  /** A seeded render fault, honoured only by a debug build (tests that must fail). */
+  fault?: RenderFault | null;
+}
 
 export interface RenderInit {
   type: 'init';
   canvas: OffscreenCanvas;
   renderer: RendererChoice;
   snapshot: SnapshotEndpoint;
-  /** Where the terrain patch arrives (once), or `null` for none. */
+  /** Where the terrain levels arrive (`{ type: 'terrain', level, patch }`), or `null` for none. */
   terrainPort: MessagePort | null;
   /** Drawing-buffer size in device pixels. */
   width: number;
@@ -25,8 +38,7 @@ export type RenderCommand =
   /** A new canvas, sent in answer to `need-canvas`. */
   | { type: 'canvas'; canvas: OffscreenCanvas }
   | { type: 'resize'; width: number; height: number }
-  /** Rendering settings the player chose. */
-  | { type: 'settings'; gfxStrength: number }
+  | ({ type: 'settings' } & RenderSettings)
   | { type: 'read-pixels'; id: number }
   | { type: 'reset-run' }
   | { type: 'stall'; ms: number }

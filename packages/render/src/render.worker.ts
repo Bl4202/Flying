@@ -8,7 +8,7 @@
  */
 import { monotonicMs, sharedNowMs } from '@flying/platform-web';
 import { openSnapshotSource } from '@flying/sim-bridge';
-import type { RenderCommand, RenderEvent, RenderInit } from './messages.ts';
+import type { RenderCommand, RenderEvent, RenderInit, RenderSettings } from './messages.ts';
 import { RenderSession, type CanvasSource } from './render-session.ts';
 import { SHADERS } from './shader-sources.ts';
 
@@ -20,12 +20,19 @@ interface WorkerScope {
 }
 const scope = self as unknown as WorkerScope;
 
+/** A terrain level from the Sim Worker. */
+interface TerrainMessage {
+  type: string;
+  level: number;
+  patch: ArrayBuffer;
+}
+
 let session: RenderSession | undefined;
 let allowStall = false;
 let stopped = false;
 let canvas: OffscreenCanvas | undefined;
 /** Settings that arrive before the session exists are applied to it when it does. */
-let settings: { gfxStrength: number } | undefined;
+let settings: RenderSettings | undefined;
 let waitingForCanvas: ((c: OffscreenCanvas) => void) | undefined;
 
 function post(event: RenderEvent): void {
@@ -53,7 +60,12 @@ async function handle(command: RenderCommand): Promise<void> {
       session?.resize(command.width, command.height);
       break;
     case 'settings':
-      settings = { gfxStrength: command.gfxStrength };
+      settings = {
+        gfxStrength: command.gfxStrength,
+        ...(command.sampleCount === undefined ? {} : { sampleCount: command.sampleCount }),
+        ...(command.debugView === undefined ? {} : { debugView: command.debugView }),
+        ...(command.fault === undefined ? {} : { fault: command.fault }),
+      };
       session?.setSettings(settings);
       break;
     case 'read-pixels': {
@@ -115,19 +127,19 @@ async function init(cmd: RenderInit): Promise<void> {
     monoMs: monotonicMs,
   });
 
-  // The terrain patch may arrive before the renderer exists; hold it until it does.
-  let patch: ArrayBuffer | undefined;
+  // Terrain levels may arrive before the renderer exists; hold them until it does.
+  const pending: { level: number; patch: ArrayBuffer }[] = [];
   if (cmd.terrainPort !== null) {
-    cmd.terrainPort.onmessage = (event: MessageEvent<{ type: string; patch: ArrayBuffer }>) => {
+    cmd.terrainPort.onmessage = (event: MessageEvent<TerrainMessage>) => {
       if (event.data.type !== 'terrain') return;
-      if (session) session.setTerrain(event.data.patch);
-      else patch = event.data.patch;
+      if (session) session.setTerrain(event.data.level, event.data.patch);
+      else pending.push({ level: event.data.level, patch: event.data.patch });
     };
   }
   if (settings) s.setSettings(settings);
   await s.start(cmd.width, cmd.height);
   session = s;
-  if (patch !== undefined) s.setTerrain(patch);
+  for (const { level, patch } of pending.splice(0)) s.setTerrain(level, patch);
 
   const tick = (): void => {
     if (stopped) return;
