@@ -17,6 +17,10 @@ export interface FixtureSnapshot {
   arena?: number;
   ownship?: FixtureBody & {
     speed?: number;
+    /** Velocity in BF (east, north, up), m/s. */
+    vel?: [number, number, number];
+    /** The load factor the pilot feels, g. */
+    gLagged?: number;
     throttle?: number;
     flags?: number;
     flags2?: number;
@@ -48,7 +52,7 @@ export const LOOKING_DOWN: [number, number, number, number] = quatFromColumns(
 );
 
 /** The unit quaternion `[w, x, y, z]` of the rotation whose columns are the images of x, y, z. */
-function quatFromColumns(
+export function quatFromColumns(
   cx: [number, number, number],
   cy: [number, number, number],
   cz: [number, number, number],
@@ -93,6 +97,10 @@ export function makeSnapshot(s: FixtureSnapshot = {}): Uint8Array {
     dv.setFloat32(SNAPSHOT.O_QUAT + 4 * k, v, true);
   });
   dv.setFloat32(SNAPSHOT.O_TAS, o.speed ?? 180, true);
+  (o.vel ?? [0, 0, 0]).forEach((v, k) => {
+    dv.setFloat32(SNAPSHOT.O_VEL_BF + 4 * k, v, true);
+  });
+  dv.setFloat32(SNAPSHOT.O_G_LAGGED, o.gLagged ?? 1, true);
   dv.setFloat32(SNAPSHOT.O_THROTTLE, o.throttle ?? 0.5, true);
   dv.setUint8(SNAPSHOT.O_FLAGS, o.flags ?? 0);
   dv.setUint16(SNAPSHOT.O_FLAGS2, o.flags2 ?? 0, true);

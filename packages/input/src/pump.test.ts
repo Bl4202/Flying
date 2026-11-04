@@ -14,6 +14,7 @@ import { KeyboardState } from './keyboard.ts';
 import { builtinProfile, type Binding, type ControlsProfile } from './profile.ts';
 import { InputPump, type PumpObservation } from './pump.ts';
 import { shapeStatic, STICK_SHAPE } from './shaping.ts';
+import { LOOK_RATE_RAD_S, MOUSE_LOOK_RAD_PER_PX } from './view-input.ts';
 import { FakeMouse, FakePads, fakePad, fakeStick } from './test-support.ts';
 import { MIL_DETENT } from './throttle.ts';
 
@@ -1056,6 +1057,174 @@ describe('InputPump: the mouse', () => {
     r.mouse?.down.add(2);
     r.run(8);
     expect(r.last().axes[AXIS.BRAKE_L]).toBe(1);
+  });
+});
+
+describe('InputPump: the view (ADR-41)', () => {
+  it('starts with nothing held and nothing pressed', () => {
+    const r = rig();
+    r.run(8);
+    const v = r.pump.view;
+    expect([v.lookYawRate, v.lookPitchRate, v.zoom, v.freeLook]).toEqual([0, 0, false, false]);
+    expect([v.cameraPresses, v.recentrePresses, v.declutterPresses, v.brightnessSteps]).toEqual([
+      0, 0, 0, 0,
+    ]);
+    expect([v.mouseYawTotal, v.mousePitchTotal]).toEqual([0, 0]);
+  });
+
+  it('turns the look keys into rates: right and up are positive, opposite keys cancel', () => {
+    const r = rig();
+    r.press('Period');
+    r.press('ArrowUp');
+    r.run(8);
+    expect(r.pump.view.lookYawRate).toBe(LOOK_RATE_RAD_S);
+    expect(r.pump.view.lookPitchRate).toBe(LOOK_RATE_RAD_S);
+    r.press('Comma');
+    r.press('ArrowDown');
+    r.run(8);
+    expect([r.pump.view.lookYawRate, r.pump.view.lookPitchRate]).toEqual([0, 0]);
+    r.release('Period');
+    r.release('ArrowUp');
+    r.run(8);
+    expect(r.pump.view.lookYawRate).toBe(-LOOK_RATE_RAD_S);
+    expect(r.pump.view.lookPitchRate).toBe(-LOOK_RATE_RAD_S);
+    r.release('Comma');
+    r.release('ArrowDown');
+    r.run(8);
+    expect([r.pump.view.lookYawRate, r.pump.view.lookPitchRate]).toEqual([0, 0]);
+  });
+
+  it('turns the look keys at 90 degrees a second', () => {
+    expect(LOOK_RATE_RAD_S).toBeCloseTo(Math.PI / 2, 12);
+  });
+
+  it('holds zoom and free look while the key or the right mouse button is held', () => {
+    const r = rig({ mouse: true });
+    r.mouse?.down.add(2);
+    r.press('KeyX');
+    r.run(8);
+    expect([r.pump.view.zoom, r.pump.view.freeLook]).toEqual([true, true]);
+    r.mouse?.down.delete(2);
+    r.release('KeyX');
+    r.run(8);
+    expect([r.pump.view.zoom, r.pump.view.freeLook]).toEqual([false, false]);
+  });
+
+  it('counts presses, once each however long the key is held', () => {
+    const r = rig();
+    r.run(8); // keys already down at the first update are not presses
+    r.press('KeyC');
+    r.run(40);
+    expect(r.pump.view.cameraPresses).toBe(1);
+    r.release('KeyC');
+    r.run(8);
+    r.press('KeyC');
+    r.run(8);
+    expect(r.pump.view.cameraPresses).toBe(2);
+    r.release('KeyC');
+    r.press('Slash');
+    r.run(8);
+    r.release('Slash');
+    r.press('KeyI');
+    r.run(8);
+    r.release('KeyI');
+    expect([r.pump.view.recentrePresses, r.pump.view.declutterPresses]).toEqual([1, 1]);
+    for (const code of ['Equal', 'Equal', 'Minus']) {
+      r.press(code);
+      r.run(8);
+      r.release(code);
+      r.run(8); // a release and a press between two updates would be one long press
+    }
+    expect(r.pump.view.brightnessSteps).toBe(1);
+  });
+
+  it('sends none of it to the sim: the frame is as if no view key was touched', () => {
+    const r = rig({ mouse: true });
+    r.run(8);
+    const before = r.last();
+    for (const code of ['KeyC', 'KeyX', 'ArrowUp', 'Comma', 'Slash', 'KeyI', 'Minus'])
+      r.press(code);
+    r.mouse?.down.add(2);
+    r.run(40);
+    const after = r.last();
+    expect(after.axes).toEqual(before.axes);
+    expect(after.buttons).toBe(before.buttons);
+    expect(after.flags & ~INPUT_FLAG.CHANGED).toBe(before.flags & ~INPUT_FLAG.CHANGED);
+  });
+
+  describe('mouse look', () => {
+    it('turns the view with the mouse when the mouse mode is off: right is right, down is down', () => {
+      const r = rig({ mouse: true });
+      r.mouse?.push(400, 200);
+      r.run(8);
+      expect(r.pump.view.mouseYawTotal).toBeCloseTo(400 * MOUSE_LOOK_RAD_PER_PX, 12);
+      expect(r.pump.view.mousePitchTotal).toBeCloseTo(-200 * MOUSE_LOOK_RAD_PER_PX, 12);
+      // The totals add up: nothing is lost between reads.
+      r.mouse?.push(-100, -100);
+      r.run(8);
+      expect(r.pump.view.mouseYawTotal).toBeCloseTo(300 * MOUSE_LOOK_RAD_PER_PX, 12);
+    });
+
+    it('scales with the sensitivity setting', () => {
+      const r = rig({ mouse: true });
+      r.pump.setMouseTuning(2, 0);
+      r.mouse?.push(100, 0);
+      r.run(8);
+      expect(r.pump.view.mouseYawTotal).toBeCloseTo(100 * MOUSE_LOOK_RAD_PER_PX * 2, 12);
+    });
+
+    it('leaves the mouse to the aim and the stick, until free look is held', () => {
+      for (const mode of ['aim', 'stick'] as const) {
+        const r = rig({ mouse: true });
+        r.pump.setMouseMode(mode);
+        r.mouse?.push(100, 50);
+        r.run(8);
+        expect(r.pump.view.mouseYawTotal, mode).toBe(0);
+        // With X held the mouse looks, and the aim or the stick does not move.
+        r.press('KeyX');
+        r.run(8);
+        const roll = r.last().axes[AXIS.ROLL];
+        const cursor = r.last().axes[AXIS.CURSOR_X];
+        r.mouse?.push(100, 50);
+        r.run(8);
+        expect(r.pump.view.mouseYawTotal, mode).toBeCloseTo(100 * MOUSE_LOOK_RAD_PER_PX, 12);
+        expect(r.last().axes[AXIS.ROLL], mode).toBe(roll);
+        expect(r.last().axes[AXIS.CURSOR_X], mode).toBe(cursor);
+      }
+    });
+
+    it('does not look when the pointer is not locked', () => {
+      const r = rig({ mouse: true });
+      if (r.mouse) r.mouse.locked = false;
+      r.mouse?.push(400, 400);
+      r.run(8);
+      expect([r.pump.view.mouseYawTotal, r.pump.view.mousePitchTotal]).toEqual([0, 0]);
+    });
+  });
+
+  it('lets go of everything when a menu opens or focus is lost, and keeps the totals and counts', () => {
+    const r = rig({ mouse: true });
+    r.press('KeyC');
+    r.press('KeyX');
+    r.press('Period');
+    r.mouse?.push(100, 0);
+    r.run(8);
+    expect(r.pump.view.freeLook).toBe(true);
+    r.pump.setContext('menu');
+    r.run(8);
+    expect([r.pump.view.freeLook, r.pump.view.zoom, r.pump.view.lookYawRate]).toEqual([
+      false,
+      false,
+      0,
+    ]);
+    expect(r.pump.view.cameraPresses).toBe(1);
+    expect(r.pump.view.mouseYawTotal).toBeCloseTo(100 * MOUSE_LOOK_RAD_PER_PX, 12);
+    r.pump.setContext('flight');
+    r.run(8);
+    // Still held through the menu, but not pressed again by coming back.
+    expect(r.pump.view.cameraPresses).toBe(1);
+    r.pump.neutral();
+    expect([r.pump.view.freeLook, r.pump.view.lookYawRate]).toEqual([false, 0]);
   });
 });
 

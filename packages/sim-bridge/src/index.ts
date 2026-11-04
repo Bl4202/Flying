@@ -11,4 +11,5 @@ export * from './sim-handle.ts';
 export * from './snapshot-channel.ts';
 export * from './snapshot.ts';
 export * from './terrain-levels.ts';
+export * from './view-channel.ts';
 export * from './warnings.ts';

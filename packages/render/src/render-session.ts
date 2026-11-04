@@ -14,6 +14,8 @@
  */
 import type { RendererChoice } from '@flying/platform-web/flags';
 import type { SnapshotSource } from '@flying/sim-bridge';
+import { ViewReader, type ViewState } from '@flying/sim-bridge/view-channel';
+import type { CockpitView } from './camera-rig.ts';
 import { SnapshotInterpolator } from './interp.ts';
 import type { RenderEvent, RenderSettings } from './messages.ts';
 import { NullRenderer } from './null-renderer.ts';
@@ -104,6 +106,10 @@ export class RenderSession {
   #webgpuLosses = 0;
   #stopped = false;
   #settings: RenderSettings | undefined;
+  /** What was told before the loop existed, applied when it does. */
+  #viewBuffer: SharedArrayBuffer | undefined;
+  #view: ViewState | undefined;
+  #cockpit: CockpitView | undefined;
 
   constructor(options: RenderSessionOptions) {
     this.#o = options;
@@ -134,6 +140,9 @@ export class RenderSession {
     );
     loop.resize(widthPx, heightPx);
     if (this.#settings) loop.setSettings(this.#settings);
+    if (this.#viewBuffer) loop.setViewReader(new ViewReader(this.#viewBuffer));
+    if (this.#view) loop.setView(this.#view);
+    if (this.#cockpit) loop.setCockpit(this.#cockpit);
     this.#loop = loop;
     this.#watch(renderer);
     this.#nextReport = o.monoMs() + 250;
@@ -158,6 +167,24 @@ export class RenderSession {
   setSettings(settings: RenderSettings): void {
     this.#settings = settings;
     this.#loop?.setSettings(settings);
+  }
+
+  /** Reads the view from a shared channel every frame. */
+  setViewBuffer(buffer: SharedArrayBuffer): void {
+    this.#viewBuffer = buffer;
+    this.#loop?.setViewReader(new ViewReader(buffer));
+  }
+
+  /** Takes the view from a message (no shared channel). */
+  setView(state: ViewState): void {
+    this.#view = state;
+    this.#loop?.setView(state);
+  }
+
+  /** The cockpit to look out of. */
+  setCockpit(cockpit: CockpitView): void {
+    this.#cockpit = cockpit;
+    this.#loop?.setCockpit(cockpit);
   }
 
   resetRun(): void {

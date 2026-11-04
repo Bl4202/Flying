@@ -91,7 +91,7 @@ describe('EditorModel: what is listed', () => {
     ]);
     const ids = groups.flatMap((g) => g.rows.map((r) => r.id));
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toHaveLength(24);
+    expect(ids).toHaveLength(35);
     const pitch = rowOf(model, 'flight.pitch');
     expect(pitch?.bipolar).toBe(true);
     expect(pitch?.shaped).toBe(true);
