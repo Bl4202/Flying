@@ -38,7 +38,11 @@ that the model has a leg for each `geometry.gear` entry with its contact point w
 
 **Kestrel (`kestrel.json`).** Dimensions are *targets* chosen to match the aircraft's geometry
 (span 9.8 m, nose tip 7.0 m, tail -6.0 m, gear as in `aircraft/kestrel.json`); the shape is
-original. Hinge angles of the gear (-90 degrees nose, 135 degrees mains) and the airbrake (-50
-degrees) are *targets*, checked against the model in WP5 (retracted legs end inside the fuselage).
+original. Hinge angles of the gear (-90 degrees nose, 150 degrees mains) and the airbrake (-50
+degrees) are *targets*; the renderer's `model-rig.test.ts` checks that a retracted wheel's hub lies
+inside the fuselage section (5 cm clear of top, bottom and sides).
 
-Tuning log: none yet.
+Tuning log:
+
+- v0.1c WP5: the main gear's hinge angle 135 -> 150 degrees. At 135 the hub came to rest 0.13 m
+  below the belly; at 150 it is inside it. The nose gear (-90) already retracted inside.

@@ -22,6 +22,7 @@ import {
   type Backend,
   type CanvasLike,
   type GlslProgram,
+  type MeshSlot,
   RendererUnavailable,
   type Renderer,
   type SampleCount,
@@ -34,6 +35,7 @@ import {
   LEVEL_UNIFORM_FLOATS,
   MARKER_INSTANCE_CAPACITY,
 } from './scene.ts';
+import { MESH_VERTEX_BYTES, MODEL_UNIFORM_BYTES, type ModelMesh } from './model-mesh.ts';
 import { VERTEX_BYTES, type TerrainMesh } from './terrain-mesh.ts';
 
 /** The one function and two constants this module uses from `EXT_clip_control`. */
@@ -53,8 +55,19 @@ interface LevelGl {
   ubo: WebGLBuffer;
 }
 
+/** What an aircraft mesh has on the GPU. */
+interface MeshGl {
+  vao: WebGLVertexArrayObject;
+  vbo: WebGLBuffer;
+  ibo: WebGLBuffer;
+  indexCount: number;
+  bodyIndexCount: number;
+}
+
 interface Resources {
   skyProgram: WebGLProgram;
+  meshProgram: WebGLProgram;
+  modelUbo: WebGLBuffer;
   terrainProgram: WebGLProgram;
   markerProgram: WebGLProgram;
   fxProgram: WebGLProgram;
@@ -143,6 +156,9 @@ export class WebGl2Renderer implements Renderer {
     () => undefined,
   );
   readonly #indexCounts: number[] = Array.from({ length: TERRAIN_LEVEL_COUNT }, () => 0);
+  /** The aircraft meshes as last given, to upload again if the context is restored. */
+  readonly #meshSources = new Map<MeshSlot, ModelMesh>();
+  readonly #meshGl = new Map<MeshSlot, MeshGl>();
   #samples: SampleCount = 1;
   #msaa: MsaaTarget | undefined;
   #last: FrameData | undefined;
@@ -171,7 +187,9 @@ export class WebGl2Renderer implements Renderer {
     canvas.addEventListener('webglcontextrestored', () => {
       this.#contextLost = false;
       this.#msaa = undefined; // its objects died with the context
+      this.#meshGl.clear();
       this.#build();
+      for (const [slot, mesh] of this.#meshSources) this.setMesh(slot, mesh);
       this.#meshes.forEach((mesh, level) => {
         if (mesh) this.setTerrainLevel(level, mesh);
       });
@@ -210,6 +228,10 @@ export class WebGl2Renderer implements Renderer {
       return v;
     };
     const skyProgram = link(gl, this.#shaders.skyGlsl, 'sky');
+    const meshProgram = link(gl, this.#shaders.meshGlsl, 'aircraft mesh');
+    const modelUbo = need(gl.createBuffer(), 'the model uniform buffer');
+    gl.bindBuffer(gl.UNIFORM_BUFFER, modelUbo);
+    gl.bufferData(gl.UNIFORM_BUFFER, MODEL_UNIFORM_BYTES, gl.DYNAMIC_DRAW);
     const terrainProgram = link(gl, this.#shaders.terrainGlsl, 'terrain');
     const markerProgram = link(gl, this.#shaders.markerGlsl, 'marker');
     const fxProgram = link(gl, this.#shaders.fxGlsl, 'screen fx');
@@ -277,6 +299,8 @@ export class WebGl2Renderer implements Renderer {
 
     this.#res = {
       skyProgram,
+      meshProgram,
+      modelUbo,
       terrainProgram,
       markerProgram,
       fxProgram,
@@ -304,6 +328,42 @@ export class WebGl2Renderer implements Renderer {
     this.#canvas.width = this.#width;
     this.#canvas.height = this.#height;
     this.#gl.viewport(0, 0, this.#width, this.#height);
+  }
+
+  setMesh(slot: MeshSlot, mesh: ModelMesh | undefined): void {
+    if (mesh === undefined) this.#meshSources.delete(slot);
+    else this.#meshSources.set(slot, mesh);
+    const gl = this.#gl;
+    const old = this.#meshGl.get(slot);
+    if (old && !this.#contextLost) {
+      gl.deleteBuffer(old.vbo);
+      gl.deleteBuffer(old.ibo);
+      gl.deleteVertexArray(old.vao);
+    }
+    this.#meshGl.delete(slot);
+    if (mesh === undefined || !this.#res || this.#contextLost) return;
+    const vao = gl.createVertexArray();
+    const vbo = gl.createBuffer();
+    const ibo = gl.createBuffer();
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, mesh.vertices, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, MESH_VERTEX_BYTES, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, MESH_VERTEX_BYTES, 12);
+    gl.enableVertexAttribArray(2);
+    gl.vertexAttribPointer(2, 2, gl.FLOAT, false, MESH_VERTEX_BYTES, 24);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.indices, gl.STATIC_DRAW);
+    gl.bindVertexArray(null);
+    this.#meshGl.set(slot, {
+      vao,
+      vbo,
+      ibo,
+      indexCount: mesh.indices.length,
+      bodyIndexCount: mesh.bodyIndexCount,
+    });
   }
 
   setTerrainLevel(level: number, mesh: TerrainMesh): void {
@@ -427,6 +487,27 @@ export class WebGl2Renderer implements Renderer {
         level === 0 ? frame.patchInstances : 1,
       );
     }
+    if (frame.model) {
+      gl.bindBuffer(gl.UNIFORM_BUFFER, res.modelUbo);
+      gl.bufferSubData(gl.UNIFORM_BUFFER, 0, frame.modelUniform);
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, 2, res.modelUbo);
+      gl.useProgram(res.meshProgram);
+      const exterior = this.#meshGl.get('exterior');
+      const interior = this.#meshGl.get('cockpit');
+      if (exterior) {
+        gl.bindVertexArray(exterior.vao);
+        gl.drawElements(
+          gl.TRIANGLES,
+          frame.hideCanopy ? exterior.bodyIndexCount : exterior.indexCount,
+          gl.UNSIGNED_SHORT,
+          0,
+        );
+      }
+      if (interior && frame.cockpit) {
+        gl.bindVertexArray(interior.vao);
+        gl.drawElements(gl.TRIANGLES, interior.indexCount, gl.UNSIGNED_SHORT, 0);
+      }
+    }
     if (frame.instanceCount > 0) {
       gl.bindBuffer(gl.ARRAY_BUFFER, res.instanceVbo);
       gl.bufferSubData(
@@ -515,8 +596,20 @@ export class WebGl2Renderer implements Renderer {
     const res = this.#res;
     if (res && !this.#contextLost) {
       const gl = this.#gl;
-      for (const p of [res.skyProgram, res.terrainProgram, res.markerProgram, res.fxProgram]) {
+      for (const p of [
+        res.skyProgram,
+        res.meshProgram,
+        res.terrainProgram,
+        res.markerProgram,
+        res.fxProgram,
+      ]) {
         gl.deleteProgram(p);
+      }
+      gl.deleteBuffer(res.modelUbo);
+      for (const m of this.#meshGl.values()) {
+        gl.deleteBuffer(m.vbo);
+        gl.deleteBuffer(m.ibo);
+        gl.deleteVertexArray(m.vao);
       }
       gl.deleteVertexArray(res.emptyVao);
       for (const b of [res.ubo, res.markerVbo, res.instanceVbo]) gl.deleteBuffer(b);

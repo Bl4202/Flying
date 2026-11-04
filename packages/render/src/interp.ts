@@ -40,6 +40,13 @@ export interface SceneState {
   alphaWarn: number;
   /** Afterburner level, 0 to 1. */
   abLevel: number;
+  /** Control surfaces and flaps, radians; the airbrake, 0 stowed to 1 open; the gear, 0 up to 1 down: the model's channels. */
+  elevatorRad: number;
+  aileronRad: number;
+  rudderRad: number;
+  flapRad: number;
+  airbrake: number;
+  gearPos: number;
   /** Weight is on the wheels. */
   onGround: boolean;
   ownshipThrottle: number;
@@ -98,6 +105,12 @@ export class SnapshotInterpolator {
     alpha: 0,
     alphaWarn: 0,
     abLevel: 0,
+    elevatorRad: 0,
+    aileronRad: 0,
+    rudderRad: 0,
+    flapRad: 0,
+    airbrake: 0,
+    gearPos: 1,
     onGround: false,
     ownshipThrottle: 0,
     ownshipFlags2: 0,
@@ -126,6 +139,7 @@ export class SnapshotInterpolator {
   readonly #a4 = new Float32Array(4);
   readonly #b4 = new Float32Array(4);
   readonly #aim = new Float32Array(2);
+  readonly #surf = new Float32Array(3);
 
   constructor(opts: InterpOptions = {}) {
     this.delayMs = opts.delayMs ?? 1000 / 60;
@@ -206,6 +220,13 @@ export class SnapshotInterpolator {
     s.alpha = cur.ownshipAlpha();
     s.alphaWarn = cur.ownshipAlphaWarn();
     s.abLevel = cur.ownshipAbLevel();
+    cur.ownshipSurfaces(this.#surf);
+    s.elevatorRad = this.#surf[0] ?? 0;
+    s.aileronRad = this.#surf[1] ?? 0;
+    s.rudderRad = this.#surf[2] ?? 0;
+    s.flapRad = cur.ownshipTef();
+    s.airbrake = cur.ownshipAirbrake();
+    s.gearPos = cur.ownshipGearPos();
     s.ownshipThrottle = cur.ownshipThrottle();
     // What the pilot's body does to the picture changes slowly and is not blended.
     s.ownshipFlags2 = cur.ownshipFlags2();

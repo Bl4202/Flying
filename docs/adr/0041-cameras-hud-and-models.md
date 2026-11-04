@@ -7,7 +7,7 @@
   `packages/render`, `packages/input`, `packages/sim-bridge`, `packages/ui`, `packages/app-shell`
 
 This ADR is written in parts as the work packages land. This version holds the camera and view-input
-part (WP4); the HUD and exterior-model parts are added with WP5 and WP6.
+part (WP4) and the exterior-model and cockpit part (WP5); the HUD part is added with WP6.
 
 ## Context
 
@@ -85,6 +85,37 @@ and never beyond four bindings an action. An action whose every default input is
 and is listed, so the editor can say so (`ControlsStore.migrationNotes`). The profile then records the
 new version, so the migration happens once and a binding the player removes later does not come back.
 The store migrates on load (and stores the result) and on import.
+
+### The procedural aircraft and cockpit
+
+The Kestrel's exterior and cockpit are generated in code from presentation data (`model/1` and
+`cockpit_layout/1`, ADR-43), original (ADR-11), in at most 8 000 triangles (the Kestrel needs 812).
+`buildModelMesh` makes one mesh in body axes from rings at stations (a 16-sided fuselage, a 12-sided
+canopy), trapezoid slabs (wings, tail, fin, the movable surfaces, each with its twin if mirrored),
+boxes (intakes, plates), a short cone for the nozzle and a strut and a 12-sided wheel for each gear
+leg. The baker counts triangles by the same rules (`present_check.rs`), and a test checks that the
+builder's count is the baker's. Every primitive is wound against an outward hint, and tests check that
+every triangle's normal agrees with its vertices', that each solid is closed (every edge shared an
+even number of times; the one deliberate opening is the nozzle's front ring, inside the fuselage), and
+that the extents are the aircraft's (nose 7 m, nozzle 6 m aft, 4.9 m of span a side).
+
+Each vertex names its part (0 for the fixed airframe) and a material. **Parts** are bound to channels
+the sim publishes: stabilators to the elevator, ailerons, rudder, flaps to the trailing-edge flap,
+the airbrake, the three gear legs to the gear and the nozzle's glow to the afterburner. `ModelRig`
+writes one matrix per part into a uniform block (at most 16: the fixed airframe and 15 parts) every
+frame, without making garbage: the part's rotation about its hinge, then the airframe's attitude, then
+its position relative to the eye. Signs and units are the sim's (`crates/flight/src/actuators.rs`):
+elevator and flap positive trailing edge down, aileron positive rolling the right wing down, rudder
+positive trailing edge left, gear 0 down to 1 up; a test moves each surface and checks the way it goes.
+The Kestrel's main gear retracts through 150 degrees (it was 135, which left the wheel 0.13 m below the
+belly); a test checks that every retracted wheel's hub lies inside the fuselage.
+
+The canopy is last in the index buffer, so **the cockpit view draws the exterior without it** and the
+pilot looks out through where it is; the cockpit interior (the canopy bows, glare shield, panel and
+consoles, all fixed to the airframe) is drawn only in that view. The baker keeps every cockpit surface
+at least 0.35 m from the design eye, over the 0.3 m near plane. One mesh pipeline draws both, in a new
+`mesh.wgsl` with a `Model` block at binding 2; the classify view gives the aircraft and the cockpit
+their own key colours.
 
 ## Consequences
 

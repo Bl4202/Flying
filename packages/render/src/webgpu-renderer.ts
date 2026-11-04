@@ -23,6 +23,7 @@ import {
   RendererUnavailable,
   type Backend,
   type CanvasLike,
+  type MeshSlot,
   type Renderer,
   type SampleCount,
   type ShaderSources,
@@ -34,6 +35,7 @@ import {
   LEVEL_UNIFORM_FLOATS,
   MARKER_INSTANCE_CAPACITY,
 } from './scene.ts';
+import { MESH_VERTEX_BYTES, MODEL_UNIFORM_BYTES, type ModelMesh } from './model-mesh.ts';
 import { VERTEX_BYTES, type TerrainMesh } from './terrain-mesh.ts';
 
 const DEPTH_FORMAT = 'depth32float';
@@ -42,9 +44,18 @@ const INSTANCE_BYTES = MARKER_INSTANCE_FLOATS * 4;
 /** The pipelines for one sample count (a pipeline is made for the sample count it draws into). */
 interface Pipelines {
   sky: GPURenderPipeline;
+  mesh: GPURenderPipeline;
   terrain: GPURenderPipeline;
   marker: GPURenderPipeline;
   fx: GPURenderPipeline;
+}
+
+/** What an aircraft mesh has on the GPU. */
+interface MeshGpu {
+  vertices: GPUBuffer;
+  indices: GPUBuffer;
+  indexCount: number;
+  bodyIndexCount: number;
 }
 
 /** What a terrain level has on the GPU. */
@@ -64,6 +75,9 @@ export class WebGpuRenderer implements Renderer {
   readonly #context: GPUCanvasContext;
   readonly #format: GPUTextureFormat;
   readonly #uniform: GPUBuffer;
+  /** The aircraft's part matrices and glow (binding 2 of every bind group). */
+  readonly #modelUniform: GPUBuffer;
+  readonly #meshes = new Map<MeshSlot, MeshGpu>();
   /** Per terrain level: the level's uniform buffer, and a bind group of it with the frame's. */
   readonly #levelUniforms: GPUBuffer[] = [];
   readonly #bindGroups: GPUBindGroup[] = [];
@@ -106,6 +120,11 @@ export class WebGpuRenderer implements Renderer {
       size: FRAME_UNIFORM_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
+    this.#modelUniform = device.createBuffer({
+      label: 'model uniform',
+      size: MODEL_UNIFORM_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
     for (let level = 0; level < TERRAIN_LEVEL_COUNT; level++) {
       const buffer = device.createBuffer({
         label: `terrain level ${String(level)} uniform`,
@@ -119,6 +138,7 @@ export class WebGpuRenderer implements Renderer {
           entries: [
             { binding: 0, resource: { buffer: this.#uniform } },
             { binding: 1, resource: { buffer } },
+            { binding: 2, resource: { buffer: this.#modelUniform } },
           ],
         }),
       );
@@ -206,8 +226,8 @@ export class WebGpuRenderer implements Renderer {
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
 
-    // Binding 0 is the frame; binding 1 is the terrain level (only the terrain shader reads it,
-    // but one layout serves every pipeline).
+    // Binding 0 is the frame; binding 1 is the terrain level and binding 2 the aircraft's part
+    // matrices (only those shaders read them, but one layout serves every pipeline).
     const layout = device.createBindGroupLayout({
       entries: [
         {
@@ -220,9 +240,15 @@ export class WebGpuRenderer implements Renderer {
           visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
           buffer: { type: 'uniform' },
         },
+        {
+          binding: 2,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: 'uniform' },
+        },
       ],
     });
     const modules = {
+      mesh: device.createShaderModule({ label: 'aircraft mesh', code: shaders.meshWgsl }),
       sky: device.createShaderModule({ label: 'sky', code: shaders.skyWgsl }),
       terrain: device.createShaderModule({ label: 'terrain patch', code: shaders.terrainWgsl }),
       marker: device.createShaderModule({ label: 'marker', code: shaders.markerWgsl }),
@@ -299,6 +325,36 @@ export class WebGpuRenderer implements Renderer {
         : undefined;
   }
 
+  setMesh(slot: MeshSlot, mesh: ModelMesh | undefined): void {
+    const old = this.#meshes.get(slot);
+    old?.vertices.destroy();
+    old?.indices.destroy();
+    this.#meshes.delete(slot);
+    if (mesh === undefined) return;
+    const device = this.#device;
+    const vertices = device.createBuffer({
+      label: `${slot} vertices`,
+      size: mesh.vertices.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(vertices, 0, mesh.vertices);
+    const indexBytes = Math.ceil(mesh.indices.byteLength / 4) * 4;
+    const indices = device.createBuffer({
+      label: `${slot} indices`,
+      size: indexBytes,
+      usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+    });
+    const padded = new Uint16Array(indexBytes / 2);
+    padded.set(mesh.indices);
+    device.queue.writeBuffer(indices, 0, padded);
+    this.#meshes.set(slot, {
+      vertices,
+      indices,
+      indexCount: mesh.indices.length,
+      bodyIndexCount: mesh.bodyIndexCount,
+    });
+  }
+
   setTerrainLevel(level: number, mesh: TerrainMesh): void {
     const device = this.#device;
     const old = this.#levels[level];
@@ -348,6 +404,7 @@ export class WebGpuRenderer implements Renderer {
         );
       }
     }
+    if (frame.model) queue.writeBuffer(this.#modelUniform, 0, frame.modelUniform);
     if (frame.instanceCount > 0) {
       queue.writeBuffer(
         this.#markerInstances,
@@ -396,6 +453,21 @@ export class WebGpuRenderer implements Renderer {
       pass.drawIndexed(gpu.indexCount, level === 0 ? frame.patchInstances : 1);
     }
     pass.setBindGroup(0, this.#bindGroups[0] as GPUBindGroup);
+    if (frame.model) {
+      pass.setPipeline(pipelines.mesh);
+      const exterior = this.#meshes.get('exterior');
+      const interior = this.#meshes.get('cockpit');
+      if (exterior) {
+        pass.setVertexBuffer(0, exterior.vertices);
+        pass.setIndexBuffer(exterior.indices, 'uint16');
+        pass.drawIndexed(frame.hideCanopy ? exterior.bodyIndexCount : exterior.indexCount);
+      }
+      if (interior && frame.cockpit) {
+        pass.setVertexBuffer(0, interior.vertices);
+        pass.setIndexBuffer(interior.indices, 'uint16');
+        pass.drawIndexed(interior.indexCount);
+      }
+    }
     if (frame.instanceCount > 0) {
       pass.setPipeline(pipelines.marker);
       pass.setVertexBuffer(0, this.#markerVertices);
@@ -471,6 +543,11 @@ export class WebGpuRenderer implements Renderer {
       level?.indices.destroy();
     }
     for (const buffer of this.#levelUniforms) buffer.destroy();
+    for (const m of this.#meshes.values()) {
+      m.vertices.destroy();
+      m.indices.destroy();
+    }
+    this.#modelUniform.destroy();
     this.#markerVertices.destroy();
     this.#markerInstances.destroy();
     this.#uniform.destroy();
@@ -482,7 +559,7 @@ export class WebGpuRenderer implements Renderer {
 async function buildPipelines(
   device: GPUDevice,
   format: GPUTextureFormat,
-  modules: Record<'sky' | 'terrain' | 'marker' | 'fx', GPUShaderModule>,
+  modules: Record<'sky' | 'mesh' | 'terrain' | 'marker' | 'fx', GPUShaderModule>,
   layout: GPUPipelineLayout,
   samples: SampleCount,
 ): Promise<Pipelines> {
@@ -505,7 +582,7 @@ async function buildPipelines(
     depthCompare: 'always',
   };
   const triangle: GPUPrimitiveState = { topology: 'triangle-list', cullMode: 'none' };
-  const [sky, terrain, marker, fx] = await Promise.all([
+  const [sky, mesh, terrain, marker, fx] = await Promise.all([
     device.createRenderPipelineAsync({
       label: `sky x${String(samples)}`,
       layout,
@@ -513,6 +590,28 @@ async function buildPipelines(
       fragment: { module: modules.sky, entryPoint: 'fs_main', targets: [{ format }] },
       primitive: triangle,
       depthStencil: overlayDepth,
+      multisample,
+    }),
+    device.createRenderPipelineAsync({
+      label: `aircraft mesh x${String(samples)}`,
+      layout,
+      vertex: {
+        module: modules.mesh,
+        entryPoint: 'vs_main',
+        buffers: [
+          {
+            arrayStride: MESH_VERTEX_BYTES,
+            attributes: [
+              { shaderLocation: 0, offset: 0, format: 'float32x3' },
+              { shaderLocation: 1, offset: 12, format: 'float32x3' },
+              { shaderLocation: 2, offset: 24, format: 'float32x2' },
+            ],
+          },
+        ],
+      },
+      fragment: { module: modules.mesh, entryPoint: 'fs_main', targets: [{ format }] },
+      primitive,
+      depthStencil,
       multisample,
     }),
     device.createRenderPipelineAsync({
@@ -590,5 +689,5 @@ async function buildPipelines(
       multisample,
     }),
   ]);
-  return { sky, terrain, marker, fx };
+  return { sky, mesh, terrain, marker, fx };
 }

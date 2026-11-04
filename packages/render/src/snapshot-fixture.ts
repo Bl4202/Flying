@@ -21,6 +21,12 @@ export interface FixtureSnapshot {
     vel?: [number, number, number];
     /** The load factor the pilot feels, g. */
     gLagged?: number;
+    /** Gear position, 0 up to 1 down. */
+    gearPos?: number;
+    /** Elevator deflection, radians. */
+    elevatorRad?: number;
+    /** Afterburner level, 0 to 1. */
+    abLevel?: number;
     throttle?: number;
     flags?: number;
     flags2?: number;
@@ -101,6 +107,9 @@ export function makeSnapshot(s: FixtureSnapshot = {}): Uint8Array {
     dv.setFloat32(SNAPSHOT.O_VEL_BF + 4 * k, v, true);
   });
   dv.setFloat32(SNAPSHOT.O_G_LAGGED, o.gLagged ?? 1, true);
+  dv.setFloat32(SNAPSHOT.O_GEAR_POS, o.gearPos ?? 1, true);
+  dv.setFloat32(SNAPSHOT.O_AB_LEVEL, o.abLevel ?? 0, true);
+  dv.setFloat32(SNAPSHOT.O_SURFACES, o.elevatorRad ?? 0, true);
   dv.setFloat32(SNAPSHOT.O_THROTTLE, o.throttle ?? 0.5, true);
   dv.setUint8(SNAPSHOT.O_FLAGS, o.flags ?? 0);
   dv.setUint16(SNAPSHOT.O_FLAGS2, o.flags2 ?? 0, true);

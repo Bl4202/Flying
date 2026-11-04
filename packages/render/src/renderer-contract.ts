@@ -23,6 +23,11 @@ import {
   type RenderFault,
 } from './scene.ts';
 import { FOV_Y } from './camera.ts';
+import { CameraRig, DEFAULT_COCKPIT, type CameraPose } from './camera-rig.ts';
+import { FIXTURE_COCKPIT, FIXTURE_MODEL } from './model-fixture.ts';
+import { buildCockpitMesh, buildModelMesh } from './model-mesh.ts';
+import { ModelRig } from './model-rig.ts';
+import { newViewState } from '@flying/sim-bridge/view-channel';
 import { horizonDip } from './sky.ts';
 import {
   LOOKING_DOWN,
@@ -176,6 +181,8 @@ export async function runRendererContract(
     debugView?: DebugView;
     fault?: RenderFault;
     terrain?: TerrainSet;
+    camera?: CameraPose;
+    model?: ModelRig;
   };
   const frameFor = (
     shift: number,
@@ -195,6 +202,8 @@ export async function runRendererContract(
       ...(options.gfxStrength === undefined ? {} : { gfxStrength: options.gfxStrength }),
       ...(options.debugView === undefined ? {} : { debugView: options.debugView }),
       ...(options.fault === undefined ? {} : { fault: options.fault }),
+      ...(options.camera === undefined ? {} : { camera: options.camera }),
+      ...(options.model === undefined ? {} : { model: options.model }),
     });
   };
   const pixelsFor = async (
@@ -390,6 +399,106 @@ export async function runRendererContract(
           if (got === 1) return undefined; // this backend has no MSAA
           const f = differingFraction(before, after, 8);
           return f < 0.1 ? undefined : `${(f * 100).toFixed(1)} % of pixels differ with 4x MSAA`;
+        },
+      );
+
+      /** A snapshot of the aircraft with its gear at `gearPos`, as the scene sees it. */
+      const aircraftWorld = (gearPos: number, elevatorRad = 0, abLevel = 0) => {
+        const interp = new SnapshotInterpolator();
+        interp.push(
+          makeSnapshot({
+            publishMs: 1000,
+            ownship: { pos: [0, -6000, 1500], quat: NORTH, gearPos, elevatorRad, abLevel },
+          }),
+        );
+        const state = interp.sample(2000);
+        if (!state) throw new Error('no scene state');
+        return state;
+      };
+
+      const drawAircraft = async (
+        camera: 'cockpit' | 'chase',
+        extra: {
+          gearPos?: number;
+          elevatorRad?: number;
+          abLevel?: number;
+          debugView?: DebugView;
+        } = {},
+      ): Promise<Uint8Array> => {
+        const [w, h] = [480, 270];
+        renderer.resize(w, h);
+        renderer.setMesh('exterior', buildModelMesh(FIXTURE_MODEL));
+        renderer.setMesh('cockpit', buildCockpitMesh(FIXTURE_COCKPIT));
+        const state = aircraftWorld(extra.gearPos ?? 1, extra.elevatorRad ?? 0, extra.abLevel ?? 0);
+        const rig = new CameraRig(
+          { eyeBodyM: FIXTURE_COCKPIT.eyePointM, headLimits: DEFAULT_COCKPIT.headLimits },
+          { heightAt: () => Number.NaN },
+        );
+        const view = { ...newViewState(), camera };
+        for (let i = 0; i < 400; i++) rig.step(state, view, 1 / 60);
+        const terrain = patchAt(0);
+        upload(terrain);
+        renderer.render(
+          scene.build(state, {
+            aspect: w / h,
+            zRange: renderer.zRange,
+            timeS: 0,
+            terrain,
+            camera: rig.pose,
+            model: new ModelRig(FIXTURE_MODEL),
+            ...(extra.debugView === undefined ? {} : { debugView: extra.debugView }),
+          }),
+        );
+        const px = await renderer.debugReadPixels();
+        renderer.setMesh('exterior', undefined);
+        renderer.setMesh('cockpit', undefined);
+        renderer.resize(width, height);
+        return px;
+      };
+
+      await check('the chase view draws the aircraft, canopy and all', async () => {
+        const px = await drawAircraft('chase', { debugView: 'classify' });
+        // From 45 m behind and 9 m above, the aircraft is a few dozen pixels across at this size.
+        const model = countKey(px, CLASSIFY_KEYS.model);
+        return model > 80 ? undefined : `${String(model)} model pixels`;
+      });
+
+      await check(
+        'the cockpit view draws the cockpit and the airframe ahead of the eye',
+        async () => {
+          const px = await drawAircraft('cockpit', { debugView: 'classify' });
+          const [cockpit, model] = [
+            countKey(px, CLASSIFY_KEYS.cockpit),
+            countKey(px, CLASSIFY_KEYS.model),
+          ];
+          return cockpit > 100 && model > 100
+            ? undefined
+            : `${String(cockpit)} cockpit pixels and ${String(model)} airframe pixels`;
+        },
+      );
+
+      await check(
+        'the parts move with the sim: elevator and afterburner change the chase picture',
+        async () => {
+          // From behind and above, the tail surfaces and the glowing nozzle are what can be seen.
+          const [rest, moved] = [
+            await drawAircraft('chase'),
+            await drawAircraft('chase', { elevatorRad: (25 * Math.PI) / 180, abLevel: 1 }),
+          ];
+          const f = differingFraction(rest, moved, 6);
+          return f > 0.0001 ? undefined : `only ${(f * 100).toFixed(4)} % of pixels changed`;
+        },
+      );
+
+      await check(
+        'the aircraft is lit, not flat: the normal view differs from the classify view',
+        async () => {
+          const [lit, flat] = [
+            await drawAircraft('chase'),
+            await drawAircraft('chase', { debugView: 'classify' }),
+          ];
+          const f = differingFraction(lit, flat, 6);
+          return f > 0.02 ? undefined : `only ${(f * 100).toFixed(2)} % of pixels differ`;
         },
       );
 

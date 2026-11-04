@@ -316,7 +316,7 @@
       "channel": "gear_retract",
       "pivot_m": [-0.62, 0.75, 1.3],
       "axis": [1, 0, 0],
-      "rotate_deg_per_unit": 135
+      "rotate_deg_per_unit": 150
     },
     {
       "motion": "rotate",
@@ -324,7 +324,7 @@
       "channel": "gear_retract",
       "pivot_m": [-0.62, -0.75, 1.3],
       "axis": [1, 0, 0],
-      "rotate_deg_per_unit": -135
+      "rotate_deg_per_unit": -150
     },
     {
       "motion": "glow",

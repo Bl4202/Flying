@@ -3,7 +3,14 @@
  * should still run (the sim, the overlay, the input), and what tests use for the render loop.
  */
 import type { ZRange } from './camera.ts';
-import { CLEAR_COLOUR, type Backend, type Renderer, type SampleCount } from './renderer.ts';
+import {
+  CLEAR_COLOUR,
+  type Backend,
+  type MeshSlot,
+  type Renderer,
+  type SampleCount,
+} from './renderer.ts';
+import type { ModelMesh } from './model-mesh.ts';
 import type { FrameData } from './scene.ts';
 import type { TerrainMesh } from './terrain-mesh.ts';
 
@@ -33,6 +40,14 @@ export class NullRenderer implements Renderer {
 
   setTerrainLevel(level: number, mesh: TerrainMesh): void {
     this.levels[level] = mesh;
+  }
+
+  /** The meshes uploaded, by slot. */
+  readonly meshes = new Map<MeshSlot, ModelMesh>();
+
+  setMesh(slot: MeshSlot, mesh: ModelMesh | undefined): void {
+    if (mesh === undefined) this.meshes.delete(slot);
+    else this.meshes.set(slot, mesh);
   }
 
   render(frame: FrameData): void {
@@ -69,6 +84,7 @@ export class NullRenderer implements Renderer {
   dispose(): void {
     this.disposed = true;
     this.levels.length = 0;
+    this.meshes.clear();
     this.lastFrame = undefined;
   }
 }

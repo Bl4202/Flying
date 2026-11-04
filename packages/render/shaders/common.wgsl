@@ -37,6 +37,8 @@ const HAZE_SCALE_M : f32 = 7000.0;
 const KEY_SKY : vec3<f32> = vec3<f32>(0.0, 0.0, 1.0);
 const KEY_GLOBE : vec3<f32> = vec3<f32>(1.0, 0.0, 1.0);
 const KEY_MARKER : vec3<f32> = vec3<f32>(1.0, 1.0, 0.0);
+const KEY_MODEL : vec3<f32> = vec3<f32>(1.0, 0.5019608, 0.0);
+const KEY_COCKPIT : vec3<f32> = vec3<f32>(0.5019608, 0.0, 1.0);
 
 fn key_level(level : f32) -> vec3<f32> {
   // L0 to L3 in four greens: 255, 191, 127 and 63.

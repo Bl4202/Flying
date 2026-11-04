@@ -16,6 +16,8 @@ describe('the classify keys', () => {
     expect(shaderKey('KEY_SKY')).toEqual([...CLASSIFY_KEYS.sky]);
     expect(shaderKey('KEY_GLOBE')).toEqual([...CLASSIFY_KEYS.globe]);
     expect(shaderKey('KEY_MARKER')).toEqual([...CLASSIFY_KEYS.marker]);
+    expect(shaderKey('KEY_MODEL')).toEqual([...CLASSIFY_KEYS.model]);
+    expect(shaderKey('KEY_COCKPIT')).toEqual([...CLASSIFY_KEYS.cockpit]);
   });
 
   it('match the terrain levels the shader derives: green 255 minus 64 per level', () => {
@@ -31,6 +33,8 @@ describe('the classify keys', () => {
       CLASSIFY_KEYS.sky,
       CLASSIFY_KEYS.globe,
       CLASSIFY_KEYS.marker,
+      CLASSIFY_KEYS.model,
+      CLASSIFY_KEYS.cockpit,
       ...CLASSIFY_KEYS.terrain,
     ];
     for (const [i, a] of all.entries()) {

@@ -15,6 +15,7 @@ import { MainThreadRenderHost } from './main-thread-host.ts';
 import type { RenderCommand, RenderEvent, RenderInit, RenderSettings } from './messages.ts';
 import type { ViewState } from '@flying/sim-bridge/view-channel';
 import type { CockpitView } from './camera-rig.ts';
+import type { RenderPresentation } from './present.ts';
 import { drawingSize, QUALITY_UNSET, qualityFor, type Quality } from './quality.ts';
 import type { RendererFactories } from './render-session.ts';
 import type { ShaderSources } from './renderer.ts';
@@ -353,6 +354,12 @@ export class RenderClient {
   setCockpit(cockpit: CockpitView): void {
     if (this.#worker) this.#send({ type: 'cockpit', cockpit });
     else this.#mainHost?.session.setCockpit(cockpit);
+  }
+
+  /** Tells the renderer the aircraft's presentation data (its exterior and cockpit meshes). */
+  setPresentation(presentation: RenderPresentation): void {
+    if (this.#worker) this.#send({ type: 'presentation', presentation });
+    else this.#mainHost?.session.setPresentation(presentation);
   }
 
   /** Chooses the graphics quality: the resolution scale and the sample count. */

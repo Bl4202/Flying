@@ -35,6 +35,8 @@ import {
   type ZRange,
 } from './camera.ts';
 import type { CameraPose } from './camera-rig.ts';
+import { MODEL_UNIFORM_FLOATS } from './model-mesh.ts';
+import type { ModelRig } from './model-rig.ts';
 import { MARKER_INSTANCE_FLOATS, MARKER_SIZE_M } from './markers.ts';
 import type { SceneState } from './interp.ts';
 import { eyeGeometry, globeFloorM, newEyeGeometry } from './sky.ts';
@@ -132,6 +134,14 @@ export interface FrameData {
   levelMask: number;
   /** Draw the sky pass first (off only for the GPU benchmark, which measures the terrain alone). */
   sky: boolean;
+  /** The model's part matrices and glow (`MODEL_UNIFORM_FLOATS`), when `model` is set. */
+  modelUniform: Float32Array;
+  /** Draw the aircraft's exterior. */
+  model: boolean;
+  /** Draw it without its canopy (the cockpit view looks out through where it is). */
+  hideCanopy: boolean;
+  /** Draw the cockpit interior (the cockpit view only). */
+  cockpit: boolean;
   instances: Float32Array;
   instanceCount: number;
   /** Copies of the terrain patch to draw, laid out on a grid; 1 for normal frames. */
@@ -146,6 +156,10 @@ export class SceneBuilder {
     levelUniform: new Float32Array(TERRAIN_LEVEL_COUNT * LEVEL_UNIFORM_FLOATS),
     levelMask: 0,
     sky: true,
+    modelUniform: new Float32Array(MODEL_UNIFORM_FLOATS),
+    model: false,
+    hideCanopy: false,
+    cockpit: false,
     instances: new Float32Array(MARKER_INSTANCE_CAPACITY * MARKER_INSTANCE_FLOATS),
     instanceCount: 0,
     patchInstances: 1,
@@ -189,6 +203,8 @@ export class SceneBuilder {
       sky?: boolean;
       /** Where the eye is and how it looks; without one, the aircraft's reference point and attitude. */
       camera?: CameraPose;
+      /** Draws the aircraft: its exterior in the chase view, the cockpit and the exterior without its canopy in the cockpit view. */
+      model?: ModelRig;
     },
   ): FrameData {
     const f = this.#frame;
@@ -204,6 +220,9 @@ export class SceneBuilder {
       MAX_PATCH_INSTANCES,
       Math.max(1, Math.floor(opts.patchInstances ?? 1)),
     );
+    f.model = opts.model !== undefined;
+    f.hideCanopy = f.cockpit = f.model && cam?.mode === 'cockpit';
+    opts.model?.update(f.modelUniform, state, this.#eyeBf);
     this.#frameBlock(f.uniform, state, opts);
     this.#levelBlocks(f, opts);
     f.fx = f.uniform[FRAME_AT.FX + 2] !== 0 && this.#fxActive(state);
