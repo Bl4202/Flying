@@ -1,0 +1,449 @@
+{
+  "$defs": {
+    "GearLegModel": {
+      "additionalProperties": false,
+      "description": "One landing-gear leg: a strut and a wheel that retract with the gear part.",
+      "properties": {
+        "contact_m": {
+          "description": "The wheel's contact point with the strut fully extended (as `geometry.gear[].pos_m`).",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        },
+        "id": {
+          "description": "The aircraft's gear id (`nose`, `main_l`, ...): the contact point must match its data.",
+          "type": "string"
+        },
+        "part": {
+          "description": "The part that retracts it.",
+          "type": "string"
+        },
+        "top_m": {
+          "description": "Where the strut meets the airframe.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        },
+        "wheel_radius_m": {
+          "description": "Wheel radius.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.05,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "wheel_width_m": {
+          "description": "Wheel width.",
+          "format": "double",
+          "maximum": 0.6,
+          "minimum": 0.02,
+          "type": "number",
+          "x-unit": "m"
+        }
+      },
+      "required": [
+        "id",
+        "part",
+        "contact_m",
+        "top_m",
+        "wheel_radius_m",
+        "wheel_width_m"
+      ],
+      "type": "object"
+    },
+    "ModelBox": {
+      "additionalProperties": false,
+      "description": "A box in the model, optionally on a moving part.",
+      "properties": {
+        "id": {
+          "description": "Name, unique in the file.",
+          "type": "string"
+        },
+        "max_m": {
+          "description": "The corner with the largest x, y and z.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        },
+        "min_m": {
+          "description": "The corner with the smallest x, y and z.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        },
+        "part": {
+          "description": "The part that moves it, if any.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "min_m",
+        "max_m"
+      ],
+      "type": "object"
+    },
+    "Nozzle": {
+      "additionalProperties": false,
+      "description": "The nozzle: a short cone behind the last fuselage station that glows with the afterburner.",
+      "properties": {
+        "at_m": {
+          "description": "Where the nozzle's front is, body axes.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        },
+        "length_m": {
+          "description": "Length.",
+          "format": "double",
+          "maximum": 5.0,
+          "minimum": 0.05,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "part": {
+          "description": "The `glow` part that lights it.",
+          "type": "string"
+        },
+        "radius_m": {
+          "description": "Radius at the front.",
+          "format": "double",
+          "maximum": 2.0,
+          "minimum": 0.05,
+          "type": "number",
+          "x-unit": "m"
+        }
+      },
+      "required": [
+        "part",
+        "at_m",
+        "radius_m",
+        "length_m"
+      ],
+      "type": "object"
+    },
+    "PartFile": {
+      "description": "A part of the model that moves or glows with one of the sim's channels.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Turns about an axis by `rotate_deg_per_unit` times the channel's value.",
+          "properties": {
+            "axis": {
+              "description": "The hinge direction (need not be a unit vector).",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array"
+            },
+            "channel": {
+              "description": "One of the model channels.",
+              "type": "string"
+            },
+            "id": {
+              "description": "Name, unique in the file.",
+              "type": "string"
+            },
+            "motion": {
+              "const": "rotate",
+              "type": "string"
+            },
+            "pivot_m": {
+              "description": "A point on the hinge line.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array",
+              "x-unit": "m"
+            },
+            "rotate_deg_per_unit": {
+              "description": "Rotation, in degrees, for each unit of the channel (a sign flips the direction).",
+              "format": "double",
+              "type": "number",
+              "x-unit": "deg"
+            }
+          },
+          "required": [
+            "motion",
+            "id",
+            "channel",
+            "pivot_m",
+            "axis",
+            "rotate_deg_per_unit"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Lights up with the channel's value (the nozzle with the afterburner).",
+          "properties": {
+            "channel": {
+              "description": "One of the model channels.",
+              "type": "string"
+            },
+            "id": {
+              "description": "Name, unique in the file.",
+              "type": "string"
+            },
+            "motion": {
+              "const": "glow",
+              "type": "string"
+            }
+          },
+          "required": [
+            "motion",
+            "id",
+            "channel"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Station": {
+      "additionalProperties": false,
+      "description": "A fuselage or canopy cross-section: an ellipse-like ring at station `x_m`.",
+      "properties": {
+        "bottom_z_m": {
+          "description": "Bottom of the section (body z; larger than the top).",
+          "format": "double",
+          "type": "number",
+          "x-unit": "m"
+        },
+        "half_width_m": {
+          "description": "Half the width.",
+          "format": "double",
+          "maximum": 3.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "top_z_m": {
+          "description": "Top of the section (body z; negative is up).",
+          "format": "double",
+          "type": "number",
+          "x-unit": "m"
+        },
+        "x_m": {
+          "description": "Station, body x.",
+          "format": "double",
+          "type": "number",
+          "x-unit": "m"
+        }
+      },
+      "required": [
+        "x_m",
+        "half_width_m",
+        "top_z_m",
+        "bottom_z_m"
+      ],
+      "type": "object"
+    },
+    "Surface": {
+      "additionalProperties": false,
+      "description": "A trapezoid slab: a wing half, a tail half or a fin. Written out per side (an animated surface\nmoves on its own); a static surface may set `mirror` to add its left twin.",
+      "properties": {
+        "id": {
+          "description": "Name, unique in the file.",
+          "type": "string"
+        },
+        "mirror": {
+          "default": false,
+          "description": "Also draw the mirror image across the centre plane (not with `part`).",
+          "type": "boolean"
+        },
+        "part": {
+          "description": "The part that moves it, if any.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "root_chord_m": {
+          "description": "Chord at the root.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.05,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "root_le_m": {
+          "description": "Leading edge at the root.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        },
+        "root_thickness_m": {
+          "description": "Thickness at the root.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.005,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "tip_chord_m": {
+          "description": "Chord at the tip.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "tip_le_m": {
+          "description": "Leading edge at the tip.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        },
+        "tip_thickness_m": {
+          "description": "Thickness at the tip.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.002,
+          "type": "number",
+          "x-unit": "m"
+        }
+      },
+      "required": [
+        "id",
+        "root_le_m",
+        "root_chord_m",
+        "tip_le_m",
+        "tip_chord_m",
+        "root_thickness_m",
+        "tip_thickness_m"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`model/1`: an aircraft's exterior as a handful of generated solids, with the parts that move\nbound to the sim's channels (ADR-41). The renderer builds one mesh from it.",
+  "properties": {
+    "aircraft": {
+      "description": "The aircraft this model belongs to, `core:ac/<name>`.",
+      "type": "string"
+    },
+    "boxes": {
+      "description": "Intakes, pylons and other boxes.",
+      "items": {
+        "$ref": "#/$defs/ModelBox"
+      },
+      "maxItems": 24,
+      "type": "array"
+    },
+    "canopy": {
+      "description": "Canopy bubble cross-sections, front to back, over the fuselage.",
+      "items": {
+        "$ref": "#/$defs/Station"
+      },
+      "maxItems": 12,
+      "minItems": 2,
+      "type": "array"
+    },
+    "fuselage": {
+      "description": "Fuselage cross-sections, nose to tail.",
+      "items": {
+        "$ref": "#/$defs/Station"
+      },
+      "maxItems": 24,
+      "minItems": 3,
+      "type": "array"
+    },
+    "gear": {
+      "description": "The landing gear.",
+      "items": {
+        "$ref": "#/$defs/GearLegModel"
+      },
+      "maxItems": 8,
+      "type": "array"
+    },
+    "id": {
+      "description": "`core:mdl/<name>`.",
+      "type": "string"
+    },
+    "nozzle": {
+      "$ref": "#/$defs/Nozzle",
+      "description": "The engine nozzle at the tail."
+    },
+    "parts": {
+      "description": "The parts that move.",
+      "items": {
+        "$ref": "#/$defs/PartFile"
+      },
+      "maxItems": 16,
+      "type": "array"
+    },
+    "schema": {
+      "const": "model/1",
+      "description": "Format tag, always `model/1`.",
+      "type": "string"
+    },
+    "surfaces": {
+      "description": "Wings, tails and fins: one trapezoid slab each.",
+      "items": {
+        "$ref": "#/$defs/Surface"
+      },
+      "maxItems": 24,
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "aircraft",
+    "fuselage",
+    "canopy",
+    "nozzle",
+    "surfaces",
+    "boxes",
+    "gear",
+    "parts"
+  ],
+  "title": "ModelFile",
+  "type": "object"
+}

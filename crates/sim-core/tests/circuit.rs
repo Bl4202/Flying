@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 
 use sim_core::circuit::report::{self, CircuitReport};
 use sim_core::layout::input_script;
-use sim_core::{Assist, GEffects, SessionConfig, SimCore, Spawn};
+use sim_core::{Arena, Assist, GEffects, SessionConfig, SimCore, Spawn};
 
 fn core_pack() -> &'static [u8] {
     static PACK: OnceLock<Vec<u8>> = OnceLock::new();
@@ -34,6 +34,7 @@ fn circuit_core(pack: &[u8], assist: Assist, fuel: f64) -> SimCore {
         spawn: Spawn::Runway,
         assist,
         g_effects: GEffects::Full,
+        arena: Arena::Rugged,
     })
     .expect("idle");
     assert!(core.set_input_script(input_script::CIRCUIT as u32));

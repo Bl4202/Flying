@@ -13,7 +13,11 @@
     "./profile": "./src/profile.ts",
     "./layout": "./src/layout.gen.ts",
     "./frame-math": "./src/frame-math.ts",
-    "./messages": "./src/messages.ts"
+    "./messages": "./src/messages.ts",
+    "./warnings": "./src/warnings.ts",
+    "./present": "./src/present.ts",
+    "./terrain-levels": "./src/terrain-levels.ts",
+    "./view-channel": "./src/view-channel.ts"
   },
   "dependencies": {
     "@flying/platform-web": "workspace:*"

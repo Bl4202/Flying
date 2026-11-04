@@ -1,6 +1,6 @@
 # ADR-18: Reference renderer stack
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-40](0040-custom-renderer-stays.md) (2026-11-03): the renderer stays custom
 - **Owner:** Bl4202
 - **Source:** GDD §0.4 (imported verbatim at v0.0a)
 - **Affects:** §44, §24, §54, §60

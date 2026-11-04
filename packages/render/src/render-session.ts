@@ -14,8 +14,11 @@
  */
 import type { RendererChoice } from '@flying/platform-web/flags';
 import type { SnapshotSource } from '@flying/sim-bridge';
+import { ViewReader, type ViewState } from '@flying/sim-bridge/view-channel';
+import type { CockpitView } from './camera-rig.ts';
+import type { RenderPresentation } from './present.ts';
 import { SnapshotInterpolator } from './interp.ts';
-import type { RenderEvent } from './messages.ts';
+import type { RenderEvent, RenderSettings } from './messages.ts';
 import { NullRenderer } from './null-renderer.ts';
 import { RenderLoop } from './render-loop.ts';
 import {
@@ -26,7 +29,6 @@ import {
   type ShaderSources,
 } from './renderer.ts';
 import { SceneBuilder } from './scene.ts';
-import { buildTerrainMesh } from './terrain-mesh.ts';
 import { WebGl2Renderer } from './webgl2-renderer.ts';
 import { WebGpuRenderer } from './webgpu-renderer.ts';
 
@@ -104,7 +106,12 @@ export class RenderSession {
   #nextReport = 0;
   #webgpuLosses = 0;
   #stopped = false;
-  #settings: { gfxStrength: number } | undefined;
+  #settings: RenderSettings | undefined;
+  /** What was told before the loop existed, applied when it does. */
+  #viewBuffer: SharedArrayBuffer | undefined;
+  #view: ViewState | undefined;
+  #cockpit: CockpitView | undefined;
+  #presentation: RenderPresentation | undefined;
 
   constructor(options: RenderSessionOptions) {
     this.#o = options;
@@ -135,6 +142,10 @@ export class RenderSession {
     );
     loop.resize(widthPx, heightPx);
     if (this.#settings) loop.setSettings(this.#settings);
+    if (this.#viewBuffer) loop.setViewReader(new ViewReader(this.#viewBuffer));
+    if (this.#view) loop.setView(this.#view);
+    if (this.#cockpit) loop.setCockpit(this.#cockpit);
+    if (this.#presentation) loop.setPresentation(this.#presentation);
     this.#loop = loop;
     this.#watch(renderer);
     this.#nextReport = o.monoMs() + 250;
@@ -146,9 +157,9 @@ export class RenderSession {
     });
   }
 
-  /** Installs a terrain patch from the sim (the bytes in `TERRAIN` layout). */
-  setTerrain(patch: ArrayBuffer): void {
-    this.#loop?.setTerrain(buildTerrainMesh(new Uint8Array(patch)));
+  /** Installs terrain level `level` from the sim (the bytes in `TERRAIN` layout). */
+  setTerrain(level: number, patch: ArrayBuffer): void {
+    this.#loop?.setTerrain(level, new Uint8Array(patch));
   }
 
   resize(widthPx: number, heightPx: number): void {
@@ -156,9 +167,33 @@ export class RenderSession {
   }
 
   /** Applies the player's rendering settings (before the renderer exists they are kept). */
-  setSettings(settings: { gfxStrength: number }): void {
+  setSettings(settings: RenderSettings): void {
     this.#settings = settings;
     this.#loop?.setSettings(settings);
+  }
+
+  /** Reads the view from a shared channel every frame. */
+  setViewBuffer(buffer: SharedArrayBuffer): void {
+    this.#viewBuffer = buffer;
+    this.#loop?.setViewReader(new ViewReader(buffer));
+  }
+
+  /** Takes the view from a message (no shared channel). */
+  setView(state: ViewState): void {
+    this.#view = state;
+    this.#loop?.setView(state);
+  }
+
+  /** The cockpit to look out of. */
+  setCockpit(cockpit: CockpitView): void {
+    this.#cockpit = cockpit;
+    this.#loop?.setCockpit(cockpit);
+  }
+
+  /** The aircraft's presentation data (before the renderer exists it is kept). */
+  setPresentation(presentation: RenderPresentation): void {
+    this.#presentation = presentation;
+    this.#loop?.setPresentation(presentation);
   }
 
   resetRun(): void {

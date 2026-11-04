@@ -1,7 +1,8 @@
 /**
  * The ownship as the cockpit-side code needs it: assist level, flight control mode, wheels and
- * flaps, the g-physiology numbers and where the nose points. Read from a snapshot into one reused
- * object, so the main thread can do it every animation frame without making garbage.
+ * flaps, the g-physiology numbers, where the nose points, and (snapshot v4) the engine, fuel flow,
+ * load limits and the arena. Read from a snapshot into one reused object, so the main thread can
+ * do it every animation frame without making garbage.
  */
 import type { SnapshotReader } from './snapshot.ts';
 
@@ -31,6 +32,8 @@ export interface AircraftStatus {
   brakeL: number;
   brakeR: number;
   groundSpeed: number;
+  /** Height above mean sea level, metres. */
+  altitude: number;
   /** Vertical speed, m/s. */
   vs: number;
   /** Lowest wheel above the ground, metres. */
@@ -46,6 +49,23 @@ export interface AircraftStatus {
   /** Where the nose points: azimuth clockwise from north, elevation up, radians. */
   noseAz: number;
   noseEl: number;
+  /** `ARENA` of the world. */
+  arena: number;
+  /** `ENGINE_BIT` bits. */
+  engineBits: number;
+  /** Dynamic pressure, Pa. */
+  qbar: number;
+  /** Fuel on board, kg, and the flow, kg/s. */
+  fuel: number;
+  fuelFlow: number;
+  /** Core thrust as a fraction of military, and the afterburner level, 0 to 1. */
+  engineCore: number;
+  abLevel: number;
+  /** The highest load factor since the spawn and the limit for the configuration, g. */
+  maxNz: number;
+  nMax: number;
+  /** The angle of attack at which the stall warning starts, radians. */
+  alphaWarn: number;
 }
 
 /** An all-zero status. */
@@ -68,6 +88,7 @@ export function newAircraftStatus(): AircraftStatus {
     brakeL: 0,
     brakeR: 0,
     groundSpeed: 0,
+    altitude: 0,
     vs: 0,
     agl: 0,
     gLagged: 0,
@@ -78,6 +99,16 @@ export function newAircraftStatus(): AircraftStatus {
     crashCause: 0,
     noseAz: 0,
     noseEl: 0,
+    arena: 0,
+    engineBits: 0,
+    qbar: 0,
+    fuel: 0,
+    fuelFlow: 0,
+    engineCore: 0,
+    abLevel: 0,
+    maxNz: 0,
+    nMax: 0,
+    alphaWarn: 0,
   };
 }
 
@@ -104,6 +135,7 @@ export function readAircraftStatus(reader: SnapshotReader, out: AircraftStatus):
   out.brakeL = brakes[0] ?? 0;
   out.brakeR = brakes[1] ?? 0;
   out.groundSpeed = reader.ownshipGroundSpeed();
+  out.altitude = reader.ownshipAltitude();
   out.vs = reader.ownshipVs();
   out.agl = reader.ownshipAgl();
   out.gLagged = reader.ownshipGLagged();
@@ -112,6 +144,16 @@ export function readAircraftStatus(reader: SnapshotReader, out: AircraftStatus):
   out.nCmd = reader.ownshipNCmd();
   out.gearBits = reader.ownshipGearBits();
   out.crashCause = reader.ownshipCrashCause();
+  out.arena = reader.arena();
+  out.engineBits = reader.ownshipEngineBits();
+  out.qbar = reader.ownshipQbar();
+  out.fuel = reader.ownshipFuel();
+  out.fuelFlow = reader.ownshipFuelFlow();
+  out.engineCore = reader.ownshipEngineCore();
+  out.abLevel = reader.ownshipAbLevel();
+  out.maxNz = reader.ownshipMaxNz();
+  out.nMax = reader.ownshipNMax();
+  out.alphaWarn = reader.ownshipAlphaWarn();
 
   // The nose is the body x axis. For a body-to-BF quaternion [w, x, y, z], rotated, its east,
   // north and up components are:

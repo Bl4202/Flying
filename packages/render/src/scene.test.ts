@@ -4,16 +4,29 @@ import {
   airfieldShifted,
   CUE_COUNT,
   CUE_DISTANCE_M,
+  FRAME_AT,
   FRAME_UNIFORM_BYTES,
   FRAME_UNIFORM_FLOATS,
+  LEVEL_UNIFORM_FLOATS,
   MARKER_INSTANCE_CAPACITY,
   MAX_PATCH_INSTANCES,
   SceneBuilder,
   TEST_AIRFIELD,
+  type LevelSet,
+  type LevelSource,
 } from './scene.ts';
 import { SnapshotInterpolator } from './interp.ts';
 import { MARKER_INSTANCE_FLOATS, MARKER_SIZE_M } from './markers.ts';
 import { makeSnapshot, NORTH } from './snapshot-fixture.ts';
+
+/** No terrain levels at all. */
+const NO_TERRAIN: LevelSet = { mesh: () => undefined };
+
+/** A terrain level 0 with the given origin and spacing, and nothing else. */
+function levelZero(originBf: [number, number, number], spacingM = 250): LevelSet {
+  const level: LevelSource = { originBf, spacingM };
+  return { mesh: (n) => (n === 0 ? level : undefined) };
+}
 
 /** Element `i` of `a`, or NaN (which fails any comparison) if there is none. */
 const at = (a: ArrayLike<number>, i: number): number => a[i] ?? Number.NaN;
@@ -27,33 +40,34 @@ function world(extra: Parameters<typeof makeSnapshot>[0]) {
 }
 
 describe('SceneBuilder', () => {
-  it('has the uniform size the shaders declare: 144 bytes', () => {
-    expect(FRAME_UNIFORM_FLOATS).toBe(36);
-    expect(FRAME_UNIFORM_BYTES).toBe(144);
+  it('has the uniform size the shaders declare: 224 bytes', () => {
+    expect(FRAME_UNIFORM_FLOATS).toBe(56);
+    expect(FRAME_UNIFORM_BYTES).toBe(224);
+    expect(LEVEL_UNIFORM_FLOATS).toBe(12);
     expect(
       new SceneBuilder().build(world({}), {
         aspect: 1,
         zRange: '0to1',
         timeS: 0,
-        patchOriginBf: null,
-        spacingM: 250,
+        terrain: NO_TERRAIN,
       }).uniform,
-    ).toHaveLength(36);
+    ).toHaveLength(56);
   });
 
-  it('writes time and spacing into params, and a unit upward sun', () => {
+  it('writes time, the field of view and the aspect into params, and a unit upward sun', () => {
     const u = new SceneBuilder().build(world({}), {
       aspect: 1.5,
       zRange: '0to1',
       timeS: 12.5,
-      patchOriginBf: null,
-      spacingM: 250,
+      terrain: NO_TERRAIN,
     }).uniform;
-    expect([u[20], u[21]]).toEqual([12.5, 250]);
-    // The patch span, 128 cells of 250 m: how far apart extra patch instances sit.
-    expect(u[22]).toBe(250 * 128);
-    expect(Math.hypot(u[16] ?? 0, u[17] ?? 0, u[18] ?? 0)).toBeCloseTo(1, 6);
-    expect(u[17]).toBeGreaterThan(0);
+    expect(u[FRAME_AT.PARAMS]).toBe(12.5);
+    // 70 degrees vertical: tan(35 degrees).
+    expect(u[FRAME_AT.PARAMS + 1]).toBeCloseTo(0.70021, 4);
+    expect(u[FRAME_AT.PARAMS + 2]).toBe(1.5);
+    const sun = FRAME_AT.SUN_DIR;
+    expect(Math.hypot(u[sun] ?? 0, u[sun + 1] ?? 0, u[sun + 2] ?? 0)).toBeCloseTo(1, 6);
+    expect(u[sun + 1]).toBeGreaterThan(0);
   });
 
   it('draws one patch by default, and the requested number up to the cap', () => {
@@ -62,8 +76,7 @@ describe('SceneBuilder', () => {
         aspect: 1,
         zRange: '0to1',
         timeS: 0,
-        patchOriginBf: null,
-        spacingM: 250,
+        terrain: NO_TERRAIN,
         ...(patchInstances === undefined ? {} : { patchInstances }),
       }).patchInstances;
     expect(build()).toBe(1);
@@ -75,19 +88,34 @@ describe('SceneBuilder', () => {
     expect(build(2.7)).toBe(2);
   });
 
-  it('gives the terrain patch offset relative to the eye in render axes, subtracted in f64', () => {
+  it('gives each terrain level its offset relative to the eye in render axes, subtracted in f64', () => {
     const eye: [number, number, number] = [400_000.013, -399_999.987, 2000];
     const u = new SceneBuilder().build(world({ ownship: { pos: eye } }), {
       aspect: 1,
       zRange: '0to1',
       timeS: 0,
-      patchOriginBf: [400_000, -400_000, 0],
-      spacingM: 250,
-    }).uniform;
+      terrain: levelZero([400_000, -400_000, 0]),
+    }).levelUniform;
     // BF delta (east, north, up) = (-0.013, -0.013, -2000) -> render (east, up, south).
-    expect(u[24]).toBeCloseTo(-0.013, 5);
-    expect(u[25]).toBeCloseTo(-2000, 9);
-    expect(u[26]).toBeCloseTo(0.013, 5);
+    expect(u[0]).toBeCloseTo(-0.013, 5);
+    expect(u[1]).toBeCloseTo(-2000, 9);
+    expect(u[2]).toBeCloseTo(0.013, 5);
+    expect(u[3]).toBe(0); // level 0
+  });
+
+  it('describes each level present: its number, post spacing and span, and leaves the rest zero', () => {
+    const terrain: LevelSet = {
+      mesh: (n) => (n === 1 ? { originBf: [0, 0, 0], spacingM: 1000 } : undefined),
+    };
+    const f = new SceneBuilder().build(world({}), { aspect: 1, zRange: '0to1', timeS: 0, terrain });
+    expect(f.levelMask).toBe(0b10);
+    const at = LEVEL_UNIFORM_FLOATS;
+    expect([f.levelUniform[at + 3], f.levelUniform[at + 4], f.levelUniform[at + 5]]).toEqual([
+      1, 1000, 128_000,
+    ]);
+    expect(Array.from(f.levelUniform.subarray(0, at))).toEqual(new Array(at).fill(0));
+    // Only level 0 paints a runway.
+    expect(Array.from(f.levelUniform.subarray(at + 8, at + 12))).toEqual([0, 0, 0, 0]);
   });
 
   it('puts a point straight ahead of the observer at the centre of the screen', () => {
@@ -97,8 +125,7 @@ describe('SceneBuilder', () => {
       aspect: 16 / 9,
       zRange: '0to1',
       timeS: 0,
-      patchOriginBf: null,
-      spacingM: 250,
+      terrain: NO_TERRAIN,
     });
     const vp = f.uniform;
     // 3 km straight ahead (north) and level: render (0, 0, -3000) relative to the eye.
@@ -126,8 +153,7 @@ describe('SceneBuilder', () => {
       aspect: 1,
       zRange: '0to1',
       timeS: 0,
-      patchOriginBf: null,
-      spacingM: 250,
+      terrain: NO_TERRAIN,
     });
     expect(f.instanceCount).toBe(2);
     const inst = (i: number): number[] =>
@@ -163,15 +189,13 @@ describe('SceneBuilder', () => {
       aspect: 1,
       zRange: '0to1',
       timeS: 0,
-      patchOriginBf: null,
-      spacingM: 250,
+      terrain: NO_TERRAIN,
     });
     const b = scene.build(state, {
       aspect: 1,
       zRange: '0to1',
       timeS: 1,
-      patchOriginBf: null,
-      spacingM: 250,
+      terrain: NO_TERRAIN,
     });
     expect(a).toBe(b);
     expect(a.uniform).toBe(b.uniform);
@@ -186,8 +210,7 @@ describe('SceneBuilder', () => {
         aspect: 1,
         zRange: '0to1',
         timeS: 0,
-        patchOriginBf: null,
-        spacingM: 250,
+        terrain: NO_TERRAIN,
       }).uniform,
     );
     const neg = Float32Array.from(
@@ -195,14 +218,14 @@ describe('SceneBuilder', () => {
         aspect: 1,
         zRange: '-1to1',
         timeS: 0,
-        patchOriginBf: null,
-        spacingM: 250,
+        terrain: NO_TERRAIN,
       }).uniform,
     );
     expect(neg.slice(0, 16)).not.toEqual(zero.slice(0, 16));
   });
 
   describe('the runway', () => {
+    /** Level 0's block: the runway is its last vec4. */
     const build = (
       patchOriginBf: [number, number, number] | null,
       airfield?: Parameters<SceneBuilder['build']>[1]['airfield'],
@@ -212,10 +235,9 @@ describe('SceneBuilder', () => {
         aspect: 1,
         zRange: '0to1',
         timeS: 0,
-        patchOriginBf,
-        spacingM: 250,
+        terrain: patchOriginBf ? levelZero(patchOriginBf) : NO_TERRAIN,
         ...(airfield === undefined ? {} : { airfield }),
-      }).uniform;
+      }).levelUniform;
 
     it('is the generated test airfield: 3 km by 45 m, its threshold 6 km south of the origin', () => {
       expect(TEST_AIRFIELD).toEqual({
@@ -231,12 +253,12 @@ describe('SceneBuilder', () => {
     it('goes to the shader as the threshold in patch-local east and south, length and width', () => {
       // The patch origin is 100 m west of the threshold and 1500 m north of it.
       const u = build([-100, -4500, 0]);
-      expect([u[28], u[29], u[30], u[31]]).toEqual([100, 1500, 3000, 45]);
+      expect([u[8], u[9], u[10], u[11]]).toEqual([100, 1500, 3000, 45]);
     });
 
     it('is left out when there is no patch to paint it on, or no runway', () => {
-      expect(Array.from(build(null).subarray(28, 32))).toEqual([0, 0, 0, 0]);
-      expect(Array.from(build([0, -4500, 0], null).subarray(28, 32))).toEqual([0, 0, 0, 0]);
+      expect(Array.from(build(null).subarray(8, 12))).toEqual([0, 0, 0, 0]);
+      expect(Array.from(build([0, -4500, 0], null).subarray(8, 12))).toEqual([0, 0, 0, 0]);
     });
 
     it('does not move when the whole scene does: the subtraction is done before rounding', () => {
@@ -248,7 +270,7 @@ describe('SceneBuilder', () => {
           400,
         ]),
       ];
-      expect(Array.from(far.subarray(28, 32))).toEqual(Array.from(near.subarray(28, 32)));
+      expect(Array.from(far.subarray(8, 12))).toEqual(Array.from(near.subarray(8, 12)));
     });
 
     it('can be moved for a test that moves the scene', () => {
@@ -269,17 +291,16 @@ describe('SceneBuilder', () => {
         aspect: 1,
         zRange: '0to1',
         timeS: 0,
-        patchOriginBf: null,
-        spacingM: 250,
+        terrain: NO_TERRAIN,
         ...(gfxStrength === undefined ? {} : { gfxStrength }),
       });
 
     it('hands the stress, the red-out and the strength to the shader', () => {
       const f = build({ pos: [0, 0, 1000], gStress: 0.5, redout: 0.25 }, 40);
-      expect(f.uniform[32]).toBeCloseTo(0.5, 6);
-      expect(f.uniform[33]).toBeCloseTo(0.25, 6);
-      expect(f.uniform[34]).toBeCloseTo(0.4, 6);
-      expect(build({ pos: [0, 0, 1000] }).uniform[34]).toBe(1);
+      expect(f.uniform[FRAME_AT.FX]).toBeCloseTo(0.5, 6);
+      expect(f.uniform[FRAME_AT.FX + 1]).toBeCloseTo(0.25, 6);
+      expect(f.uniform[FRAME_AT.FX + 2]).toBeCloseTo(0.4, 6);
+      expect(build({ pos: [0, 0, 1000] }).uniform[FRAME_AT.FX + 2]).toBe(1);
     });
 
     it('runs the pass only when there is something to draw', () => {
@@ -294,8 +315,8 @@ describe('SceneBuilder', () => {
     });
 
     it('keeps the strength between 0 and 100 per cent', () => {
-      expect(build({ pos: [0, 0, 1000] }, 250).uniform[34]).toBe(1);
-      expect(build({ pos: [0, 0, 1000] }, -5).uniform[34]).toBe(0);
+      expect(build({ pos: [0, 0, 1000] }, 250).uniform[FRAME_AT.FX + 2]).toBe(1);
+      expect(build({ pos: [0, 0, 1000] }, -5).uniform[FRAME_AT.FX + 2]).toBe(0);
     });
   });
 
@@ -317,7 +338,7 @@ describe('SceneBuilder', () => {
             pos: [i, 500, 1000] as [number, number, number],
           })),
         }),
-        { aspect: 1, zRange: '0to1', timeS: 0, patchOriginBf: null, spacingM: 250 },
+        { aspect: 1, zRange: '0to1', timeS: 0, terrain: NO_TERRAIN },
       );
       return f;
     };

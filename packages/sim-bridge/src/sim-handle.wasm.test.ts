@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { encodeInputFrame, neutralFrame } from './input-frame.ts';
 import {
   ABI,
+  ARENA,
   ASSIST_LEVEL,
   AXIS,
   CORE_STATE,
@@ -50,16 +51,19 @@ const ERRATIC_SESSION = {
   spawn: SPAWN_KIND.AIR,
   assist: ASSIST_LEVEL.STANDARD,
   gEffects: G_EFFECTS.FULL,
+  arena: ARENA.RUGGED,
 };
 const FLIGHT60_SESSION = {
   spawn: SPAWN_KIND.AIR,
   assist: ASSIST_LEVEL.MANUAL,
   gEffects: G_EFFECTS.OFF,
+  arena: ARENA.RUGGED,
 };
 const CIRCUIT_SESSION = {
   spawn: SPAWN_KIND.RUNWAY,
   assist: ASSIST_LEVEL.STANDARD,
   gEffects: G_EFFECTS.FULL,
+  arena: ARENA.RUGGED,
 };
 
 async function load(variant: 'single' | 'threads', hostNow?: () => number): Promise<SimHandle> {
@@ -146,6 +150,28 @@ describe.skipIf(!built).each(['single', 'threads'] as const)('sim handle (%s)', 
       expect(hex(sim.hash(HASH_KIND.OWNSHIP))).toBe(expected?.ownship);
       expect(hex(sim.hash(HASH_KIND.COMBINED))).toBe(expected?.combined);
     }
+  });
+
+  it('resets to a core that flies the circuit golden again, the snapshot in place (ADR-43)', async () => {
+    const sim = await load(variant);
+    sim.init(SEED);
+    sim.loadContent(pack());
+    sim.configure({ ...CIRCUIT_SESSION, arena: ARENA.PLAIN });
+    expect(sim.setInputScript(INPUT_SCRIPT.CIRCUIT)).toBe(true);
+    expect(sim.start()).toBe(true);
+    sim.step(900);
+    const snapshotAt = sim.snapshot().byteOffset;
+    sim.reset();
+    expect(sim.coreState()).toBe(CORE_STATE.IDLE);
+    expect(sim.tick()).toBe(0n);
+    expect(sim.snapshot().byteOffset).toBe(snapshotAt);
+    sim.configure(CIRCUIT_SESSION);
+    expect(sim.setInputScript(INPUT_SCRIPT.CIRCUIT)).toBe(true);
+    expect(sim.start()).toBe(true);
+    sim.step(600);
+    const expected = circuit?.checkpoints.find((c) => c.tick === 600);
+    expect(expected).toBeDefined();
+    expect(hex(sim.hash(HASH_KIND.COMBINED))).toBe(expected?.combined);
   });
 
   it('refuses damaged content, content after start, and unknown scripts', async () => {

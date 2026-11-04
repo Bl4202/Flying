@@ -5,6 +5,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./audio-backend.contract": "./src/audio-backend.contract.ts"
+    "./audio-backend.contract": "./src/audio-backend.contract.ts",
+    "./flight-processor": "./src/worklet/flight-processor.ts"
+  },
+  "dependencies": {
+    "@flying/sim-bridge": "workspace:*"
   }
 }

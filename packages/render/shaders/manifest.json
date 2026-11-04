@@ -1,8 +1,26 @@
 {
   "shaders": [
     {
+      "name": "sky",
+      "wgsl": "sky.wgsl",
+      "vertex": "vs_main",
+      "fragment": "fs_main"
+    },
+    {
       "name": "terrain_patch",
       "wgsl": "terrain_patch.wgsl",
+      "vertex": "vs_main",
+      "fragment": "fs_main"
+    },
+    {
+      "name": "hud",
+      "wgsl": "hud.wgsl",
+      "vertex": "vs_main",
+      "fragment": "fs_main"
+    },
+    {
+      "name": "mesh",
+      "wgsl": "mesh.wgsl",
       "vertex": "vs_main",
       "fragment": "fs_main"
     },

@@ -35,6 +35,7 @@ describe('parseFlags', () => {
   it('maps the short forms', () => {
     expect(parseFlags('debug=1').debug).toBe('overlay');
     expect(parseFlags('selftest=1').selftest).toBe('hash');
+    expect(parseFlags('selftest=audio').selftest).toBe('audio');
     expect(parseFlags('bench=full').bench).toBe('full');
     for (const r of ['auto', 'webgpu', 'webgl2', 'null'] as const) {
       expect(parseFlags(`renderer=${r}`).renderer).toBe(r);
@@ -60,6 +61,44 @@ describe('parseFlags', () => {
     expect(f.script).toBe(false);
     expect(f.warnings).toHaveLength(12);
     expect(f.warnings.join('\n')).toMatch(/renderer=vulkan/);
+  });
+
+  it('reads the drawing-buffer size, the preset and the seeded fault', () => {
+    const f = parseFlags('?debug=1&res=1920x1080&quality=high&fault=flat-earth');
+    expect(f.res).toEqual({ width: 1920, height: 1080 });
+    expect(f.quality).toBe('high');
+    expect(f.fault).toBe('flat-earth');
+    expect(f.warnings).toEqual([]);
+  });
+
+  it('bounds the drawing-buffer size and warns about nonsense', () => {
+    expect(parseFlags('res=160x90').res).toEqual({ width: 160, height: 90 });
+    expect(parseFlags('res=7680x4320').res).toEqual({ width: 7680, height: 4320 });
+    for (const bad of [
+      '159x90',
+      '160x89',
+      '7681x4320',
+      '1920',
+      '1920x',
+      'x1080',
+      '1920X1080',
+      '0x0',
+      '1e3x1e3',
+    ]) {
+      const f = parseFlags(`res=${bad}`);
+      expect(f.res, bad).toBeUndefined();
+      expect(f.warnings, bad).toHaveLength(1);
+    }
+    expect(parseFlags('quality=ultra').quality).toBeUndefined();
+    expect(parseFlags('quality=ultra').warnings).toHaveLength(1);
+  });
+
+  it('takes a seeded fault only with the debug overlay on', () => {
+    const f = parseFlags('fault=flat-earth');
+    expect(f.fault).toBeUndefined();
+    expect(f.warnings.join()).toMatch(/fault=flat-earth/);
+    expect(parseFlags('debug=perf&fault=flat-earth').fault).toBe('flat-earth');
+    expect(parseFlags('debug=1&fault=round-earth').fault).toBeUndefined();
   });
 
   it('bounds the duration', () => {

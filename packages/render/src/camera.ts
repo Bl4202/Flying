@@ -9,13 +9,7 @@
  *
  * Matrices are column-major, as both WebGPU and WebGL2 expect.
  */
-import {
-  BF_TO_RENDER,
-  quatMul,
-  quatRotate,
-  type Quat,
-  type Vec3,
-} from '@flying/sim-bridge/frame-math';
+import type { Quat, Vec3 } from '@flying/sim-bridge/frame-math';
 
 /** Anything that holds numbers and can be written to. */
 export type NumberArray = Float32Array | Float64Array | number[];
@@ -73,23 +67,72 @@ export function projection(
  * along the body's up. Writes 16 numbers to `out`.
  */
 export function viewRotation(out: NumberArray, qBf: Quat): void {
-  // Body axes in render space: render <- BF <- body.
-  const q = quatMul(BF_TO_RENDER, qBf);
-  const forward = quatRotate(q, [1, 0, 0]);
-  const right = quatRotate(q, [0, 1, 0]);
-  const down = quatRotate(q, [0, 0, 1]);
+  // Body axes in render space: render <- BF <- body, written out in scalars (this runs every frame
+  // and makes no arrays). q = BF_TO_RENDER * qBf, with BF_TO_RENDER = (s, -s, 0, 0), s = sqrt(1/2).
+  const s = Math.SQRT1_2;
+  const w = s * (qBf[0] + qBf[1]);
+  const x = s * (qBf[1] - qBf[0]);
+  const y = s * (qBf[2] + qBf[3]);
+  const z = s * (qBf[3] - qBf[2]);
+  // The columns of the rotation matrix of q: where body forward, right and down go.
+  const fx = 1 - 2 * (y * y + z * z);
+  const fy = 2 * (x * y + w * z);
+  const fz = 2 * (x * z - w * y);
+  const rx = 2 * (x * y - w * z);
+  const ry = 1 - 2 * (x * x + z * z);
+  const rz = 2 * (y * z + w * x);
+  const dx = 2 * (x * z + w * y);
+  const dy = 2 * (y * z - w * x);
+  const dz = 1 - 2 * (x * x + y * y);
   // Camera x = right, y = up (= -down), z = back (= -forward): the rows of the rotation.
-  out[0] = right[0];
-  out[1] = -down[0];
-  out[2] = -forward[0];
+  out[0] = rx;
+  out[1] = -dx;
+  out[2] = -fx;
   out[3] = 0;
-  out[4] = right[1];
-  out[5] = -down[1];
-  out[6] = -forward[1];
+  out[4] = ry;
+  out[5] = -dy;
+  out[6] = -fy;
   out[7] = 0;
-  out[8] = right[2];
-  out[9] = -down[2];
-  out[10] = -forward[2];
+  out[8] = rz;
+  out[9] = -dz;
+  out[10] = -fz;
+  out[11] = 0;
+  out[12] = 0;
+  out[13] = 0;
+  out[14] = 0;
+  out[15] = 1;
+}
+
+/**
+ * The rotation from body axes to render axes for an attitude `qBf` (body-to-BF, `[w, x, y, z]`), as
+ * a column-major 4x4 with no translation. Makes no garbage.
+ */
+export function bodyToRender(out: NumberArray, qBf: Quat | Float32Array | Float64Array): void {
+  const w = qBf[0];
+  const x = qBf[1];
+  const y = qBf[2];
+  const z = qBf[3];
+  // Body to BF (east, north, up), then to render (east, up, south): rows 0, 2 and -1.
+  const r00 = 1 - 2 * (y * y + z * z);
+  const r01 = 2 * (x * y - w * z);
+  const r02 = 2 * (x * z + w * y);
+  const r10 = 2 * (x * y + w * z);
+  const r11 = 1 - 2 * (x * x + z * z);
+  const r12 = 2 * (y * z - w * x);
+  const r20 = 2 * (x * z - w * y);
+  const r21 = 2 * (y * z + w * x);
+  const r22 = 1 - 2 * (x * x + y * y);
+  out[0] = r00;
+  out[1] = r20;
+  out[2] = -r10;
+  out[3] = 0;
+  out[4] = r01;
+  out[5] = r21;
+  out[6] = -r11;
+  out[7] = 0;
+  out[8] = r02;
+  out[9] = r22;
+  out[10] = -r12;
   out[11] = 0;
   out[12] = 0;
   out[13] = 0;

@@ -1,0 +1,71 @@
+{
+  "schema": "cockpit_layout/1",
+  "id": "core:cpt/kestrel",
+  "aircraft": "core:ac/kestrel",
+  "eye_point_m": [3.6, 0, -0.85],
+  "head_limits_deg": {
+    "yaw": 135,
+    "pitch_up": 60,
+    "pitch_down": 60
+  },
+  "hud_glass": {
+    "corners_m": [
+      [4.15, -0.1375, -0.9475],
+      [4.15, 0.1375, -0.9475],
+      [4.15, 0.1375, -0.7525],
+      [4.15, -0.1375, -0.7525]
+    ]
+  },
+  "canopy_bows": [
+    {
+      "x_m": 4.75,
+      "half_width_m": 0.5,
+      "sill_z_m": -0.45,
+      "top_z_m": -1.5,
+      "thickness_m": 0.05
+    },
+    {
+      "x_m": 3.0,
+      "half_width_m": 0.6,
+      "sill_z_m": -0.4,
+      "top_z_m": -1.45,
+      "thickness_m": 0.05
+    },
+    {
+      "x_m": 1.9,
+      "half_width_m": 0.62,
+      "sill_z_m": -0.35,
+      "top_z_m": -1.35,
+      "thickness_m": 0.05
+    },
+    {
+      "x_m": 0.8,
+      "half_width_m": 0.6,
+      "sill_z_m": -0.3,
+      "top_z_m": -1.15,
+      "thickness_m": 0.06
+    }
+  ],
+  "glare_shield": {
+    "id": "glare_shield",
+    "min_m": [4.0, -0.45, -0.72],
+    "max_m": [4.9, 0.45, -0.62]
+  },
+  "panel": {
+    "id": "panel",
+    "min_m": [4.3, -0.4, -0.6],
+    "max_m": [4.8, 0.4, 0.3]
+  },
+  "consoles": [
+    {
+      "id": "console_l",
+      "min_m": [2.9, -0.62, -0.45],
+      "max_m": [4.0, -0.45, 0.2]
+    },
+    {
+      "id": "console_r",
+      "min_m": [2.9, 0.45, -0.45],
+      "max_m": [4.0, 0.62, 0.2]
+    }
+  ]
+}

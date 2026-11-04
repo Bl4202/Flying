@@ -4,14 +4,14 @@
 //! fg version
 //! fg hash  [--seed HEX] [--script none|erratic|flight60|circuit] [--content PATH]
 //!          [--spawn runway|air] [--assist full|standard|reduced|manual] [--g off|reduced|full]
-//!          (--ticks N | --at T1,T2,... | --every N --ticks N)
+//!          [--arena rugged|plain] (--ticks N | --at T1,T2,... | --every N --ticks N)
 //! fg bench [--seed HEX] [--script none|erratic|flight60|circuit] [--content PATH] [--ticks N] [--json]
 //! fg bench --aircraft N --content PATH [--assist full|standard|reduced|manual] [--ground]
 //!          [--ticks N] [--json]
 //! fg conformance --content PATH [--aircraft-index N] [--json PATH] [--traces DIR]
 //!                [--only ID,...] [--expect-deferred ID,...]
 //! fg circuit --content PATH [--assist all|full|standard|reduced|manual] [--json PATH]
-//!            [--traces DIR] [--robustness] [--seed HEX]
+//!            [--traces DIR] [--robustness] [--seed HEX] [--arena rugged|plain|all]
 //! ```
 //!
 //! `fg hash` prints one JSON object per requested tick with the combined and per-subsystem state
@@ -32,20 +32,20 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use sim_core::layout::input_script;
-use sim_core::{Assist, DEFAULT_SEED, GEffects, SessionConfig, SimCore, Spawn};
+use sim_core::{Arena, Assist, DEFAULT_SEED, GEffects, SessionConfig, SimCore, Spawn};
 
 const USAGE: &str = "usage:
   fg version
   fg hash  [--seed HEX] [--script none|erratic|flight60|circuit] [--content PATH]
            [--spawn runway|air] [--assist full|standard|reduced|manual] [--g off|reduced|full]
-           (--ticks N | --at T1,T2,... | --every N --ticks N)
+           [--arena rugged|plain] (--ticks N | --at T1,T2,... | --every N --ticks N)
   fg bench [--seed HEX] [--script none|erratic|flight60|circuit] [--content PATH] [--ticks N] [--json]
   fg bench --aircraft N --content PATH [--assist full|standard|reduced|manual] [--ground]
            [--ticks N] [--json]
   fg conformance --content PATH [--aircraft-index N] [--json PATH] [--traces DIR]
                  [--only ID,...] [--expect-deferred ID,...]
   fg circuit --content PATH [--assist all|full|standard|reduced|manual] [--json PATH]
-             [--traces DIR] [--robustness] [--seed HEX]";
+             [--traces DIR] [--robustness] [--seed HEX] [--arena rugged|plain|all]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -103,7 +103,8 @@ struct Setup {
     seed: u64,
     script: u32,
     content: Option<Vec<u8>>,
-    /// The session (spawn, assist, g-effects); the game's defaults unless flags say otherwise.
+    /// The session (spawn, assist, g-effects, arena); the game's defaults unless flags say
+    /// otherwise.
     session: SessionConfig,
 }
 
@@ -184,6 +185,10 @@ fn parse(args: &[String], switches: &[&str]) -> Result<Parsed, String> {
                     "full" => GEffects::Full,
                     other => return Err(format!("unknown --g {other:?} (off, reduced or full)")),
                 };
+            }
+            "--arena" => {
+                setup.session.arena = Arena::from_name(value)
+                    .ok_or_else(|| format!("unknown --arena {value:?} (rugged or plain)"))?;
             }
             "--script" => {
                 setup.script = match value.as_str() {

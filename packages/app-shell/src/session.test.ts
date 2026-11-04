@@ -1,5 +1,5 @@
 import { defaultFlags, type Flags } from '@flying/platform-web';
-import { ASSIST_LEVEL, G_EFFECTS, SPAWN_KIND } from '@flying/sim-bridge/layout';
+import { ARENA, ASSIST_LEVEL, G_EFFECTS, SPAWN_KIND } from '@flying/sim-bridge/layout';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '@flying/ui';
 import { sessionFromFlags, sessionOverrides } from './session.ts';
@@ -12,6 +12,7 @@ describe('sessionFromFlags', () => {
       spawn: SPAWN_KIND.RUNWAY,
       assist: ASSIST_LEVEL.STANDARD,
       gEffects: G_EFFECTS.FULL,
+      arena: ARENA.RUGGED,
     });
   });
 
@@ -19,20 +20,29 @@ describe('sessionFromFlags', () => {
     expect(sessionFromFlags(flags({ spawn: 'air' }), false).spawn).toBe(SPAWN_KIND.AIR);
     expect(sessionFromFlags(flags({ assist: 'manual' }), false).assist).toBe(ASSIST_LEVEL.MANUAL);
     expect(sessionFromFlags(flags({ g: 'off' }), false).gEffects).toBe(G_EFFECTS.OFF);
-    const all = sessionFromFlags(flags({ spawn: 'air', assist: 'full', g: 'reduced' }), false);
+    expect(sessionFromFlags(flags({ arena: 'plain' }), false).arena).toBe(ARENA.PLAIN);
+    const all = sessionFromFlags(
+      flags({ spawn: 'air', assist: 'full', g: 'reduced', arena: 'plain' }),
+      false,
+    );
     expect(all).toEqual({
       spawn: SPAWN_KIND.AIR,
       assist: ASSIST_LEVEL.FULL,
       gEffects: G_EFFECTS.REDUCED,
+      arena: ARENA.PLAIN,
     });
   });
 
   it('flies a performance run from the air under Standard assist whatever the URL says', () => {
-    const s = sessionFromFlags(flags({ spawn: 'runway', assist: 'manual', g: 'off' }), true);
+    const s = sessionFromFlags(
+      flags({ spawn: 'runway', assist: 'manual', g: 'off', arena: 'plain' }),
+      true,
+    );
     expect(s).toEqual({
       spawn: SPAWN_KIND.AIR,
       assist: ASSIST_LEVEL.STANDARD,
       gEffects: G_EFFECTS.FULL,
+      arena: ARENA.RUGGED,
     });
   });
 
@@ -41,6 +51,7 @@ describe('sessionFromFlags', () => {
       spawn: SPAWN_KIND.AIR,
       assist: ASSIST_LEVEL.REDUCED,
       gEffects: G_EFFECTS.OFF,
+      arena: ARENA.PLAIN,
     };
     expect(sessionFromFlags(defaultFlags(), false, settings)).toEqual(settings);
     expect(sessionFromFlags(flags({ assist: 'full' }), false, settings)).toEqual({
@@ -52,6 +63,7 @@ describe('sessionFromFlags', () => {
       spawn: SPAWN_KIND.AIR,
       assist: ASSIST_LEVEL.STANDARD,
       gEffects: G_EFFECTS.FULL,
+      arena: ARENA.RUGGED,
     });
   });
 });

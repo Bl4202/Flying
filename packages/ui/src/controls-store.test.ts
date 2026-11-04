@@ -169,3 +169,76 @@ describe('ControlsStore', () => {
     expect(n).toBe(3);
   });
 });
+
+describe('ControlsStore: a profile from before the view actions', () => {
+  /** A v0.1b profile: no catalogue version, none of the view actions bound. */
+  const oldProfile = (extra: ControlsProfile['bindings'] = []): ControlsProfile => {
+    const base = mine();
+    const rest = { ...base };
+    delete rest.catalogue;
+    return {
+      ...rest,
+      bindings: [
+        ...base.bindings.filter(
+          (b) =>
+            ![
+              'flight.camera_cycle',
+              'flight.free_look',
+              'flight.zoom',
+              'flight.look_left',
+              'flight.look_right',
+              'flight.look_up',
+              'flight.look_down',
+              'flight.look_recentre',
+              'flight.hud_declutter',
+              'flight.hud_brightness_up',
+              'flight.hud_brightness_down',
+            ].includes(b.action),
+        ),
+        ...extra,
+      ],
+    };
+  };
+
+  it('gains the view bindings on load, and is stored again with the current catalogue', async () => {
+    const kv = memoryKv();
+    const old = oldProfile();
+    await kv.set(profileKey('mine'), serializeProfile(old));
+    await kv.set(INDEX_KEY, ['mine']);
+    const store = new ControlsStore(kv);
+    await store.load();
+    const loaded = store.find('mine');
+    expect(loaded?.catalogue).toBe(2);
+    expect(loaded?.bindings.some((b) => b.action === 'flight.camera_cycle')).toBe(true);
+    expect(store.migrationNotes).toEqual([]);
+    const stored = await kv.get<string>(profileKey('mine'));
+    expect(stored).toBe(serializeProfile(loaded as ControlsProfile));
+    // A second load changes nothing.
+    const again = new ControlsStore(kv);
+    await again.load();
+    expect(again.user()).toEqual(store.user());
+  });
+
+  it('notes the actions it could not bind because the player already uses their keys', async () => {
+    const kv = memoryKv();
+    const old = oldProfile([{ action: 'flight.recover', source: { kind: 'key', code: 'KeyC' } }]);
+    old.bindings = old.bindings.filter(
+      (b) =>
+        !(b.action === 'flight.recover' && b.source.kind === 'key' && b.source.code === 'KeyU'),
+    );
+    await kv.set(profileKey('mine'), serializeProfile(old));
+    await kv.set(INDEX_KEY, ['mine']);
+    const store = new ControlsStore(kv);
+    await store.load();
+    expect(store.migrationNotes).toEqual([{ id: 'mine', unbound: ['flight.camera_cycle'] }]);
+  });
+
+  it('migrates an imported file the same way', async () => {
+    const store = new ControlsStore(memoryKv());
+    await store.load();
+    const result = await store.importText(serializeProfile(oldProfile()));
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.profile.catalogue).toBe(2);
+    expect(result.ok && result.profile.bindings.some((b) => b.action === 'flight.zoom')).toBe(true);
+  });
+});

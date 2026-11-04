@@ -1,0 +1,109 @@
+{
+  "schema": "hud/1",
+  "id": "core:hud/kestrel",
+  "aircraft": "core:ac/kestrel",
+  "tfov_deg": [28, 20],
+  "eye_box_mm": [120, 80, 160],
+  "font": "core:fnt/hudstroke",
+  "colour": "#35ff6a",
+  "glow_px": 0.6,
+  "stroke_mrad": 1.2,
+  "text_mrad": 12,
+  "layers": [
+    {
+      "type": "boresight",
+      "id": "boresight",
+      "size_mrad": 10
+    },
+    {
+      "type": "flight_path_marker",
+      "id": "fpm",
+      "size_mrad": 14,
+      "cage_below_mps": 20
+    },
+    {
+      "type": "pitch_ladder",
+      "id": "ladder",
+      "step_deg": 5,
+      "label_step_deg": 10,
+      "half_width_mrad": 40,
+      "gap_mrad": 10,
+      "declutter_above_deg": 60
+    },
+    {
+      "type": "heading_tape",
+      "id": "heading",
+      "at_mrad": [0, 150],
+      "span_mrad": 200,
+      "window_deg": 60,
+      "tick_deg": 5,
+      "label_deg": 10
+    },
+    {
+      "type": "speed_tape",
+      "id": "speed",
+      "at_mrad": [-175, 0],
+      "span_mrad": 120,
+      "channel": "cas",
+      "window_kn": 100,
+      "tick_kn": 10,
+      "label_kn": 20,
+      "mach_from": 0.6
+    },
+    {
+      "type": "altitude_tape",
+      "id": "altitude",
+      "at_mrad": [175, 0],
+      "span_mrad": 120,
+      "channel": "altitude_msl",
+      "window_ft": 1000,
+      "tick_ft": 100,
+      "label_ft": 200,
+      "radar_below_ft": 1500
+    },
+    {
+      "type": "vs_caret",
+      "id": "vs",
+      "at_mrad": [215, 0],
+      "span_mrad": 100,
+      "range_fpm": 6000
+    },
+    {
+      "type": "g_meter",
+      "id": "g",
+      "at_mrad": [-200, -110],
+      "channel": "nz",
+      "amber_pct": 85,
+      "red_pct": 100
+    },
+    {
+      "type": "aoa_bracket",
+      "id": "aoa",
+      "at_mrad": [-110, 0],
+      "on_speed_deg": 12.8,
+      "half_range_deg": 3
+    },
+    {
+      "type": "bank_scale",
+      "id": "bank",
+      "radius_mrad": 120,
+      "tick_deg": 10
+    },
+    {
+      "type": "engine_fuel_block",
+      "id": "engine",
+      "at_mrad": [120, -120]
+    },
+    {
+      "type": "mode_line",
+      "id": "mode",
+      "at_mrad": [0, -160]
+    },
+    {
+      "type": "warnings",
+      "id": "warnings",
+      "at_mrad": [0, 100],
+      "max_lines": 3
+    }
+  ]
+}

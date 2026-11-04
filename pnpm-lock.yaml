@@ -233,7 +233,11 @@ importers:
         specifier: workspace:*
         version: link:../ui
 
-  packages/audio: {}
+  packages/audio:
+    dependencies:
+      '@flying/sim-bridge':
+        specifier: workspace:*
+        version: link:../sim-bridge
 
   packages/input:
     dependencies:

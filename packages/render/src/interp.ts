@@ -12,13 +12,15 @@
  * It copes with having none, one, a stale newest, a gap of several ticks, and a body or the
  * ownship teleporting between snapshots (it snaps instead of sweeping across the map).
  */
-import { SNAPSHOT } from '@flying/sim-bridge/layout';
+import { OWNSHIP_FLAG2, SNAPSHOT } from '@flying/sim-bridge/layout';
 import { SnapshotReader } from '@flying/sim-bridge/snapshot';
 
 /** What the scene builder needs: the interpolated world, in BF. */
 export interface SceneState {
   tick: number;
   coreState: number;
+  /** The test arena the world is (`ARENA`): it decides where the globe sits. */
+  arena: number;
   /** When the newest snapshot was published (shared clock) and when its input was sampled. */
   publishTimeMs: number;
   inputTimeMs: number;
@@ -27,6 +29,26 @@ export interface SceneState {
   ownshipQuat: Float32Array;
   /** True airspeed, m/s. */
   ownshipSpeed: number;
+  /** Velocity in BF (east, north, up), m/s: the camera's chase direction. */
+  ownshipVelBf: Float32Array;
+  /** Speed over the ground, m/s. */
+  groundSpeed: number;
+  /** The load factor the pilot feels, lagged (g): the cockpit camera's sag. */
+  gLagged: number;
+  /** Angle of attack and the angle at which the warning starts, radians: the buffet's drive. */
+  alpha: number;
+  alphaWarn: number;
+  /** Afterburner level, 0 to 1. */
+  abLevel: number;
+  /** Control surfaces and flaps, radians; the airbrake, 0 stowed to 1 open; the gear, 0 up to 1 down: the model's channels. */
+  elevatorRad: number;
+  aileronRad: number;
+  rudderRad: number;
+  flapRad: number;
+  airbrake: number;
+  gearPos: number;
+  /** Weight is on the wheels. */
+  onGround: boolean;
   ownshipThrottle: number;
   /** `OWNSHIP_FLAG2` bits. */
   ownshipFlags2: number;
@@ -71,11 +93,25 @@ export class SnapshotInterpolator {
   readonly state: SceneState = {
     tick: 0,
     coreState: 0,
+    arena: 0,
     publishTimeMs: 0,
     inputTimeMs: 0,
     ownshipPosBf: new Float64Array(3),
     ownshipQuat: new Float32Array([1, 0, 0, 0]),
     ownshipSpeed: 0,
+    ownshipVelBf: new Float32Array(3),
+    groundSpeed: 0,
+    gLagged: 1,
+    alpha: 0,
+    alphaWarn: 0,
+    abLevel: 0,
+    elevatorRad: 0,
+    aileronRad: 0,
+    rudderRad: 0,
+    flapRad: 0,
+    airbrake: 0,
+    gearPos: 1,
+    onGround: false,
     ownshipThrottle: 0,
     ownshipFlags2: 0,
     gStress: 0,
@@ -103,6 +139,7 @@ export class SnapshotInterpolator {
   readonly #a4 = new Float32Array(4);
   readonly #b4 = new Float32Array(4);
   readonly #aim = new Float32Array(2);
+  readonly #surf = new Float32Array(3);
 
   constructor(opts: InterpOptions = {}) {
     this.delayMs = opts.delayMs ?? 1000 / 60;
@@ -173,12 +210,27 @@ export class SnapshotInterpolator {
 
     s.tick = this.#currTick;
     s.coreState = cur.coreState();
+    s.arena = cur.arena();
     s.publishTimeMs = cur.publishTimeMs();
     s.inputTimeMs = cur.inputTimeMs();
     s.ownshipSpeed = cur.ownshipTas();
+    cur.ownshipVel(s.ownshipVelBf);
+    s.groundSpeed = cur.ownshipGroundSpeed();
+    s.gLagged = cur.ownshipGLagged();
+    s.alpha = cur.ownshipAlpha();
+    s.alphaWarn = cur.ownshipAlphaWarn();
+    s.abLevel = cur.ownshipAbLevel();
+    cur.ownshipSurfaces(this.#surf);
+    s.elevatorRad = this.#surf[0] ?? 0;
+    s.aileronRad = this.#surf[1] ?? 0;
+    s.rudderRad = this.#surf[2] ?? 0;
+    s.flapRad = cur.ownshipTef();
+    s.airbrake = cur.ownshipAirbrake();
+    s.gearPos = cur.ownshipGearPos();
     s.ownshipThrottle = cur.ownshipThrottle();
     // What the pilot's body does to the picture changes slowly and is not blended.
     s.ownshipFlags2 = cur.ownshipFlags2();
+    s.onGround = (s.ownshipFlags2 & OWNSHIP_FLAG2.WOW) !== 0;
     s.gStress = cur.ownshipGStress();
     s.redout = cur.ownshipRedout();
     cur.ownshipAim(this.#aim);

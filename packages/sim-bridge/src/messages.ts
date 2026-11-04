@@ -24,7 +24,7 @@ export interface SimInit {
   seed: string;
   /** `INPUT_SCRIPT` value. */
   script: number;
-  /** The sortie: spawn, assist level and g-effects (set on the idle core). */
+  /** The sortie: spawn, assist level, g-effects and arena (set on the idle core). */
   session: SessionConfig;
   snapshot: SnapshotEndpoint;
   input: InputEndpoint;
@@ -41,6 +41,13 @@ export interface SimInit {
 
 export type SimCommand =
   | SimInit
+  /**
+   * Sets the next sortie on an idle core (after `init` or `reset`): the session, then the
+   * scripted pilot (`INPUT_SCRIPT`), then the terrain is generated again for the session's arena.
+   */
+  | { type: 'configure'; session: SessionConfig; script: number }
+  /** Back to an idle core with the same content, tick 0 and the default session (ADR-43). */
+  | { type: 'reset' }
   | { type: 'start' }
   | { type: 'pause' }
   | { type: 'resume' }
@@ -179,6 +186,8 @@ const COMMAND_SHAPES: Record<SimCommand['type'], Shape> = {
     profiling: 'boolean',
     allowStall: 'boolean',
   },
+  configure: { session: 'object', script: 'number' },
+  reset: {},
   start: {},
   pause: {},
   resume: {},

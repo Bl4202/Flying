@@ -1,0 +1,94 @@
+{
+  "schema": "audio_profile/1",
+  "id": "core:aud/kestrel",
+  "aircraft": "core:ac/kestrel",
+  "engine": {
+    "blade_count": 24,
+    "idle_rpm": 8000,
+    "military_rpm": 10400,
+    "rpm_by_core": [
+      [0, 2000],
+      [0.06, 8000],
+      [0.5, 9300],
+      [1, 10400]
+    ],
+    "harmonic_levels_db": [0, -6, -12, -20],
+    "blade_level_db": -18,
+    "shaft_level_db": -30,
+    "hiss_level_db": -22,
+    "jet_level_db": -14,
+    "burner_roar_db": 6,
+    "lightoff_thump_db": -10,
+    "lightoff_thump_hz": 55,
+    "formants": [
+      {
+        "f_hz": 350,
+        "q": 1.5,
+        "gain_db": 4
+      },
+      {
+        "f_hz": 1200,
+        "q": 1.2,
+        "gain_db": 2
+      },
+      {
+        "f_hz": 3200,
+        "q": 2,
+        "gain_db": -3
+      }
+    ],
+    "follow_s": 0.25
+  },
+  "aero": {
+    "wind_ref_qbar_pa": 10000,
+    "wind_ref_level_db": -24,
+    "wind_slope_db": 10,
+    "wind_low_hz": 400,
+    "wind_high_hz": 2400,
+    "airbrake_db": 3,
+    "buffet_margin_deg": 2,
+    "buffet_level_db": -22,
+    "buffet_hz": 28,
+    "tyre_ref_speed_mps": 60,
+    "tyre_ref_level_db": -30
+  },
+  "cockpit": {
+    "canopy_lowpass_hz": 3000,
+    "canopy_attenuation_db": -18,
+    "interior_hum_db": -34,
+    "interior_hum_hz": 120
+  },
+  "warnings": {
+    "stall_horn": {
+      "freq_hz": 800,
+      "pulse_min_hz": 2,
+      "pulse_max_hz": 8,
+      "level_db": -12
+    },
+    "over_g": {
+      "freq_hz": 1000,
+      "level_db": -12
+    },
+    "pull_up": {
+      "low_hz": 700,
+      "high_hz": 1100,
+      "rate_hz": 3,
+      "level_db": -10
+    },
+    "gear_chime": {
+      "freq_hz": 880,
+      "repeat_s": 2,
+      "level_db": -14
+    },
+    "caution_chime": {
+      "freq_hz": 660,
+      "repeat_s": 3,
+      "level_db": -16
+    }
+  },
+  "mix": {
+    "duck_db": -6,
+    "level_offset_db": 16.4,
+    "chase_offset_db": -20
+  }
+}

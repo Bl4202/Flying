@@ -3,9 +3,9 @@ import { CONTENDED, type SnapshotSource } from '@flying/sim-bridge';
 import { SnapshotInterpolator } from './interp.ts';
 import { NullRenderer } from './null-renderer.ts';
 import { RenderLoop } from './render-loop.ts';
-import { SceneBuilder } from './scene.ts';
+import { FRAME_AT, SceneBuilder } from './scene.ts';
 import { makeSnapshot } from './snapshot-fixture.ts';
-import { buildTerrainMesh } from './terrain-mesh.ts';
+import { FIXTURE_COCKPIT, FIXTURE_FONT, FIXTURE_HUD, FIXTURE_MODEL } from './model-fixture.ts';
 import { makeTestPatch } from './terrain-test-patch.ts';
 
 function rig() {
@@ -85,13 +85,14 @@ describe('RenderLoop', () => {
     t.loop.resize(320, 180);
     t.publish(1);
     t.loop.frame();
-    expect(t.renderer.lastFrame?.uniform[24]).toBe(0); // no patch yet: no offset
-    t.loop.setTerrain(buildTerrainMesh(makeTestPatch({ centreEast: 0, centreNorth: 0 })));
+    expect(t.renderer.lastFrame?.levelMask).toBe(0); // no terrain yet
+    t.loop.setTerrain(0, makeTestPatch({ centreEast: 0, centreNorth: 0 }));
     t.advance(8);
     t.loop.frame();
+    expect(t.renderer.lastFrame?.levelMask).toBe(1);
     // The observer is 8 km south of the patch centre at 1.5 km up: the patch is 8 km ahead in -z... plus 1.5 km below.
-    expect(t.renderer.lastFrame?.uniform[25]).toBeCloseTo(-1000, 5);
-    expect(t.renderer.lastFrame?.uniform[26]).toBeCloseTo(-6000, 5);
+    expect(t.renderer.lastFrame?.levelUniform[1]).toBeCloseTo(-1000, 5);
+    expect(t.renderer.lastFrame?.levelUniform[2]).toBeCloseTo(-6000, 5);
   });
 
   it('reports frame rate, render cost, snapshot age and input-to-draw latency', () => {
@@ -137,12 +138,12 @@ describe('RenderLoop', () => {
   it('moves everything to a new backend: size and terrain', () => {
     const t = rig();
     t.loop.resize(640, 360);
-    t.loop.setTerrain(buildTerrainMesh(makeTestPatch()));
+    t.loop.setTerrain(0, makeTestPatch());
     const next = new NullRenderer();
     t.loop.setRenderer(next);
     expect(t.loop.renderer).toBe(next);
     expect([next.width, next.height]).toEqual([640, 360]);
-    expect(next.terrain?.vertexCount).toBe(16_641);
+    expect(next.levels[0]?.gridVertexCount).toBe(16_641);
   });
 
   it('clamps nonsense sizes', () => {
@@ -155,16 +156,201 @@ describe('RenderLoop', () => {
     const t = rig();
     t.publish(1, { ownship: { pos: [0, 0, 1000], gStress: 0.8 } });
     t.loop.frame();
-    expect(t.renderer.lastFrame?.uniform[34]).toBe(1); // the default is full strength
+    expect(t.renderer.lastFrame?.uniform[FRAME_AT.FX + 2]).toBe(1); // the default is full strength
     expect(t.renderer.lastFrame?.fx).toBe(true);
     t.loop.setSettings({ gfxStrength: 25 });
     t.loop.frame();
-    expect(t.renderer.lastFrame?.uniform[34]).toBeCloseTo(0.25, 6);
+    expect(t.renderer.lastFrame?.uniform[FRAME_AT.FX + 2]).toBeCloseTo(0.25, 6);
     t.loop.setSettings({ gfxStrength: 0 });
     t.loop.frame();
     expect(t.renderer.lastFrame?.fx).toBe(false);
     t.loop.setSettings({ gfxStrength: 900 });
     t.loop.frame();
-    expect(t.renderer.lastFrame?.uniform[34]).toBe(1);
+    expect(t.renderer.lastFrame?.uniform[FRAME_AT.FX + 2]).toBe(1);
+  });
+
+  it('uploads a level when it arrives, and the coarser one again when its hole moves', () => {
+    const t = rig();
+    t.loop.setTerrain(1, makeTestPatch({ spacingM: 1000 }));
+    expect(t.renderer.levels[1]?.hole).toBeUndefined();
+    const before = t.renderer.levels[1];
+    t.loop.setTerrain(0, makeTestPatch({ spacingM: 250 }));
+    expect(t.renderer.levels[0]?.level).toBe(0);
+    // Level 1 now has a hole where level 0 is, so it was sent again.
+    expect(t.renderer.levels[1]).not.toBe(before);
+    expect(t.renderer.levels[1]?.hole).toEqual({ i0: 48, i1: 80, j0: 48, j1: 80 });
+  });
+
+  it('draws every level it has, and tells the renderer which', () => {
+    const t = rig();
+    t.publish(1);
+    t.loop.setTerrain(0, makeTestPatch({ spacingM: 250 }));
+    t.loop.setTerrain(2, makeTestPatch({ spacingM: 4000 }));
+    t.loop.frame();
+    expect(t.renderer.lastFrame?.levelMask).toBe(0b101);
+  });
+
+  it('hands the sample count, the classify view and the seeded fault on', () => {
+    const t = rig();
+    t.publish(1);
+    t.loop.setSettings({
+      gfxStrength: 100,
+      sampleCount: 4,
+      debugView: 'classify',
+      fault: 'flat-earth',
+    });
+    expect(t.renderer.sampleCount).toBe(4);
+    t.loop.frame();
+    const u = t.renderer.lastFrame?.uniform;
+    expect([u?.[FRAME_AT.DEBUG], u?.[FRAME_AT.DEBUG + 1]]).toEqual([1, 1]);
+    t.loop.setSettings({ gfxStrength: 100 });
+    expect(t.renderer.sampleCount).toBe(1);
+    t.loop.frame();
+    expect([
+      t.renderer.lastFrame?.uniform[FRAME_AT.DEBUG],
+      t.renderer.lastFrame?.uniform[FRAME_AT.DEBUG + 1],
+    ]).toEqual([0, 0]);
+  });
+
+  it('gives a new backend the sample count and every level', () => {
+    const t = rig();
+    t.loop.setTerrain(1, makeTestPatch({ spacingM: 1000 }));
+    t.loop.setTerrain(0, makeTestPatch({ spacingM: 250 }));
+    t.loop.setSettings({ gfxStrength: 100, sampleCount: 4 });
+    const next = new NullRenderer();
+    t.loop.setRenderer(next);
+    expect(next.sampleCount).toBe(4);
+    expect(next.levels[0]?.level).toBe(0);
+    expect(next.levels[1]?.hole).toBeDefined();
+  });
+
+  describe('the camera rig', () => {
+    const cockpit = {
+      eyeBodyM: [3.6, 0, -0.85] as const,
+      headLimits: { yawDeg: 135, pitchUpDeg: 60, pitchDownDeg: 60 },
+    };
+
+    it('leaves the eye at the aircraft until it is told anything about the view', () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.setTerrain(0, makeTestPatch({ centreEast: 0, centreNorth: 0 }));
+      t.loop.frame();
+      // The aircraft is at (0, -6000, 1000) in BF; level 0's origin is (0, 0, 0): north is -z in
+      // render axes, so the patch is 6000 m ahead (-z) and 1000 m below (-y).
+      expect(t.renderer.lastFrame?.levelUniform[2]).toBeCloseTo(-6000, 3);
+      expect(t.renderer.lastFrame?.levelUniform[1]).toBeCloseTo(-1000, 3);
+    });
+
+    it('puts the eye at the cockpit eye once it has a cockpit: 3.6 m ahead and 0.85 m up', () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.setTerrain(0, makeTestPatch({ centreEast: 0, centreNorth: 0 }));
+      t.loop.setCockpit(cockpit);
+      t.advance(16);
+      t.loop.frame();
+      expect(t.renderer.lastFrame?.levelUniform[2]).toBeCloseTo(-6000 + 3.6, 3);
+      expect(t.renderer.lastFrame?.levelUniform[1]).toBeCloseTo(-1000 - 0.85, 3);
+    });
+
+    it('moves to the chase camera when the view says so, behind and above the aircraft', () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.setTerrain(0, makeTestPatch({ centreEast: 0, centreNorth: 0 }));
+      t.loop.setCockpit(cockpit);
+      t.loop.setView({ ...t.loop.view, camera: 'chase' });
+      t.advance(16);
+      t.loop.frame();
+      // 45 m behind (south) and 9 m above: the patch, which is north (-z in render axes), is that
+      // much further ahead, and lower.
+      expect(t.renderer.lastFrame?.levelUniform[2]).toBeCloseTo(-6000 - 45, 1);
+      expect(t.renderer.lastFrame?.levelUniform[1]).toBeCloseTo(-1000 - 9, 1);
+    });
+
+    it('draws with the field of view the rig gives, in the frame', () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.setCockpit(cockpit);
+      t.loop.setView({ ...t.loop.view, fovDeg: 100 });
+      for (let i = 0; i < 60; i++) {
+        t.advance(16);
+        t.loop.frame();
+      }
+      const half = t.renderer.lastFrame?.uniform[FRAME_AT.PARAMS + 1] ?? 0;
+      expect(Math.atan(half) * 2 * (180 / Math.PI)).toBeCloseTo(100, 1);
+    });
+  });
+
+  describe('the HUD', () => {
+    const presentation = {
+      hud: FIXTURE_HUD,
+      cockpit: FIXTURE_COCKPIT,
+      model: FIXTURE_MODEL,
+      font: FIXTURE_FONT,
+    };
+
+    it('is not drawn until the aircraft has a presentation', () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.setCockpit({
+        ...FIXTURE_COCKPIT,
+        eyeBodyM: FIXTURE_COCKPIT.eyePointM,
+        headLimits: { yawDeg: 135, pitchUpDeg: 60, pitchDownDeg: 60 },
+      });
+      t.loop.frame();
+      expect(t.renderer.lastFrame?.hud).toBe(false);
+    });
+
+    it('is built into the frame in the cockpit view, as direction at infinity (no overlay)', () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.resize(640, 360);
+      t.loop.setPresentation(presentation);
+      t.advance(16);
+      t.loop.frame();
+      const frame = t.renderer.lastFrame;
+      expect(frame?.hud).toBe(true);
+      expect(frame?.hudCount).toBeGreaterThan(50);
+      expect(frame?.hudUniform[24]).toBe(0); // not an overlay
+      expect(frame?.hudUniform[20]).toBe(640);
+    });
+
+    it('becomes an overlay in the chase view', () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.setPresentation(presentation);
+      t.loop.setView({ ...t.loop.view, camera: 'chase' });
+      t.advance(16);
+      t.loop.frame();
+      expect(t.renderer.lastFrame?.hudUniform[24]).toBe(1);
+    });
+
+    it('is left out for a spectator, and when the player has turned it off', () => {
+      const t = rig();
+      t.publish(1, { ownship: { pos: [0, 0, 1000], assist: 0 } });
+      t.loop.setPresentation(presentation);
+      t.advance(16);
+      t.loop.frame();
+      expect(t.renderer.lastFrame?.hud).toBe(false);
+      const u = rig();
+      u.publish(1);
+      u.loop.setPresentation(presentation);
+      u.loop.setView({ ...u.loop.view, hudBrightness: 0 });
+      u.advance(16);
+      u.loop.frame();
+      expect(u.renderer.lastFrame?.hud).toBe(false);
+    });
+
+    it("takes the player's palette, size and declutter", () => {
+      const t = rig();
+      t.publish(1);
+      t.loop.setPresentation(presentation);
+      t.loop.setSettings({ gfxStrength: 100, hudPalette: 'amber', hudOverlay: true, hudScale: 2 });
+      t.loop.setView({ ...t.loop.view, hudDeclutter: 2, hudBrightness: 60 });
+      t.advance(16);
+      t.loop.frame();
+      const u = t.renderer.lastFrame?.hudUniform;
+      expect([u?.[16], u?.[24]]).toEqual([1, 1]);
+      expect(u?.[19]).toBeCloseTo(0.6, 6);
+    });
   });
 });

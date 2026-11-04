@@ -1,0 +1,224 @@
+{
+  "$defs": {
+    "BoxFile": {
+      "additionalProperties": false,
+      "description": "An axis-aligned box in body axes.",
+      "properties": {
+        "id": {
+          "description": "Name, unique in the file.",
+          "type": "string"
+        },
+        "max_m": {
+          "description": "The corner with the largest x, y and z.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        },
+        "min_m": {
+          "description": "The corner with the smallest x, y and z.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        }
+      },
+      "required": [
+        "id",
+        "min_m",
+        "max_m"
+      ],
+      "type": "object"
+    },
+    "CanopyBow": {
+      "additionalProperties": false,
+      "description": "One arch of the canopy frame in a plane of constant x: a half ellipse from the sill on the\nleft, over the top, to the sill on the right.",
+      "properties": {
+        "half_width_m": {
+          "description": "Half the width at the sill.",
+          "format": "double",
+          "maximum": 2.0,
+          "minimum": 0.1,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "sill_z_m": {
+          "description": "Height of the sill (body z, down is positive).",
+          "format": "double",
+          "type": "number",
+          "x-unit": "m"
+        },
+        "thickness_m": {
+          "description": "Thickness of the frame.",
+          "format": "double",
+          "maximum": 0.2,
+          "minimum": 0.01,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "top_z_m": {
+          "description": "Height of the top of the arch (body z; more negative than the sill).",
+          "format": "double",
+          "type": "number",
+          "x-unit": "m"
+        },
+        "x_m": {
+          "description": "Station, body x.",
+          "format": "double",
+          "type": "number",
+          "x-unit": "m"
+        }
+      },
+      "required": [
+        "x_m",
+        "half_width_m",
+        "sill_z_m",
+        "top_z_m",
+        "thickness_m"
+      ],
+      "type": "object"
+    },
+    "HeadLimits": {
+      "additionalProperties": false,
+      "description": "Head travel (GDD A.11); the unit is named by the parent key.",
+      "properties": {
+        "pitch_down": {
+          "description": "Look down.",
+          "format": "double",
+          "maximum": 90.0,
+          "minimum": 10.0,
+          "type": "number"
+        },
+        "pitch_up": {
+          "description": "Look up.",
+          "format": "double",
+          "maximum": 90.0,
+          "minimum": 10.0,
+          "type": "number"
+        },
+        "yaw": {
+          "description": "Turn left or right.",
+          "format": "double",
+          "maximum": 180.0,
+          "minimum": 30.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "yaw",
+        "pitch_up",
+        "pitch_down"
+      ],
+      "type": "object"
+    },
+    "HudGlass": {
+      "additionalProperties": false,
+      "description": "The combiner glass.",
+      "properties": {
+        "corners_m": {
+          "description": "The four corners, in order round the edge, body axes.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "type": "array",
+          "x-unit": "m"
+        }
+      },
+      "required": [
+        "corners_m"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`cockpit_layout/1`: the pilot's view from inside (GDD 54.10, A.11), built as simple solids.",
+  "properties": {
+    "aircraft": {
+      "description": "The aircraft this cockpit belongs to, `core:ac/<name>`.",
+      "type": "string"
+    },
+    "canopy_bows": {
+      "description": "Canopy frame arches, front to back.",
+      "items": {
+        "$ref": "#/$defs/CanopyBow"
+      },
+      "maxItems": 8,
+      "type": "array"
+    },
+    "consoles": {
+      "description": "Side consoles.",
+      "items": {
+        "$ref": "#/$defs/BoxFile"
+      },
+      "maxItems": 8,
+      "type": "array"
+    },
+    "eye_point_m": {
+      "description": "The design eye in body axes.",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-unit": "m"
+    },
+    "glare_shield": {
+      "$ref": "#/$defs/BoxFile",
+      "description": "The glare shield above the panel."
+    },
+    "head_limits_deg": {
+      "$ref": "#/$defs/HeadLimits",
+      "description": "How far the head turns from straight ahead."
+    },
+    "hud_glass": {
+      "$ref": "#/$defs/HudGlass",
+      "description": "The combiner glass: a flat quadrilateral the HUD is seen through."
+    },
+    "id": {
+      "description": "`core:cpt/<name>`.",
+      "type": "string"
+    },
+    "panel": {
+      "$ref": "#/$defs/BoxFile",
+      "description": "The instrument panel."
+    },
+    "schema": {
+      "const": "cockpit_layout/1",
+      "description": "Format tag, always `cockpit_layout/1`.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "aircraft",
+    "eye_point_m",
+    "head_limits_deg",
+    "hud_glass",
+    "canopy_bows",
+    "glare_shield",
+    "panel",
+    "consoles"
+  ],
+  "title": "CockpitFile",
+  "type": "object"
+}

@@ -13,11 +13,15 @@ use crate::seams::geo::{GeoService, ProceduralGeo, SurfaceClass};
 use crate::seams::los::{LosService, OpenSky};
 use crate::seams::strategic::{NoStrategicContext, StrategicContext};
 use crate::seams::weather::{StillAir, WeatherProvider};
+use crate::session::Arena;
 
 /// The services available to systems during a tick.
 pub struct Services {
     /// Terrain and geodesy.
     pub geo: Box<dyn GeoService>,
+    /// The test arena `geo` was built as (ADR-43). It says what the snapshot reports; code that
+    /// puts a world of its own into `geo` sets it to match.
+    pub arena: Arena,
     /// Line of sight between points.
     pub los: Box<dyn LosService>,
     /// Wind and atmosphere.
@@ -42,12 +46,23 @@ impl Services {
     pub fn defaults() -> Self {
         Self {
             geo: Box::new(ProceduralGeo::default_frame()),
+            arena: Arena::Rugged,
             los: Box::new(OpenSky),
             weather: Box::new(StillAir),
             strategic: Box::new(NoStrategicContext),
             registry: Registry::empty(),
             aircraft: None,
             fcs: None,
+        }
+    }
+
+    /// Makes the world the given arena: rebuilds `geo` as that arena's procedural world on the
+    /// current battlefield frame, unless it already is that arena. Allocates; never call it in a
+    /// tick.
+    pub fn set_arena(&mut self, arena: Arena) {
+        if self.arena != arena {
+            self.geo = Box::new(ProceduralGeo::with_arena(*self.geo.frame(), arena));
+            self.arena = arena;
         }
     }
 
@@ -172,6 +187,21 @@ mod tests {
         let s = ServicesEnv::new(&flat, &StillAir).surface(DVec3::new(5.0, 6.0, 700.0));
         assert_eq!((s.height_msl_m, s.kind), (0.0, SurfaceKind::Grass));
         assert!((s.normal_bf - DVec3::Z).length() < 1e-9);
+    }
+
+    #[test]
+    fn setting_the_arena_rebuilds_the_world_only_when_it_changes() {
+        let mut svc = Services::defaults();
+        assert_eq!(svc.arena, Arena::Rugged);
+        let off_pad = DVec3::new(20_000.0, 20_000.0, 0.0);
+        let rugged = svc.geo.ground_height_msl_m(off_pad);
+        svc.set_arena(Arena::Plain);
+        assert_eq!(svc.arena, Arena::Plain);
+        let plain = svc.geo.ground_height_msl_m(off_pad);
+        assert!((plain - 40.0).abs() <= 3.0, "{plain}");
+        assert_ne!(rugged, plain);
+        svc.set_arena(Arena::Rugged);
+        assert_eq!(svc.geo.ground_height_msl_m(off_pad), rugged);
     }
 
     #[test]

@@ -6,12 +6,19 @@
  */
 import type { ZRange } from './camera.ts';
 import type { FrameData } from './scene.ts';
+import type { ModelMesh } from './model-mesh.ts';
 import type { TerrainMesh } from './terrain-mesh.ts';
 
 export type Backend = 'webgpu' | 'webgl2' | 'null';
 
-/** The sky colour the frame is cleared to; the shaders fog towards the same colour. */
-export const CLEAR_COLOUR: readonly [number, number, number] = [0.45, 0.62, 0.85];
+/** The colour the frame is cleared to before the sky pass draws over it. */
+export const CLEAR_COLOUR: readonly [number, number, number] = [0.74, 0.82, 0.92];
+
+/** The two meshes of an aircraft the renderer holds. */
+export type MeshSlot = 'exterior' | 'cockpit';
+
+/** Samples per pixel: 1 (off) or 4 (4x MSAA). */
+export type SampleCount = 1 | 4;
 
 export interface Renderer {
   readonly backend: Backend;
@@ -21,8 +28,17 @@ export interface Renderer {
   readonly zRange: ZRange;
   /** Sets the drawing-buffer size in device pixels. */
   resize(widthPx: number, heightPx: number): void;
-  /** Uploads the terrain patch (replacing any earlier one). */
-  setTerrainPatch(mesh: TerrainMesh): void;
+  /** Samples per pixel in use (4 where the backend supports it and it was asked for). */
+  readonly sampleCount: SampleCount;
+  /**
+   * Asks for 4x MSAA or none. Takes effect on the next frame; returns the count that is in use,
+   * which is 1 if the backend cannot do 4.
+   */
+  setSampleCount(count: SampleCount): SampleCount;
+  /** Uploads terrain level `level` (0 is the finest), replacing any earlier one. */
+  setTerrainLevel(level: number, mesh: TerrainMesh): void;
+  /** Uploads the aircraft's exterior or its cockpit interior (none removes it). */
+  setMesh(slot: MeshSlot, mesh: ModelMesh | undefined): void;
   /** Draws a frame. Does not wait for the GPU. */
   render(frame: FrameData): void;
   /** Resolves once the GPU has finished every frame drawn so far (for timing, never per frame). */
@@ -38,16 +54,31 @@ export interface Renderer {
   dispose(): void;
 }
 
+/** A uniform block in a generated stage, and the uniform binding point it reads. */
+export interface GlslBlock {
+  name: string;
+  binding: number;
+}
+
 /** One GLSL program as generated from WGSL (see `wgsl-gen`). */
 export interface GlslProgram {
   vertex: string;
   fragment: string;
-  /** The uniform block name in each stage, or null for a stage that reads no uniforms. */
-  blocks: { vertex: string | null; fragment: string | null };
+  /** The uniform blocks of each stage; empty for a stage that reads no uniforms. */
+  blocks: { vertex: readonly GlslBlock[]; fragment: readonly GlslBlock[] };
 }
 
 /** Everything the backends compile. */
 export interface ShaderSources {
+  /** The sky and globe pass, drawn first. */
+  skyWgsl: string;
+  skyGlsl: GlslProgram;
+  /** The aircraft's exterior and cockpit. */
+  meshWgsl: string;
+  meshGlsl: GlslProgram;
+  /** The HUD's segments. */
+  hudWgsl: string;
+  hudGlsl: GlslProgram;
   terrainWgsl: string;
   markerWgsl: string;
   terrainGlsl: GlslProgram;

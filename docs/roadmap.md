@@ -92,6 +92,8 @@ Total to the Campaign Build is about 33 months (M0–M6), plus about 6 months fo
 
 **Exit:** 60 FPS on the Recommended profile in the arena; horizon dip and curvature correct in screenshot tests.
 
+**Note (2026-11-03):** the gates are fixed before the work in [ADR-39](adr/0039-v0-1c-gates.md): measured horizon dip and curvature in screenshot tests (with a seeded flat-Earth fault that must fail), HUD conformity and collimation, camera terrain clearance, objective audio checks (blade-pass frequency, loudness, warning onset), and the arena frame-rate gates. Owner decisions (2026-11-02): the renderer stays custom ([ADR-40](adr/0040-custom-renderer-stays.md), superseding ADR-18); "the Recommended profile" is the Mac M4 on WebGPU, with the benchmark's CPU thresholds re-based by v0.1a's method so it reads High again ([ADR-28](adr/0028-perf-gating-and-reference-machines.md) amendment 1); the aircraft and cockpit are procedural low-poly; the automated gates decide the tag and the owner's look-and-listen checklist does not block. The scope is larger than the 4-week slot (about 14.5 engineer-weeks): expect the slot to slip. Work is on branch `v0.1c`.
+
 ### v0.1d: Basic combat stub and the feel gate (about 3 weeks)
 - One gun and one IR missile (simple proportional navigation); one AI bandit (state machine) that pursues and defends.
 - Debrief and statistics stub (§65 basic).

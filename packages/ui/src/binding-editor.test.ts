@@ -133,7 +133,7 @@ describe('BindingEditor: the list', () => {
     for (const g of ['axes', 'engine', 'systems', 'brakes', 'view', 'system']) {
       expect(t.has(`be-group-${g}`), g).toBe(true);
     }
-    expect(t.root.querySelectorAll('[data-testid^="be-row-"]')).toHaveLength(24);
+    expect(t.root.querySelectorAll('[data-testid^="be-row-"]')).toHaveLength(35);
     expect(chipsOf(t, 'flight.pitch')).toEqual(['W −', 'S +']);
     expect(chipsOf(t, 'flight.gear')).toEqual(['L']);
     expect(chipsOf(t, 'flight.throttle_up')).toEqual([
@@ -159,7 +159,7 @@ describe('BindingEditor: the list', () => {
     expect(t.has('be-none')).toBe(true);
     search.value = '';
     search.dispatchEvent(new Event('input'));
-    expect(t.root.querySelectorAll('[data-testid^="be-row-"]')).toHaveLength(24);
+    expect(t.root.querySelectorAll('[data-testid^="be-row-"]')).toHaveLength(35);
   });
 
   it('offers two add buttons on a bipolar axis, one elsewhere, and disables a full action', async () => {

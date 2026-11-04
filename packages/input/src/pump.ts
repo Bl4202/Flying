@@ -40,6 +40,7 @@ import { MouseStick } from './mouse-stick.ts';
 import { builtinProfile, type ControlsProfile, shapeFor } from './profile.ts';
 import { type AxisShape, AxisShaper, shapeInto } from './shaping.ts';
 import { ThrottleController } from './throttle.ts';
+import { LOOK_RATE_RAD_S, MOUSE_LOOK_RAD_PER_PX, VI, ViewInput } from './view-input.ts';
 
 export type MouseMode = 'off' | 'aim' | 'stick';
 export type PumpContext = 'flight' | 'menu';
@@ -135,6 +136,17 @@ const A = {
   brakeRight: actionIndex('flight.brake_right'),
   mouseMode: actionIndex('flight.mouse_mode'),
   assistCycle: actionIndex('flight.assist_cycle'),
+  cameraCycle: actionIndex('flight.camera_cycle'),
+  freeLook: actionIndex('flight.free_look'),
+  zoom: actionIndex('flight.zoom'),
+  lookLeft: actionIndex('flight.look_left'),
+  lookRight: actionIndex('flight.look_right'),
+  lookUp: actionIndex('flight.look_up'),
+  lookDown: actionIndex('flight.look_down'),
+  lookRecentre: actionIndex('flight.look_recentre'),
+  hudDeclutter: actionIndex('flight.hud_declutter'),
+  hudBrighter: actionIndex('flight.hud_brightness_up'),
+  hudDimmer: actionIndex('flight.hud_brightness_down'),
   respawn: actionIndex('system.respawn'),
   pause: actionIndex('system.pause'),
 } as const;
@@ -189,6 +201,8 @@ export class InputPump {
   readonly #writer = new InputFrameWriter();
   readonly #lever = new ThrottleController(0.5);
   readonly #aim = new MouseAim();
+  /** What the player is doing with the view: the page reads it every frame. */
+  readonly view = new ViewInput();
   readonly #stick = new MouseStick();
   /** The values of the update in progress, then of the last frame sent. */
   readonly #cur = new Float64Array(AXES);
@@ -438,6 +452,7 @@ export class InputPump {
     if (this.#context === 'flight') {
       flags = this.#flight(dt);
     } else {
+      this.view.release();
       this.#cur[AXIS.THROTTLE] = this.#lever.value;
       this.#pageEdges(false);
     }
@@ -456,6 +471,7 @@ export class InputPump {
    */
   neutral(): void {
     this.#resetShaping();
+    this.view.release();
     this.#prevActive.fill(0);
     this.#resync = true;
     this.#r[R_LAST_UPDATE] = Number.NaN;
@@ -493,10 +509,13 @@ export class InputPump {
     const locked = mouse?.locked === true;
     const r = this.#r;
 
+    // The view: free look takes the mouse from the aim or the stick while it is held.
+    const freeLook = this.#viewActions(locked);
+
     // Mouse motion drives the aim or the stick.
-    if (locked && this.#mouseMode === 'aim') {
+    if (locked && this.#mouseMode === 'aim' && !freeLook) {
       this.#aim.move(mouse.dx, mouse.dy, r[R_MOUSE_SENS] ?? 1);
-    } else if (locked && this.#mouseMode === 'stick') {
+    } else if (locked && this.#mouseMode === 'stick' && !freeLook) {
       this.#stick.move(mouse.dx, mouse.dy, r[R_MOUSE_SENS] ?? 1);
     }
     const spring = r[R_MOUSE_SPRING] ?? 0;
@@ -552,6 +571,36 @@ export class InputPump {
       }
     }
     return flags;
+  }
+
+  /**
+   * Reads the view actions into `view`: look rates, zoom and free look while held, mouse look when
+   * the mouse is free to look (free look held, or the mouse mode off), and the presses as
+   * counters. Returns whether free look is held.
+   */
+  #viewActions(locked: boolean): boolean {
+    const v = this.view.v;
+    const right = this.#anyActive(A.lookRight);
+    const left = this.#anyActive(A.lookLeft);
+    const up = this.#anyActive(A.lookUp);
+    const down = this.#anyActive(A.lookDown);
+    v[VI.LOOK_YAW_RATE] = (right === left ? 0 : right ? 1 : -1) * LOOK_RATE_RAD_S;
+    v[VI.LOOK_PITCH_RATE] = (up === down ? 0 : up ? 1 : -1) * LOOK_RATE_RAD_S;
+    v[VI.ZOOM] = this.#anyActive(A.zoom) ? 1 : 0;
+    const freeLook = this.#anyActive(A.freeLook);
+    v[VI.FREE_LOOK] = freeLook ? 1 : 0;
+    const mouse = this.#d.mouse;
+    if (locked && mouse && (freeLook || this.#mouseMode === 'off')) {
+      const k = MOUSE_LOOK_RAD_PER_PX * (this.#r[R_MOUSE_SENS] ?? 1);
+      v[VI.MOUSE_YAW_TOTAL] = (v[VI.MOUSE_YAW_TOTAL] ?? 0) + mouse.dx * k;
+      v[VI.MOUSE_PITCH_TOTAL] = (v[VI.MOUSE_PITCH_TOTAL] ?? 0) - mouse.dy * k;
+    }
+    if (this.#edge(A.cameraCycle)) v[VI.CAMERA_PRESSES] = (v[VI.CAMERA_PRESSES] ?? 0) + 1;
+    if (this.#edge(A.lookRecentre)) v[VI.RECENTRE_PRESSES] = (v[VI.RECENTRE_PRESSES] ?? 0) + 1;
+    if (this.#edge(A.hudDeclutter)) v[VI.DECLUTTER_PRESSES] = (v[VI.DECLUTTER_PRESSES] ?? 0) + 1;
+    if (this.#edge(A.hudBrighter)) v[VI.BRIGHTNESS_STEPS] = (v[VI.BRIGHTNESS_STEPS] ?? 0) + 1;
+    if (this.#edge(A.hudDimmer)) v[VI.BRIGHTNESS_STEPS] = (v[VI.BRIGHTNESS_STEPS] ?? 0) - 1;
+    return freeLook;
   }
 
   /**

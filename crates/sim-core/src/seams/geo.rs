@@ -1,15 +1,17 @@
 //! `GeoService`: how the simulation sees the Earth (GDD 7.7, 61.5, ADR-15, ADR-16).
 //!
 //! The Sim Core never reads the render world; it asks this trait for heights, normals, line of
-//! sight and rays. v0.0b ships two procedural implementations behind it: [`ProceduralGeo`] (a
-//! sphere with value-noise terrain, so BF really is curved, ADR-04) and [`FlatGeo`]. Both pass
-//! [`contract`]. The streamed `GeoPack` implementation replaces them in M2 without touching callers.
+//! sight and rays. Two procedural implementations sit behind it: [`ProceduralGeo`] (a sphere with
+//! value-noise terrain, so BF really is curved, ADR-04), in one of the two test arenas (ADR-43),
+//! and [`FlatGeo`]. All pass [`contract`]. The streamed `GeoPack` implementation replaces them in
+//! M2 without touching callers.
 //!
 //! Everything here is a pure function of its inputs (ADR-15) and uses only IEEE operations and
 //! `dmath`, so results are bit-identical across targets (ADR-10).
 
 use crate::dmath;
 use crate::math::DVec3;
+use crate::session::Arena;
 
 /// Mean Earth radius for sphere approximations (GDD 0.6.5), metres.
 pub const EARTH_RADIUS_M: f64 = 6_371_000.0;
@@ -27,6 +29,9 @@ pub const DEFAULT_ANCHOR_LON_RAD: f64 = -121.8 * (core::f64::consts::PI / 180.0)
 pub const TERRAIN_DATA_VERSION: u64 = 2;
 /// The version the landscape's noise is seeded from.
 const NOISE_SEED_VERSION: u64 = 1;
+/// Data version of the `plain` arena's terrain (ADR-43). Bump when its height function changes.
+/// // DATA: test arena (GDD NN-1 permits static arenas as test content)
+pub const PLAIN_TERRAIN_DATA_VERSION: u64 = 1;
 
 /// Half the width of the runway, m. The runway runs north from its threshold, centreline east = 0
 /// (the snapshot's `airfield` group says where, so the renderer can mark it).
@@ -43,8 +48,23 @@ const BASIN_PLAIN_M: f64 = 4_000.0;
 const BASIN_BLEND_M: f64 = 4_000.0;
 /// The runway is levelled out to this distance, with a smooth skirt (GDD 10.7), m.
 const PAD_BLEND_M: f64 = 300.0;
-/// The plain's relief about the runway elevation, m.
+/// The plain's relief about the runway elevation, m. The basin of `rugged` and the whole of
+/// `plain` use it. // DATA: test arena (GDD NN-1 permits static arenas as test content)
 const PLAIN_AMPLITUDE_M: f64 = 3.0;
+
+/// A height the arena's terrain never goes below, m above MSL. The renderer's analytic globe sits
+/// here, under every terrain sample, so only a hole in the terrain mesh can show it (ADR-39 S5).
+///
+/// `rugged`: the landscape `1300 ridge^2 + 80 n` is at least 0, the basin's plain at least 37 m,
+/// and every blend lies between two of them. `plain`: `40 + 3 (2n - 1)` with `n` in `[0, 1)` is at
+/// least 37 m, and the runway pad blends towards 40 m.
+#[must_use]
+pub const fn terrain_floor_m(arena: Arena) -> f64 {
+    match arena {
+        Arena::Rugged => 0.0,
+        Arena::Plain => RUNWAY_ELEVATION_M - PLAIN_AMPLITUDE_M,
+    }
+}
 
 const LOS_STEP_M: f64 = 100.0;
 const RAY_STEP_M: f64 = 50.0;
@@ -334,16 +354,30 @@ fn runway_distance_m(u: f64, v: f64) -> f64 {
     dmath::sqrt(dx * dx + dy * dy)
 }
 
+/// The land at `land` metres, levelled to the runway's elevation on the runway and blended into
+/// it over [`PAD_BLEND_M`] round it; `d` is the distance from the runway rectangle, m.
+fn on_pad(land: f64, d: f64) -> f64 {
+    let pad = smooth((1.0 - d / PAD_BLEND_M).clamp(0.0, 1.0));
+    if pad >= 1.0 {
+        RUNWAY_ELEVATION_M
+    } else {
+        land + (RUNWAY_ELEVATION_M - land) * pad
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Spherical procedural Earth.
 
-/// A sphere of [`EARTH_RADIUS_M`] with ridged value-noise terrain (0 to about 1.4 km).
+/// A sphere of [`EARTH_RADIUS_M`] with value-noise terrain in one of the test arenas: `rugged`
+/// (ridged hills, 0 to about 1.4 km, round the airfield's basin) or `plain` (37 to 43 m
+/// everywhere). Both have the same runway, levelled at 40 m.
 ///
 /// BF is the tangent frame at the anchor (East, North, Up), so the ground really falls away
 /// from the tangent plane: 20 m at 16 km, 7 km at 300 km (GDD 7.4).
 #[derive(Clone, Debug)]
 pub struct ProceduralGeo {
     frame: BattlefieldFrame,
+    arena: Arena,
     seed: u64,
     anchor_ecef: DVec3,
     east: DVec3,
@@ -353,9 +387,15 @@ pub struct ProceduralGeo {
 }
 
 impl ProceduralGeo {
-    /// Builds the service for a frame.
+    /// Builds the `rugged` arena (the v0.1b world) for a frame.
     #[must_use]
     pub fn new(frame: BattlefieldFrame) -> Self {
+        Self::with_arena(frame, Arena::Rugged)
+    }
+
+    /// Builds the given arena for a frame.
+    #[must_use]
+    pub fn with_arena(frame: BattlefieldFrame, arena: Arena) -> Self {
         let (sp, cp) = (
             dmath::sin(frame.anchor_lat_rad),
             dmath::cos(frame.anchor_lat_rad),
@@ -367,6 +407,7 @@ impl ProceduralGeo {
         let up = DVec3::new(cp * cl, cp * sl, sp);
         Self {
             frame,
+            arena,
             seed: NOISE_SEED_VERSION.wrapping_mul(0xA076_1D64_78BD_642F),
             anchor_ecef: up * frame.radius_m,
             east: DVec3::new(-sl, cl, 0.0),
@@ -376,10 +417,16 @@ impl ProceduralGeo {
         }
     }
 
-    /// The default battlefield.
+    /// The default battlefield (the `rugged` arena).
     #[must_use]
     pub fn default_frame() -> Self {
         Self::new(BattlefieldFrame::DEFAULT)
+    }
+
+    /// The arena this world is.
+    #[must_use]
+    pub fn arena(&self) -> Arena {
+        self.arena
     }
 
     fn bf_to_ecef(&self, p: DVec3) -> DVec3 {
@@ -399,25 +446,34 @@ impl ProceduralGeo {
         let u = (lon_rad - self.frame.anchor_lon_rad) * r * self.cos_lat0;
         let v = (lat_rad - self.frame.anchor_lat_rad) * r;
         let n = fbm(self.seed, u, v);
-        let ridge = 1.0 - (2.0 * n - 1.0).abs();
-        let landscape = 1_300.0 * ridge * ridge + 80.0 * n;
-        // The test airfield (ADR-35): a plain round the runway that blends into the landscape,
-        // and the runway levelled on top of it.
         let d = runway_distance_m(u, v);
-        let h = if d >= BASIN_PLAIN_M + BASIN_BLEND_M {
-            landscape
-        } else {
-            let plain = RUNWAY_ELEVATION_M + PLAIN_AMPLITUDE_M * (2.0 * n - 1.0);
-            let basin = 1.0 - smooth(((d - BASIN_PLAIN_M) / BASIN_BLEND_M).clamp(0.0, 1.0));
-            let land = landscape + (plain - landscape) * basin;
-            let pad = smooth((1.0 - d / PAD_BLEND_M).clamp(0.0, 1.0));
-            if pad >= 1.0 {
-                RUNWAY_ELEVATION_M
-            } else {
-                land + (RUNWAY_ELEVATION_M - land) * pad
+        let h = match self.arena {
+            Arena::Rugged => {
+                let ridge = 1.0 - (2.0 * n - 1.0).abs();
+                let landscape = 1_300.0 * ridge * ridge + 80.0 * n;
+                // The test airfield (ADR-35): a plain round the runway that blends into the
+                // landscape, and the runway levelled on top of it.
+                if d >= BASIN_PLAIN_M + BASIN_BLEND_M {
+                    landscape
+                } else {
+                    let plain = RUNWAY_ELEVATION_M + PLAIN_AMPLITUDE_M * (2.0 * n - 1.0);
+                    let basin = 1.0 - smooth(((d - BASIN_PLAIN_M) / BASIN_BLEND_M).clamp(0.0, 1.0));
+                    on_pad(landscape + (plain - landscape) * basin, d)
+                }
             }
+            // The basin's plain everywhere, and the same pad (ADR-43).
+            Arena::Plain => on_pad(RUNWAY_ELEVATION_M + PLAIN_AMPLITUDE_M * (2.0 * n - 1.0), d),
         };
         h.clamp(MIN_TERRAIN_M, MAX_TERRAIN_M)
+    }
+
+    /// Distance from the runway rectangle of a surface position, m (0 on the runway).
+    #[cfg(test)]
+    fn runway_distance_at(&self, lat_rad: f64, lon_rad: f64) -> f64 {
+        let r = self.frame.radius_m;
+        let u = (lon_rad - self.frame.anchor_lon_rad) * r * self.cos_lat0;
+        let v = (lat_rad - self.frame.anchor_lat_rad) * r;
+        runway_distance_m(u, v)
     }
 
     /// Height of the sphere surface below tangent-plane position `(x, y)`, relative to BF z = 0.
@@ -827,6 +883,96 @@ mod tests {
     #[test]
     fn procedural_geo_passes_the_contract() {
         contract(&ProceduralGeo::default_frame());
+    }
+
+    #[test]
+    fn every_arena_passes_the_contract() {
+        for arena in Arena::ALL {
+            let g = ProceduralGeo::with_arena(BattlefieldFrame::DEFAULT, arena);
+            assert_eq!(g.arena(), arena);
+            contract(&g);
+        }
+        assert_eq!(ProceduralGeo::default_frame().arena(), Arena::Rugged);
+    }
+
+    /// Ground heights over a grid: `n` by `n` points `step` metres apart, centred on BF `(cx, cy)`.
+    fn grid_heights(g: &ProceduralGeo, cx: f64, cy: f64, n: u32, step: f64) -> Vec<f64> {
+        let half = f64::from(n - 1) * step / 2.0;
+        let mut out = Vec::with_capacity((n * n) as usize);
+        for i in 0..n {
+            for j in 0..n {
+                let x = cx - half + f64::from(i) * step;
+                let y = cy - half + f64::from(j) * step;
+                out.push(ground_at(g, x, y));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn the_plain_is_within_its_relief_of_the_runway_elevation_everywhere() {
+        let g = ProceduralGeo::with_arena(BattlefieldFrame::DEFAULT, Arena::Plain);
+        assert_eq!(PLAIN_TERRAIN_DATA_VERSION, 1);
+        let (mut lo, mut hi) = (f64::MAX, f64::MIN);
+        for h in grid_heights(&g, 0.0, 0.0, 161, 2_500.0)
+            .into_iter()
+            .chain(grid_heights(&g, 0.0, -4_500.0, 121, 100.0))
+        {
+            assert!(
+                (h - RUNWAY_ELEVATION_M).abs() <= PLAIN_AMPLITUDE_M,
+                "height {h}"
+            );
+            lo = lo.min(h);
+            hi = hi.max(h);
+        }
+        assert!(hi - lo > 3.0, "the plain has some relief: {lo}..{hi}");
+    }
+
+    #[test]
+    fn no_arena_goes_below_its_floor() {
+        // Dense near the airfield, sparse out to 800 km (past the renderer's coarsest level).
+        for arena in Arena::ALL {
+            let g = ProceduralGeo::with_arena(BattlefieldFrame::DEFAULT, arena);
+            let floor = terrain_floor_m(arena);
+            let lowest = grid_heights(&g, 0.0, -4_500.0, 201, 60.0)
+                .into_iter()
+                .chain(grid_heights(&g, 0.0, 0.0, 201, 400.0))
+                .chain(grid_heights(&g, 0.0, 0.0, 161, 10_000.0))
+                .fold(f64::MAX, f64::min);
+            assert!(lowest >= floor, "{arena:?}: {lowest} below {floor}");
+        }
+        assert_eq!(terrain_floor_m(Arena::Rugged), 0.0);
+        assert_eq!(terrain_floor_m(Arena::Plain), 37.0);
+    }
+
+    #[test]
+    fn the_runway_is_bit_identical_in_both_arenas() {
+        let rugged = ProceduralGeo::default_frame();
+        let plain = ProceduralGeo::with_arena(BattlefieldFrame::DEFAULT, Arena::Plain);
+        for i in 0..=36 {
+            for j in 0..=120 {
+                let x = -RUNWAY_HALF_WIDTH_M + 0.5 + f64::from(i) * 1.22;
+                let y = RUNWAY_THRESHOLD_Y_M + 0.5 + f64::from(j) * 24.99;
+                let p = rugged.bf_to_geo(DVec3::new(x, y, rugged.sphere_z(x, y)));
+                let r = rugged.runway_distance_at(p.lat_rad, p.lon_rad);
+                if r != 0.0 {
+                    continue;
+                }
+                assert_eq!(
+                    rugged.ground_z_bf(x, y).to_bits(),
+                    plain.ground_z_bf(x, y).to_bits(),
+                    "ground at ({x}, {y})"
+                );
+                assert_eq!(class_at(&rugged, x, y), class_at(&plain, x, y));
+                assert_eq!(class_at(&plain, x, y), SurfaceClass::Paved);
+            }
+        }
+        // Next to the runway the arenas share the basin's plain to within a rounding step or so.
+        for d in [10.0, 150.0, 299.0, 1_000.0, 3_000.0] {
+            let (x, y) = (RUNWAY_HALF_WIDTH_M + d, -4_500.0);
+            let diff = (ground_at(&rugged, x, y) - ground_at(&plain, x, y)).abs();
+            assert!(diff < 1.0e-9, "{d} m off the edge: {diff}");
+        }
     }
 
     #[test]

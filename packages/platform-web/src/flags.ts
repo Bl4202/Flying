@@ -10,20 +10,31 @@
  * | `renderer` | `auto` (default), `webgpu`, `webgl2`, `null` |
  * | `flags` | comma list of `transfer`, `mainrender`, `timer`, `stall` (test switches) |
  * | `compat` | `1`: show the compat screen even if it was acknowledged |
- * | `selftest` | `1` (golden hash), `renderer` (renderer contract) |
+ * | `selftest` | `1` (golden hash), `renderer` (renderer contract), `audio` (the flight audio in this browser) |
  * | `perf` | `ps0`: run the PS-0 scenario |
  * | `seconds` | duration of a perf run, 1 to 3600 |
  * | `bench` | `quick` or `full`: run the first-run benchmark |
  * | `spawn` | `runway` (default) or `air`: where the aircraft starts |
  * | `assist` | `full`, `standard` (default), `reduced` or `manual` |
  * | `g` | `off`, `reduced` or `full` (default): the g-effects dial |
+ * | `arena` | `rugged` (default) or `plain`: the procedural test arena |
  * | `script` | `circuit`: the virtual tester flies the circuit instead of the player (a test aid) |
+ * | `res` | `WxH`, for example `1920x1080`: fixes the drawing buffer's size (perf and screenshot runs) |
+ * | `quality` | `low`, `medium` or `high`: the graphics preset, in place of the one chosen (a test aid) |
+ * | `fault` | `flat-earth`: a seeded render fault the screenshot tests must catch; needs `debug` |
  */
 
 export type RendererChoice = 'auto' | 'webgpu' | 'webgl2' | 'null';
 export type SpawnChoice = 'runway' | 'air';
 export type AssistChoice = 'full' | 'standard' | 'reduced' | 'manual';
 export type GEffectsChoice = 'off' | 'reduced' | 'full';
+export type ArenaChoice = 'rugged' | 'plain';
+export type QualityChoice = 'low' | 'medium' | 'high';
+export type FaultChoice = 'flat-earth';
+
+/** Limits of `res`, pixels. */
+export const RES_MIN = { width: 160, height: 90 } as const;
+export const RES_MAX = { width: 7680, height: 4320 } as const;
 
 export interface Flags {
   debug: false | 'overlay' | 'perf';
@@ -37,7 +48,7 @@ export interface Flags {
   /** Expose the stall hooks that tests use to freeze a thread. */
   stall: boolean;
   compat: boolean;
-  selftest: false | 'hash' | 'renderer';
+  selftest: false | 'hash' | 'renderer' | 'audio';
   perf: false | 'ps0';
   seconds: number | undefined;
   bench: false | 'quick' | 'full';
@@ -47,8 +58,16 @@ export interface Flags {
   assist: AssistChoice | undefined;
   /** The g-effects dial, if the URL says. */
   g: GEffectsChoice | undefined;
+  /** The test arena, if the URL says. */
+  arena: ArenaChoice | undefined;
   /** A scripted pilot in place of the player (the circuit the exit gate flies), if the URL says. */
   script: false | 'circuit';
+  /** A fixed drawing-buffer size in pixels, if the URL says. */
+  res: { width: number; height: number } | undefined;
+  /** The graphics preset, if the URL says. */
+  quality: QualityChoice | undefined;
+  /** A seeded render fault, if the URL says and debugging is on. */
+  fault: FaultChoice | undefined;
   /** Problems found while parsing, in order. */
   warnings: string[];
 }
@@ -58,6 +77,8 @@ const SWITCHES = ['transfer', 'mainrender', 'timer', 'stall'] as const;
 const SPAWNS: readonly SpawnChoice[] = ['runway', 'air'];
 const ASSISTS: readonly AssistChoice[] = ['full', 'standard', 'reduced', 'manual'];
 const G_DIALS: readonly GEffectsChoice[] = ['off', 'reduced', 'full'];
+const ARENAS: readonly ArenaChoice[] = ['rugged', 'plain'];
+const QUALITIES: readonly QualityChoice[] = ['low', 'medium', 'high'];
 const KNOWN = new Set([
   'debug',
   'renderer',
@@ -70,8 +91,15 @@ const KNOWN = new Set([
   'spawn',
   'assist',
   'g',
+  'arena',
   'script',
+  'res',
+  'quality',
+  'fault',
 ]);
+
+const size = (r: { width: number; height: number }): string =>
+  `${String(r.width)}x${String(r.height)}`;
 
 export function defaultFlags(): Flags {
   return {
@@ -89,7 +117,11 @@ export function defaultFlags(): Flags {
     spawn: undefined,
     assist: undefined,
     g: undefined,
+    arena: undefined,
     script: false,
+    res: undefined,
+    quality: undefined,
+    fault: undefined,
     warnings: [],
   };
 }
@@ -151,8 +183,10 @@ export function parseFlags(search: string): Flags {
     flags.selftest = 'hash';
   } else if (selftest === 'renderer') {
     flags.selftest = 'renderer';
+  } else if (selftest === 'audio') {
+    flags.selftest = 'audio';
   } else if (selftest !== null) {
-    bad('selftest', selftest, '1 or renderer');
+    bad('selftest', selftest, '1, renderer or audio');
   }
 
   const perf = params.get('perf');
@@ -200,11 +234,50 @@ export function parseFlags(search: string): Flags {
     else flags.g = choice;
   }
 
+  const arena = params.get('arena');
+  if (arena !== null) {
+    const choice = ARENAS.find((a) => a === arena);
+    if (choice === undefined) bad('arena', arena, ARENAS.join(' or '));
+    else flags.arena = choice;
+  }
+
   const script = params.get('script');
   if (script === 'circuit') {
     flags.script = 'circuit';
   } else if (script !== null) {
     bad('script', script, 'circuit');
+  }
+
+  const res = params.get('res');
+  if (res !== null) {
+    const m = /^(\d{1,5})x(\d{1,5})$/.exec(res);
+    const [w, h] = [Number(m?.[1]), Number(m?.[2])];
+    if (
+      m === null ||
+      w < RES_MIN.width ||
+      h < RES_MIN.height ||
+      w > RES_MAX.width ||
+      h > RES_MAX.height
+    ) {
+      bad('res', res, `WxH between ${size(RES_MIN)} and ${size(RES_MAX)}`);
+    } else {
+      flags.res = { width: w, height: h };
+    }
+  }
+
+  const quality = params.get('quality');
+  if (quality !== null) {
+    const choice = QUALITIES.find((q) => q === quality);
+    if (choice === undefined) bad('quality', quality, QUALITIES.join(', '));
+    else flags.quality = choice;
+  }
+
+  const fault = params.get('fault');
+  if (fault === 'flat-earth') {
+    if (flags.debug === false) bad('fault', fault, 'combined with debug=1 (faults are test aids)');
+    else flags.fault = 'flat-earth';
+  } else if (fault !== null) {
+    bad('fault', fault, 'flat-earth');
   }
 
   return flags;

@@ -1,6 +1,8 @@
 /**
  * GPU frame time at several load levels (GDD 60.8). A fixed scene (one terrain patch seen from
- * 1.5 km, with the markers) is drawn with 1, 16 and 64 copies of the patch, back to back, and the
+ * 1.5 km, with the markers) is drawn with 1, 16 and 64 copies of the patch, back to back (the sky
+ * and the coarser terrain levels stay off, so the workload is the one the thresholds were set
+ * with), and the
  * time per frame is taken after the GPU has finished them all. The camera never moves, so the
  * only thing that changes between levels is how much there is to draw.
  *
@@ -12,7 +14,7 @@ import { SnapshotInterpolator } from './interp.ts';
 import type { Renderer } from './renderer.ts';
 import { SceneBuilder } from './scene.ts';
 import { makeSnapshot, NORTH } from './snapshot-fixture.ts';
-import { buildTerrainMesh } from './terrain-mesh.ts';
+import { TerrainSet } from './terrain-levels.ts';
 import { makeTestPatch } from './terrain-test-patch.ts';
 
 export interface GpuBenchLevel {
@@ -54,8 +56,13 @@ const MAX_FRAMES = 240;
 export async function measureGpu(opts: GpuBenchOptions): Promise<GpuBenchResult> {
   const { renderer, width, height } = opts;
   renderer.resize(width, height);
-  const mesh = buildTerrainMesh(makeTestPatch());
-  renderer.setTerrainPatch(mesh);
+  // The workload is the finest terrain level alone (copies of one patch): the thresholds in
+  // `perf` were set with that, so the other passes stay off.
+  const terrain = new TerrainSet();
+  terrain.set(0, makeTestPatch());
+  const mesh = terrain.mesh(0);
+  if (mesh === undefined) throw new Error('SYS-109: the benchmark terrain could not be built');
+  renderer.setTerrainLevel(0, mesh);
 
   const interp = new SnapshotInterpolator();
   interp.push(
@@ -80,9 +87,9 @@ export async function measureGpu(opts: GpuBenchOptions): Promise<GpuBenchResult>
       aspect: width / height,
       zRange: renderer.zRange,
       timeS: 0,
-      patchOriginBf: mesh.originBf,
-      spacingM: mesh.spacingM,
+      terrain,
       patchInstances: patches,
+      sky: false,
     });
     const t0 = opts.nowMs();
     for (let i = 0; i < frames; i++) renderer.render(frame);

@@ -13,8 +13,22 @@ export interface FixtureSnapshot {
   inputMs?: number;
   lastInputSeq?: number;
   coreState?: number;
+  /** The test arena (`ARENA`): 0 rugged, 1 plain. */
+  arena?: number;
   ownship?: FixtureBody & {
     speed?: number;
+    /** Velocity in BF (east, north, up), m/s. */
+    vel?: [number, number, number];
+    /** The load factor the pilot feels, g. */
+    gLagged?: number;
+    /** Gear position, 0 up to 1 down. */
+    gearPos?: number;
+    /** Elevator deflection, radians. */
+    elevatorRad?: number;
+    /** Afterburner level, 0 to 1. */
+    abLevel?: number;
+    /** The assist level, 1 to 4 (default 2, Standard); 0 is a spectator, who has no HUD. */
+    assist?: number;
     throttle?: number;
     flags?: number;
     flags2?: number;
@@ -46,7 +60,7 @@ export const LOOKING_DOWN: [number, number, number, number] = quatFromColumns(
 );
 
 /** The unit quaternion `[w, x, y, z]` of the rotation whose columns are the images of x, y, z. */
-function quatFromColumns(
+export function quatFromColumns(
   cx: [number, number, number],
   cy: [number, number, number],
   cz: [number, number, number],
@@ -82,6 +96,7 @@ export function makeSnapshot(s: FixtureSnapshot = {}): Uint8Array {
   dv.setUint32(SNAPSHOT.H_LAST_INPUT_SEQ, s.lastInputSeq ?? 0, true);
   dv.setUint32(SNAPSHOT.H_CORE_STATE, s.coreState ?? 2, true);
   dv.setFloat64(SNAPSHOT.H_INPUT_T_MS, s.inputMs ?? 0, true);
+  dv.setUint8(SNAPSHOT.O_ARENA, s.arena ?? 0);
   const o = s.ownship ?? { pos: [0, -6000, 1000] };
   o.pos.forEach((v, k) => {
     dv.setFloat64(SNAPSHOT.O_POS_BF + 8 * k, v, true);
@@ -90,6 +105,14 @@ export function makeSnapshot(s: FixtureSnapshot = {}): Uint8Array {
     dv.setFloat32(SNAPSHOT.O_QUAT + 4 * k, v, true);
   });
   dv.setFloat32(SNAPSHOT.O_TAS, o.speed ?? 180, true);
+  (o.vel ?? [0, 0, 0]).forEach((v, k) => {
+    dv.setFloat32(SNAPSHOT.O_VEL_BF + 4 * k, v, true);
+  });
+  dv.setFloat32(SNAPSHOT.O_G_LAGGED, o.gLagged ?? 1, true);
+  dv.setFloat32(SNAPSHOT.O_GEAR_POS, o.gearPos ?? 1, true);
+  dv.setFloat32(SNAPSHOT.O_AB_LEVEL, o.abLevel ?? 0, true);
+  dv.setUint8(SNAPSHOT.O_ASSIST, o.assist ?? 2);
+  dv.setFloat32(SNAPSHOT.O_SURFACES, o.elevatorRad ?? 0, true);
   dv.setFloat32(SNAPSHOT.O_THROTTLE, o.throttle ?? 0.5, true);
   dv.setUint8(SNAPSHOT.O_FLAGS, o.flags ?? 0);
   dv.setUint16(SNAPSHOT.O_FLAGS2, o.flags2 ?? 0, true);
