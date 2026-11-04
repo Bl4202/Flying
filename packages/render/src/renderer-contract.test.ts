@@ -49,6 +49,13 @@ describe('the renderer contract', () => {
     );
     expect(names).toContain('the flat-earth fault puts the horizon on the eye line');
     expect(names).toContain('the chase view draws the aircraft, canopy and all');
+    expect(names).toContain(
+      'the HUD draws in the cockpit view, inside the combiner and nowhere else',
+    );
+    expect(names).toContain(
+      'the HUD is collimated: moving the eye inside the eye box moves no symbol',
+    );
+    expect(names).toContain('the HUD is an overlay in the chase view');
     expect(names).toContain('the cockpit view draws the cockpit and the airframe ahead of the eye');
     expect(names).toContain(
       'the parts move with the sim: elevator and afterburner change the chase picture',

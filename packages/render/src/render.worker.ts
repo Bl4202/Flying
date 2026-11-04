@@ -72,6 +72,9 @@ async function handle(command: RenderCommand): Promise<void> {
         ...(command.sampleCount === undefined ? {} : { sampleCount: command.sampleCount }),
         ...(command.debugView === undefined ? {} : { debugView: command.debugView }),
         ...(command.fault === undefined ? {} : { fault: command.fault }),
+        ...(command.hudPalette === undefined ? {} : { hudPalette: command.hudPalette }),
+        ...(command.hudOverlay === undefined ? {} : { hudOverlay: command.hudOverlay }),
+        ...(command.hudScale === undefined ? {} : { hudScale: command.hudScale }),
       };
       session?.setSettings(settings);
       break;

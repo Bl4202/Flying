@@ -32,6 +32,8 @@ export interface AircraftStatus {
   brakeL: number;
   brakeR: number;
   groundSpeed: number;
+  /** Height above mean sea level, metres. */
+  altitude: number;
   /** Vertical speed, m/s. */
   vs: number;
   /** Lowest wheel above the ground, metres. */
@@ -86,6 +88,7 @@ export function newAircraftStatus(): AircraftStatus {
     brakeL: 0,
     brakeR: 0,
     groundSpeed: 0,
+    altitude: 0,
     vs: 0,
     agl: 0,
     gLagged: 0,
@@ -132,6 +135,7 @@ export function readAircraftStatus(reader: SnapshotReader, out: AircraftStatus):
   out.brakeL = brakes[0] ?? 0;
   out.brakeR = brakes[1] ?? 0;
   out.groundSpeed = reader.ownshipGroundSpeed();
+  out.altitude = reader.ownshipAltitude();
   out.vs = reader.ownshipVs();
   out.agl = reader.ownshipAgl();
   out.gLagged = reader.ownshipGLagged();

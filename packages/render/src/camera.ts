@@ -103,6 +103,43 @@ export function viewRotation(out: NumberArray, qBf: Quat): void {
   out[15] = 1;
 }
 
+/**
+ * The rotation from body axes to render axes for an attitude `qBf` (body-to-BF, `[w, x, y, z]`), as
+ * a column-major 4x4 with no translation. Makes no garbage.
+ */
+export function bodyToRender(out: NumberArray, qBf: Quat | Float32Array | Float64Array): void {
+  const w = qBf[0];
+  const x = qBf[1];
+  const y = qBf[2];
+  const z = qBf[3];
+  // Body to BF (east, north, up), then to render (east, up, south): rows 0, 2 and -1.
+  const r00 = 1 - 2 * (y * y + z * z);
+  const r01 = 2 * (x * y - w * z);
+  const r02 = 2 * (x * z + w * y);
+  const r10 = 2 * (x * y + w * z);
+  const r11 = 1 - 2 * (x * x + z * z);
+  const r12 = 2 * (y * z - w * x);
+  const r20 = 2 * (x * z - w * y);
+  const r21 = 2 * (y * z + w * x);
+  const r22 = 1 - 2 * (x * x + y * y);
+  out[0] = r00;
+  out[1] = r20;
+  out[2] = -r10;
+  out[3] = 0;
+  out[4] = r01;
+  out[5] = r21;
+  out[6] = -r11;
+  out[7] = 0;
+  out[8] = r02;
+  out[9] = r22;
+  out[10] = -r12;
+  out[11] = 0;
+  out[12] = 0;
+  out[13] = 0;
+  out[14] = 0;
+  out[15] = 1;
+}
+
 /** `a * b` for column-major 4x4 matrices. */
 export function mul4(out: NumberArray, a: ArrayLike<number>, b: ArrayLike<number>): void {
   for (let col = 0; col < 4; col++) {

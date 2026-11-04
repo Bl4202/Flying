@@ -4,7 +4,7 @@
  * retracts and a glowing nozzle), in a few dozen lines. Not production data: the shipped aircraft
  * come from the presentation bundle.
  */
-import type { CockpitSpec, ModelSpec } from './present.ts';
+import type { CockpitSpec, FontSpec, GlyphSpec, HudSpec, ModelSpec } from './present.ts';
 
 export const FIXTURE_MODEL: ModelSpec = {
   id: 'fixture:mdl/dart',
@@ -98,5 +98,86 @@ export const FIXTURE_COCKPIT: CockpitSpec = {
   consoles: [
     { id: 'console_l', minM: [2.9, -0.62, -0.45], maxM: [4, -0.45, 0.2] },
     { id: 'console_r', minM: [2.9, 0.45, -0.45], maxM: [4, 0.62, 0.2] },
+  ],
+};
+
+/** Every character the HUD writes, drawn as a box with a diagonal: legible enough for a self-test. */
+const FIXTURE_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ .-+/%:\u00b0\u03b1';
+
+export const FIXTURE_FONT: FontSpec = {
+  id: 'fixture:fnt/boxes',
+  cell: [4, 6],
+  advance: 6,
+  glyphs: new Map<string, GlyphSpec>(
+    Array.from(FIXTURE_CHARS, (ch): [string, GlyphSpec] => [
+      ch,
+      {
+        ch,
+        strokes:
+          ch === ' '
+            ? []
+            : [
+                [
+                  [0, 0],
+                  [4, 0],
+                  [4, 6],
+                  [0, 6],
+                  [0, 0],
+                ],
+                [
+                  [0, 0],
+                  [4, 6],
+                ],
+              ],
+      },
+    ]),
+  ),
+};
+
+/** A HUD with the symbols a self-test looks for: the boresight, the flight-path marker, the ladder and the tapes. */
+export const FIXTURE_HUD: HudSpec = {
+  id: 'fixture:hud/dart',
+  aircraft: 'fixture:ac/dart',
+  tfovDeg: [28, 20],
+  eyeBoxMm: [120, 80, 160],
+  font: 'fixture:fnt/boxes',
+  colour: '#35ff6a',
+  glowPx: 0.6,
+  strokeMrad: 1.2,
+  textMrad: 12,
+  layers: [
+    { type: 'boresight', id: 'boresight', sizeMrad: 10 },
+    { type: 'flight_path_marker', id: 'fpm', sizeMrad: 14, cageBelowMps: 20 },
+    {
+      type: 'pitch_ladder',
+      id: 'ladder',
+      stepDeg: 5,
+      labelStepDeg: 10,
+      halfWidthMrad: 40,
+      gapMrad: 10,
+      declutterAboveDeg: 60,
+    },
+    {
+      type: 'speed_tape',
+      id: 'speed',
+      atMrad: [-175, 0],
+      spanMrad: 120,
+      channel: 'cas',
+      windowKn: 100,
+      tickKn: 10,
+      labelKn: 20,
+      machFrom: 0.6,
+    },
+    {
+      type: 'altitude_tape',
+      id: 'altitude',
+      atMrad: [175, 0],
+      spanMrad: 120,
+      channel: 'altitude_msl',
+      windowFt: 1000,
+      tickFt: 100,
+      labelFt: 200,
+      radarBelowFt: 1500,
+    },
   ],
 };

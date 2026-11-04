@@ -76,6 +76,9 @@ export interface ShaderSources {
   /** The aircraft's exterior and cockpit. */
   meshWgsl: string;
   meshGlsl: GlslProgram;
+  /** The HUD's segments. */
+  hudWgsl: string;
+  hudGlsl: GlslProgram;
   terrainWgsl: string;
   markerWgsl: string;
   terrainGlsl: GlslProgram;

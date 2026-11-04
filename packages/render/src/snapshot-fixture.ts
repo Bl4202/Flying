@@ -27,6 +27,8 @@ export interface FixtureSnapshot {
     elevatorRad?: number;
     /** Afterburner level, 0 to 1. */
     abLevel?: number;
+    /** The assist level, 1 to 4 (default 2, Standard); 0 is a spectator, who has no HUD. */
+    assist?: number;
     throttle?: number;
     flags?: number;
     flags2?: number;
@@ -109,6 +111,7 @@ export function makeSnapshot(s: FixtureSnapshot = {}): Uint8Array {
   dv.setFloat32(SNAPSHOT.O_G_LAGGED, o.gLagged ?? 1, true);
   dv.setFloat32(SNAPSHOT.O_GEAR_POS, o.gearPos ?? 1, true);
   dv.setFloat32(SNAPSHOT.O_AB_LEVEL, o.abLevel ?? 0, true);
+  dv.setUint8(SNAPSHOT.O_ASSIST, o.assist ?? 2);
   dv.setFloat32(SNAPSHOT.O_SURFACES, o.elevatorRad ?? 0, true);
   dv.setFloat32(SNAPSHOT.O_THROTTLE, o.throttle ?? 0.5, true);
   dv.setUint8(SNAPSHOT.O_FLAGS, o.flags ?? 0);

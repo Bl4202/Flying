@@ -28,6 +28,7 @@ const vec3 KEY_GLOBE = vec3(1.0, 0.0, 1.0);
 const vec3 KEY_MARKER = vec3(1.0, 1.0, 0.0);
 const vec3 KEY_MODEL = vec3(1.0, 0.5019608, 0.0);
 const vec3 KEY_COCKPIT = vec3(0.5019608, 0.0, 1.0);
+const vec3 KEY_HUD = vec3(1.0, 0.0, 0.0);
 const float SUN_DISC_COS = 0.99999;
 const float SUN_GLOW_POWER = 96.0;
 
