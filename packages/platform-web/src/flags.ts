@@ -19,6 +19,7 @@
  * | `g` | `off`, `reduced` or `full` (default): the g-effects dial |
  * | `arena` | `rugged` (default) or `plain`: the procedural test arena |
  * | `fly` | `1`: skip the first run and the main menu and start flying at once (`perf` and `script` imply it) |
+ * | `camera` | `cockpit` or `chase`: the camera a sortie starts in, in place of the player's setting |
  * | `script` | `circuit`: the virtual tester flies the circuit instead of the player (a test aid) |
  * | `res` | `WxH`, for example `1920x1080`: fixes the drawing buffer's size (perf and screenshot runs) |
  * | `quality` | `low`, `medium` or `high`: the graphics preset, in place of the one chosen (a test aid) |
@@ -64,6 +65,8 @@ export interface Flags {
   /** A scripted pilot in place of the player (the circuit the exit gate flies), if the URL says. */
   /** Start flying at once, with no first run or main menu (also implied by `perf` and `script`). */
   fly: boolean;
+  /** The camera a sortie starts in, if the URL says; otherwise the player's setting. */
+  camera: 'cockpit' | 'chase' | undefined;
   script: false | 'circuit';
   /** A fixed drawing-buffer size in pixels, if the URL says. */
   res: { width: number; height: number } | undefined;
@@ -96,6 +99,7 @@ const KNOWN = new Set([
   'g',
   'arena',
   'fly',
+  'camera',
   'script',
   'res',
   'quality',
@@ -123,6 +127,7 @@ export function defaultFlags(): Flags {
     g: undefined,
     arena: undefined,
     fly: false,
+    camera: undefined,
     script: false,
     res: undefined,
     quality: undefined,
@@ -251,6 +256,13 @@ export function parseFlags(search: string): Flags {
     flags.fly = true;
   } else if (fly !== null) {
     bad('fly', fly, '1');
+  }
+
+  const camera = params.get('camera');
+  if (camera === 'cockpit' || camera === 'chase') {
+    flags.camera = camera;
+  } else if (camera !== null) {
+    bad('camera', camera, 'cockpit or chase');
   }
 
   const script = params.get('script');

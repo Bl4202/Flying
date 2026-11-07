@@ -341,29 +341,58 @@ describe('the chase camera', () => {
   });
 
   describe('K4: lag and field of view', () => {
-    it('follows with a time constant of 0.8 s (within the 0.6 to 1.2 s range)', () => {
+    it('swings behind a turn with a time constant of 0.8 s (within the 0.6 to 1.2 s range)', () => {
       const rig = new CameraRig(COCKPIT, FLAT);
       const view = chase();
-      run(rig, aircraft(), view, 300);
-      const settled = [...rig.pose.eyeBf];
-      // Teleport nothing: slide the aircraft 100 m east and watch the camera catch up.
-      const moved = aircraft({ ownshipPosBf: new Float64Array([100, 0, 100]) });
-      const target = (settled[0] ?? 0) + 100;
+      const flying = (vx: number, vy: number): ReturnType<typeof aircraft> =>
+        aircraft({
+          ownshipVelBf: new Float32Array([vx, vy, 0]),
+          ownshipSpeed: Math.hypot(vx, vy),
+        });
+      run(rig, flying(0, 100), view, 300);
+      // Settled flying north: the camera is south of the aircraft.
+      const before = (rig.pose.eyeBf[0] ?? 0) - 0;
+      expect(Math.abs(before)).toBeLessThan(0.5);
+      // The aircraft turns to fly east at once. The camera's swing round it follows the turn.
+      const dist = view.chaseDistanceM;
       let t = 0;
       let reached = -1;
       for (let i = 0; i < 600; i++) {
-        rig.step(moved, view, 1 / 100);
+        rig.step(flying(100, 0), view, 1 / 100);
         t += 1 / 100;
-        if (
-          reached < 0 &&
-          (rig.pose.eyeBf[0] ?? 0) - (settled[0] ?? 0) >= 0.632 * (target - (settled[0] ?? 0))
-        ) {
-          reached = t;
-        }
+        // The aircraft sits at the origin (see `aircraft()`), so the eye is the offset itself.
+        if (reached < 0 && (rig.pose.eyeBf[0] ?? 0) <= -0.632 * dist) reached = t;
       }
       expect(CHASE_LAG_S).toBe(0.8);
       expect(reached).toBeGreaterThan(0.6);
       expect(reached).toBeLessThan(1.2);
+      // And it ends behind the aircraft's new heading.
+      expect(rig.pose.eyeBf[0] ?? 0).toBeCloseTo(-dist, 0);
+    });
+
+    it('trails the aircraft by the set distance at any speed: the lag is in the swing, not the distance', () => {
+      for (const speed of [0, 50, 180, CHASE_VMAX_MPS, 1500]) {
+        const rig = new CameraRig(COCKPIT, FLAT);
+        const view = chase();
+        view.chaseDistanceM = 45;
+        const moving = (x: number): ReturnType<typeof aircraft> =>
+          aircraft({
+            ownshipPosBf: new Float64Array([0, x, 3000]),
+            ownshipVelBf: new Float32Array([0, speed, 0]),
+            ownshipSpeed: speed,
+          });
+        let x = 0;
+        for (let i = 0; i < 600; i++) {
+          rig.step(moving(x), view, 1 / 60);
+          if (i < 599) x += speed / 60;
+        }
+        // `x` is where the aircraft was on the last step.
+        const eye = rig.pose.eyeBf;
+        const behind = Math.hypot(eye[0] ?? 0, (eye[1] ?? 0) - x, (eye[2] ?? 0) - 3000);
+        // 45 m back and a fifth of that up: sqrt(45^2 + 9^2).
+        expect(behind).toBeGreaterThan(Math.hypot(45, 9) - 0.5);
+        expect(behind).toBeLessThan(Math.hypot(45, 9) + 0.5);
+      }
     });
 
     it('widens the field of view by 8 degrees at top speed, and not at rest', () => {

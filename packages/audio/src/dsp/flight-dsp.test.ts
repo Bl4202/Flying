@@ -480,6 +480,32 @@ describe('the mix and the limiter', () => {
   });
 });
 
+describe('the cockpit mix as shipped follows the throttle', () => {
+  // The interior hum once sat at -34 dB, which the loudness offset lifted until it drowned the engine:
+  // the cockpit read about -20 dB at every throttle setting. This keeps the engine audible there.
+  const cockpitLevel = (core: number, running: boolean): number => {
+    const dsp = new FlightDsp(shipped);
+    const set = (): void => {
+      dsp.params[P.ENGINE_BITS] = running ? 1 : 0;
+      dsp.params[P.CORE] = core;
+      dsp.params[P.ON_GROUND] = 1;
+      dsp.params[P.GROUND_SPEED] = core * 60;
+      dsp.params[P.COCKPIT] = 1;
+    };
+    set();
+    const { left } = render(dsp, 4, set);
+    return levelDb(left.subarray(left.length - 48_000));
+  };
+
+  it('is much louder at military power than at idle, and idle louder than a stopped engine', () => {
+    const stopped = cockpitLevel(0, false);
+    const idle = cockpitLevel(0.06, true);
+    const military = cockpitLevel(1, true);
+    expect(military - idle).toBeGreaterThan(8);
+    expect(idle - stopped).toBeGreaterThan(3);
+  });
+});
+
 describe('A6: the cost of a render quantum', () => {
   it('stays under 0.21 ms (8 % of a core) for 128 frames, in the loudest state', () => {
     const dsp = new FlightDsp(profile);

@@ -4,14 +4,23 @@
  * the warning strip and the throttle, opens the menus, and attaches the debug overlay. Nothing
  * here is game logic; it only wires the parts together (the composition root's composition root).
  */
-import { NullAudioBackend, resumeOnFirstGesture } from '@flying/audio';
-import type { ActionId, PumpStats } from '@flying/input';
+import {
+  NullAudioBackend,
+  resumeOnFirstGesture,
+  WebAudioBackend,
+  webAudioSupported,
+  type FlightAudio,
+  type ToneOnset,
+} from '@flying/audio';
+import flightWorkletUrl from '@flying/audio/flight-processor?worker&url';
+import { ViewInput, type ActionId, type PumpStats, type ViewSettings } from '@flying/input';
 import { RenderClient, type PixelSummary } from '@flying/render';
 import { SHADERS } from '@flying/render/shader-sources';
 import type { RenderEvent, RenderStats } from '@flying/render/messages';
 import {
   defaultFlags,
   monotonicMs,
+  scriptUrl,
   type DeepFeatures,
   type Flags,
   type InstallPrompt,
@@ -52,18 +61,29 @@ import {
   type FlowState,
   type OverlayModel,
   type Settings,
+  type SettingsPatch,
   type SettingsStore,
   type StartTarget,
   type StringKey,
 } from '@flying/ui';
 import { FlightControls } from './controls.ts';
 import { MenuController } from './menus.ts';
+import { loadPresentation } from './presentation.ts';
+import {
+  busesOf,
+  qualityOf,
+  renderSettingsOf,
+  viewSettingsOf,
+  type BenchmarkPreset,
+} from './present-settings.ts';
+import { loadPresentBundle } from './present-bundle.ts';
 import { kindOfMapping, ScreenController } from './screens.ts';
 import { coreContentUrl, runSelfTestWorker, selfTestRequest, wasmUrl } from './selftest.ts';
 import { judgeSelfTest, goldenCheckpoint, SEED } from './selftest-judge.ts';
 import { sessionFromFlags, sessionOverrides } from './session.ts';
 import { StatusFeed } from './status-feed.ts';
 import { Supervisor } from './supervisor.ts';
+import { makeViewBuffer, ViewBridge } from './view-bridge.ts';
 
 export interface DemoRoots {
   /** Where the canvas goes. */
@@ -92,6 +112,8 @@ export interface DemoContext {
   perf: boolean;
   /** The stored benchmark result as `profile / preset`, for the overlay. */
   benchmarkSummary: string | undefined;
+  /** The preset the first-run benchmark chose, if it has run. */
+  benchmarkPreset: BenchmarkPreset | undefined;
   features: DeepFeatures;
   report: CompatReport;
   roots: DemoRoots;
@@ -130,6 +152,32 @@ export interface TestHooks {
   menu(): DemoMenu;
   /** The application state's name (`MAIN_MENU`, `DEMO`, ...). */
   flow(): string;
+  /** The sound: which backend, whether it runs, the output level, and the warning tones heard. */
+  audio(): TestAudio;
+  /** What the view is doing: the camera, the HUD's detail and brightness. */
+  view(): {
+    camera: string;
+    declutter: number;
+    brightness: number;
+    fovDeg: number;
+    lookYawRate: number;
+    lookPitchRate: number;
+    zoom: boolean;
+    freeLook: boolean;
+  };
+  /** Why the aircraft's presentation could not be loaded, if it could not. */
+  presentationError(): string | undefined;
+}
+
+export interface TestAudio {
+  kind: string;
+  state: string;
+  levelDb: number;
+  paramWrites: number;
+  workletError: string | undefined;
+  onsets: number;
+  lastOnset: ToneOnset | undefined;
+  muted: boolean;
 }
 
 export interface TestInput {
@@ -230,6 +278,18 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     }
   };
 
+  // The aircraft's presentation loads beside the workers; the game flies without it if it cannot.
+  const viewBuffer = makeViewBuffer(modes.snapshotChannel === 'shared');
+  const presentation = loadPresentation({
+    bundle: () => loadPresentBundle(),
+    pack: async () => {
+      const response = await fetch(coreContentUrl);
+      if (!response.ok)
+        throw new Error(`SYS-005: ${coreContentUrl} returned ${String(response.status)}`);
+      return new Uint8Array(await response.arrayBuffer());
+    },
+  });
+
   const [sim, render] = await Promise.all([
     SimClient.create({
       workerUrl: simWorkerUrl,
@@ -266,10 +326,37 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       flags,
       snapshot: snapshots.source,
       terrainPort: terrain.port2,
+      viewBuffer,
       onEvent: onRenderEvent,
       shaders: SHADERS,
     }),
   ]);
+
+  const loaded = await presentation;
+  if (loaded.render !== undefined && loaded.cockpit !== undefined) {
+    render.setPresentation(loaded.render);
+    render.setCockpit(loaded.cockpit);
+  } else {
+    toasts.show(t('toast.presentation-failed', { reason: loaded.error ?? '' }), 'warn');
+  }
+  const systemReducedMotion = (): boolean => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  render.setQuality(qualityOf(settings.value, ctx.benchmarkPreset));
+  render.setSettings(renderSettingsOf(settings.value));
+
+  // The sound: the real thing where the browser can run it and the aircraft has a profile.
+  const audio: FlightAudio =
+    loaded.audio !== undefined && webAudioSupported()
+      ? new WebAudioBackend({ profile: loaded.audio, workletUrl: scriptUrl(flightWorkletUrl) })
+      : new NullAudioBackend();
+  audio.setBuses(busesOf(settings.value));
+  const onsets: ToneOnset[] = [];
+  let onsetCount = 0;
+  audio.onOnset((onset) => {
+    onsetCount += 1;
+    onsets.push(onset);
+    if (onsets.length > 32) onsets.shift();
+  });
+  let audioMuted = false;
 
   /** The simulation runs unless the person, the page being hidden, or a menu holds it. */
   const syncHold = (): void => {
@@ -310,6 +397,30 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   };
 
   /**
+   * Applies the settings that change what is drawn and heard. `patch` is what the player just changed
+   * (undefined for all of it): only that part of the view is touched, so a setting changed in a menu
+   * does not undo a HUD brightness the player set with a key.
+   */
+  const applyPresentation = (next: Readonly<Settings>, patch?: SettingsPatch): void => {
+    render.setSettings(renderSettingsOf(next));
+    if (patch === undefined || patch.video !== undefined) {
+      render.setQuality(qualityOf(next, ctx.benchmarkPreset));
+    }
+    const all = viewSettingsOf(next, systemReducedMotion());
+    const changed: ViewSettings = {};
+    if (patch === undefined || patch.fovDeg !== undefined) changed.fovDeg = all.fovDeg;
+    if (patch === undefined || patch.cameraShake !== undefined)
+      changed.shakePercent = all.shakePercent;
+    if (patch === undefined || patch.reducedMotion !== undefined)
+      changed.reducedMotion = all.reducedMotion;
+    if (patch === undefined || patch.hud?.brightness !== undefined)
+      changed.hudBrightness = all.hudBrightness;
+    view.configure(changed);
+    if (patch?.hud?.declutter !== undefined) view.setDeclutter(next.hud.declutter);
+    audio.setBuses(busesOf(next));
+  };
+
+  /**
    * Fly: the main menu's choice becomes a sortie. The core is idle (after boot or a reset), so it is
    * given the session and the script, the pump forgets the last sortie's spawn (a fresh core numbers
    * its spawns from 1 again), and the clock starts. The click that brought us here is the gesture
@@ -329,6 +440,9 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       controls.applySettings(now);
       controls.pump.setContext('flight');
     }
+    view.setCamera(flags.camera ?? now.camera);
+    view.setDeclutter(now.hud.declutter);
+    applyPresentation(now);
     paused = false;
     menuHold = false;
     simHeld = false;
@@ -358,7 +472,8 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     controls?.applySettings(next);
     controls?.pump.requestAssist(next.assist);
     controls?.pump.setRespawnKind(next.spawn + 1);
-    render.setSettings({ gfxStrength: next.gfxStrength });
+    applyPresentation(next);
+    view.setDeclutter(next.hud.declutter);
   };
 
   if (!scripted) {
@@ -405,7 +520,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       },
       onSettings: (patch, next) => {
         c.applyChange(patch, next);
-        if (patch.gfxStrength !== undefined) render.setSettings({ gfxStrength: patch.gfxStrength });
+        applyPresentation(next, patch);
       },
       nowMs: monotonicMs,
     });
@@ -450,6 +565,18 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       onFly: fly,
       save: downloadText,
       info: { storage: settings.backend, build: __BUILD_ID__ },
+      ...(audio.kind === 'webaudio'
+        ? {
+            audio: {
+              available: () => audio.state === 'suspended',
+              run: () => {
+                void audio.resume().then(() => {
+                  screens?.refresh();
+                });
+              },
+            },
+          }
+        : {}),
       install: {
         available: () => ctx.install.available,
         run: () => {
@@ -477,10 +604,30 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     if (!flying) c.pump.setContext('menu');
   }
 
+  // The view: what the player does with the camera and the HUD goes to the renderer, never the sim.
+  const initial = menus?.settings() ?? settings.value;
+  const view = new ViewBridge({
+    input: controls?.pump.view ?? new ViewInput(),
+    buffer: viewBuffer,
+    send: (state) => {
+      render.setView(state);
+    },
+    requestFrame: (callback) => requestAnimationFrame(callback),
+    cancelFrame: (id) => {
+      cancelAnimationFrame(id);
+    },
+    onCamera: (camera) => {
+      audio.setCamera(camera);
+    },
+  });
+  applyPresentation(initial);
+  view.setCamera(flags.camera ?? initial.camera);
+  view.setDeclutter(initial.hud.declutter);
+  view.start();
+
   // The warning strip and the state the pump needs come from the aircraft's snapshot. A scripted
   // pilot (not a performance run) gets the strip too, so the circuit can be watched.
   if (!ctx.perf) {
-    render.setSettings({ gfxStrength: settings.value.gfxStrength });
     const s = new WarningStrip(roots.strip);
     strip = s;
     let appliedStart = false;
@@ -494,6 +641,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       },
       onStatus: (status, observation) => {
         controls?.pump.observe(observation);
+        audio.update(status);
         if (!appliedStart && controls && menus) {
           // The mouse aim starts from where the nose points, so wait for the first snapshot.
           appliedStart = true;
@@ -510,7 +658,6 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   }
 
   // Audio waits for a gesture; the null backend only records that it was asked.
-  const audio = new NullAudioBackend();
   const cancelAudio = resumeOnFirstGesture(audio, window);
 
   /** Paused by the page being hidden (not by the person), so showing it again resumes. */
@@ -524,6 +671,10 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   };
   // A hidden tab pauses the sim, so nothing runs where nobody can see it (GDD 5.6, single-player).
   const onVisibility = (): void => {
+    if (settings.value.audio.muteWhenHidden) {
+      audioMuted = document.visibilityState === 'hidden';
+      audio.setMuted(audioMuted);
+    }
     if (document.visibilityState === 'hidden') {
       if (!paused) {
         pausedByHiding = true;
@@ -607,6 +758,10 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     padRevision = revision;
     if (screens?.firstRun.isOpen === true) screens.firstRun.refresh();
   }, 500);
+  // The browser may let the sound start on its own (a key press anywhere): the menu's row follows.
+  const soundWatch = window.setInterval(() => {
+    if (screens?.menu.isOpen === true) screens.menu.refresh();
+  }, 500);
 
   if (flying) sim.start();
   else screens?.show(ctx.flow.state());
@@ -652,6 +807,27 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
             },
       menu: () => menus?.current ?? null,
       flow: () => ctx.flow.state().name,
+      audio: () => ({
+        kind: audio.kind,
+        state: audio.state,
+        levelDb: audio instanceof WebAudioBackend ? audio.levelDb() : -200,
+        paramWrites: audio instanceof WebAudioBackend ? audio.paramWrites : 0,
+        workletError: audio instanceof WebAudioBackend ? audio.workletError : undefined,
+        onsets: onsetCount,
+        lastOnset: onsets.at(-1),
+        muted: audioMuted,
+      }),
+      view: () => ({
+        camera: view.camera,
+        declutter: view.state.hudDeclutter,
+        brightness: view.state.hudBrightness,
+        fovDeg: view.state.fovDeg,
+        lookYawRate: view.state.lookYawRate,
+        lookPitchRate: view.state.lookPitchRate,
+        zoom: view.state.zoom,
+        freeLook: view.state.freeLook,
+      }),
+      presentationError: () => loaded.error,
     };
     (window as unknown as { __flying?: TestHooks }).__flying = hooks;
   }
@@ -660,6 +836,8 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     delete roots.stage.dataset['state'];
     window.clearInterval(watchdog);
     window.clearInterval(padWatch);
+    window.clearInterval(soundWatch);
+    view.stop();
     removeHotkey();
     document.removeEventListener('visibilitychange', onVisibility);
     feed?.stop();

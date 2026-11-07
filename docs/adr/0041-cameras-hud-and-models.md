@@ -39,7 +39,14 @@ velocity means nothing, blended between), 45 m behind (40 to 150, a setting) and
 above (a design choice; GDD 54.11's 25 per cent is the third-person camera's). It follows with a
 first-order lag of 0.8 s (the range is 0.6 to 1.2), looks at the aircraft with the horizon level, and
 widens the field of view by 8 degrees towards the aircraft's top speed (none with reduced motion).
-Free look orbits it. It snaps when the aircraft jumps (a respawn). Near plane 0.5 m: GDD 44.8's 5 m
+Free look orbits it.
+
+The lag is on the camera's **offset from the aircraft**, so it governs how the camera swings round
+behind a turn, not how far behind it trails. The first version lagged the camera's absolute position,
+which at speed leaves it `speed x lag` behind the set distance (144 m at 180 m/s, 270 m at top speed):
+the aircraft shrank to a speck and was found only on the first look at the running game. A test now
+flies at 0, 50, 180, top speed and 1 500 m/s and checks that the camera is 45 m back and 9 m up at each.
+A respawn moves the aircraft and not the offset, so there is nothing to snap. Near plane 0.5 m: GDD 44.8's 5 m
 would clip the ground when the camera is clamped 1.5 m above it, as v0.1b's value already did
 (a clarification).
 

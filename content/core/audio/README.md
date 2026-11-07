@@ -38,6 +38,8 @@ chase views (GDD 56.6).
 | 2026-11-03 | `chase_offset_db` (new) -20 | chase mix with no offset: +1.49 LUFS, +3.57 dBTP (the soft limiter pinned); at -20: -15.02 LUFS, -4.56 dBTP |
 | 2026-11-03 | DSP: whine level scales as (rpm / `military_rpm`)^5 (the idle-to-military step was 1.7 dB, found by `?selftest=audio`) | cockpit -17.05 LUFS, chase -17.13 LUFS |
 | 2026-11-03 | `level_offset_db` 15.4 → 16.4 | cockpit -16.05 LUFS, -4.03 dBTP; chase -16.13 LUFS, -3.6 dBTP |
+| 2026-11-07 | `interior_hum_db` -34 → -58 (the browser run showed the cockpit at about -20 dB at every throttle: stopped -20.2, idle -20.1, military -18.7, because the hum, lifted by the offset, drowned the engine); after: stopped -42, idle -36, half -31, military -24 (ground, cockpit) | cockpit -19.48 LUFS before re-tuning |
+| 2026-11-07 | `level_offset_db` 16.4 → 19.9 and `chase_offset_db` -20 → -23.5 (the hum had been holding the cockpit figure up; the chase view has no hum) | cockpit -15.98 LUFS, -2.60 dBTP; chase -16.13 LUFS, -3.67 dBTP |
 
 `level_offset_db` lifts the aircraft's voices only (the schema says so); the warning tones keep their
 own levels, which are relative to the master. `chase_offset_db` lowers them in the chase view, which

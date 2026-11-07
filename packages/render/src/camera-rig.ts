@@ -72,8 +72,6 @@ const ARM_STEP_M = 4;
 const ARM_CLEARANCE_M = 2;
 /** The camera is not pulled closer to the aircraft than this, metres. */
 const ARM_MIN_M = 6;
-/** A jump larger than this, metres, is a teleport (a respawn): the chase camera snaps. */
-const TELEPORT_M = 2000;
 /** Free-look orbit pitch limit, radians. */
 const ORBIT_PITCH_MAX = 80 * DEG;
 
@@ -181,6 +179,7 @@ const S_OMEGA = 3;
 const R_MOUSE_YAW = 12;
 const R_MOUSE_PITCH = 13;
 const R_RECENTRE = 14;
+/** The chase camera's offset from the aircraft (BF, metres): it is this that lags, not the position. */
 const R_CAM_X = 15;
 const R_CAM_Y = 16;
 const R_CAM_Z = 17;
@@ -473,25 +472,28 @@ export class CameraRig {
     const ty = py + hy * cosP + uy * lift;
     const tz = pz + hz * cosP + uz * lift;
 
-    // Follow with a lag; snap when there was no camera yet or the aircraft jumped (a respawn).
+    // Follow with a lag. The lag is on the camera's *offset* from the aircraft, so it swings behind a
+    // turn with a time constant of CHASE_LAG_S but trails by the set distance at any speed (lagging
+    // the position instead would leave the camera `speed x lag` behind: 144 m at 180 m/s). Placed
+    // afresh when there was no camera yet. A respawn moves the aircraft, not the offset.
     const placed = ((r[R_FLAGS] ?? 0) & 2) !== 0;
-    const cx0 = r[R_CAM_X] ?? 0;
-    const cy0 = r[R_CAM_Y] ?? 0;
-    const cz0 = r[R_CAM_Z] ?? 0;
-    if (!placed || Math.hypot(tx - cx0, ty - cy0, tz - cz0) > TELEPORT_M) {
-      r[R_CAM_X] = tx;
-      r[R_CAM_Y] = ty;
-      r[R_CAM_Z] = tz;
+    const wx = tx - px;
+    const wy = ty - py;
+    const wz = tz - pz;
+    if (!placed) {
+      r[R_CAM_X] = wx;
+      r[R_CAM_Y] = wy;
+      r[R_CAM_Z] = wz;
       r[R_FLAGS] = (r[R_FLAGS] ?? 0) | 2;
     } else {
       const k = 1 - Math.exp(-dt / CHASE_LAG_S);
-      r[R_CAM_X] = cx0 + (tx - cx0) * k;
-      r[R_CAM_Y] = cy0 + (ty - cy0) * k;
-      r[R_CAM_Z] = cz0 + (tz - cz0) * k;
+      r[R_CAM_X] = (r[R_CAM_X] ?? 0) + (wx - (r[R_CAM_X] ?? 0)) * k;
+      r[R_CAM_Y] = (r[R_CAM_Y] ?? 0) + (wy - (r[R_CAM_Y] ?? 0)) * k;
+      r[R_CAM_Z] = (r[R_CAM_Z] ?? 0) + (wz - (r[R_CAM_Z] ?? 0)) * k;
     }
-    let ex = r[R_CAM_X];
-    let ey = r[R_CAM_Y];
-    let ez = r[R_CAM_Z];
+    let ex = px + r[R_CAM_X];
+    let ey = py + r[R_CAM_Y];
+    let ez = pz + r[R_CAM_Z];
 
     // The arm: from the aircraft towards the camera, marched against the terrain. If the ground
     // rises through it the camera comes in to just before that point (not closer than ARM_MIN_M).

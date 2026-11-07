@@ -214,6 +214,27 @@ declare global {
         | undefined;
       menu(): null | 'pause' | 'controls';
       flow(): string;
+      audio(): {
+        kind: string;
+        state: string;
+        levelDb: number;
+        paramWrites: number;
+        workletError: string | undefined;
+        onsets: number;
+        lastOnset: { tone: number; time: number } | undefined;
+        muted: boolean;
+      };
+      view(): {
+        camera: string;
+        declutter: number;
+        brightness: number;
+        fovDeg: number;
+        lookYawRate: number;
+        lookPitchRate: number;
+        zoom: boolean;
+        freeLook: boolean;
+      };
+      presentationError(): string | undefined;
     };
   }
 }
