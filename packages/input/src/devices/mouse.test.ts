@@ -129,6 +129,16 @@ describe('MouseDevice', () => {
     expect(r.mouse.isDown(2)).toBe(false);
   });
 
+  it('tracks the other buttons without the lock, so the right button can zoom with the mouse mode off', () => {
+    const r = rig();
+    r.target.dispatchEvent(event('pointerdown', { button: 2, timeStamp: 1 }));
+    expect([r.mouse.isDown(0), r.mouse.isDown(2)]).toEqual([false, true]);
+    r.target.dispatchEvent(event('pointerup', { button: 2, timeStamp: 2 }));
+    expect(r.mouse.isDown(2)).toBe(false);
+    r.target.dispatchEvent(event('pointerdown', { button: 1, timeStamp: 3 }));
+    expect(r.mouse.isDown(1)).toBe(true);
+  });
+
   it('counts wheel notches of 100 px, with fractions carried over, and claims the wheel', () => {
     const r = rig();
     r.lock();

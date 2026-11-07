@@ -3,6 +3,7 @@
 // (or the worker) for those.
 export * from './camera.ts';
 export * from './gpu-bench.ts';
+export { HUD_PALETTES, type HudPalette } from './hud/hud.ts';
 export * from './interp.ts';
 export * from './main-thread-host.ts';
 export * from './markers.ts';
@@ -17,3 +18,6 @@ export * from './scene.ts';
 export * from './terrain-mesh.ts';
 export * from './webgl2-renderer.ts';
 export * from './webgpu-renderer.ts';
+export * from './camera-rig.ts';
+export * from './quality.ts';
+export * from './present.ts';

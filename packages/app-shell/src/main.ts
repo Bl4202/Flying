@@ -216,6 +216,7 @@ async function main(): Promise<void> {
       benchmarkSummary: stored
         ? `${stored.classification.profile} / ${stored.classification.preset}`
         : undefined,
+      benchmarkPreset: stored?.classification.preset,
       kv,
       settings,
       start,

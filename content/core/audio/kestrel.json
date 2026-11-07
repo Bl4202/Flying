@@ -55,7 +55,7 @@
   "cockpit": {
     "canopy_lowpass_hz": 3000,
     "canopy_attenuation_db": -18,
-    "interior_hum_db": -34,
+    "interior_hum_db": -58,
     "interior_hum_hz": 120
   },
   "warnings": {
@@ -88,7 +88,7 @@
   },
   "mix": {
     "duck_db": -6,
-    "level_offset_db": 16.4,
-    "chase_offset_db": -20
+    "level_offset_db": 19.9,
+    "chase_offset_db": -23.5
   }
 }

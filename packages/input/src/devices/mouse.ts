@@ -152,11 +152,16 @@ export class MouseDevice implements MouseSource {
       }
       onEvent?.(p.timeStamp);
     };
+    // Without the lock only the buttons that are not the primary one count: the right button is the
+    // zoom, and the mouse mode that locks the pointer is off by default. The primary button's click is
+    // the one that asks for the lock, so it is not a control until the lock is held. Motion and the
+    // wheel always need the lock.
     const onDown = (e: Event): void => {
-      if (!this.#locked) return;
       const p = e as unknown as PointerEventLike;
-      this.#buttons |= 1 << (p.button ?? 0);
-      onEvent?.(p.timeStamp);
+      const button = p.button ?? 0;
+      if (!this.#locked && button === 0) return;
+      this.#buttons |= 1 << button;
+      if (this.#locked) onEvent?.(p.timeStamp);
     };
     const onUp = (e: Event): void => {
       const p = e as unknown as PointerEventLike;

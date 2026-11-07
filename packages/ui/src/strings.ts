@@ -195,6 +195,7 @@ const EN = {
   'toast.mouse-mode': 'Mouse: {mode}',
   'toast.mouse-raw':
     'Your browser would not give raw mouse motion, so the mouse may feel accelerated.',
+  'toast.presentation-failed': "The aircraft's HUD, model and sound could not be loaded: {reason}",
   'toast.paused': 'Paused',
   'toast.resumed': 'Resumed',
 
