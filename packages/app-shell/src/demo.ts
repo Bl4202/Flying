@@ -9,7 +9,15 @@ import type { ActionId, PumpStats } from '@flying/input';
 import { RenderClient, type PixelSummary } from '@flying/render';
 import { SHADERS } from '@flying/render/shader-sources';
 import type { RenderEvent, RenderStats } from '@flying/render/messages';
-import { monotonicMs, type DeepFeatures, type Flags, type Kv } from '@flying/platform-web';
+import {
+  defaultFlags,
+  monotonicMs,
+  type DeepFeatures,
+  type Flags,
+  type InstallPrompt,
+  type Kv,
+  type UpdateWatcher,
+} from '@flying/platform-web';
 import {
   type AircraftStatus,
   makeInputChannel,
@@ -34,7 +42,6 @@ import {
   ControlsStore,
   DebugOverlay,
   installOverlayHotkey,
-  SettingsStore,
   t,
   ToastHost,
   WarningStrip,
@@ -42,11 +49,16 @@ import {
   type DemoMenu,
   type FatalSource,
   type FlowEvent,
+  type FlowState,
   type OverlayModel,
+  type Settings,
+  type SettingsStore,
+  type StartTarget,
   type StringKey,
 } from '@flying/ui';
 import { FlightControls } from './controls.ts';
 import { MenuController } from './menus.ts';
+import { kindOfMapping, ScreenController } from './screens.ts';
 import { coreContentUrl, runSelfTestWorker, selfTestRequest, wasmUrl } from './selftest.ts';
 import { judgeSelfTest, goldenCheckpoint, SEED } from './selftest-judge.ts';
 import { sessionFromFlags, sessionOverrides } from './session.ts';
@@ -68,6 +80,14 @@ export interface DemoContext {
   flags: Flags;
   /** Where the settings and the control profiles are kept. */
   kv: Kv;
+  /** The player's settings, already loaded. */
+  settings: SettingsStore;
+  /** The browser's offer to install the game, if it makes one. */
+  install: InstallPrompt;
+  /** A newer build waiting to take over; undefined without a Service Worker (development). */
+  update: UpdateWatcher | undefined;
+  /** Where the visit starts: the first run, the main menu, or the flight (`?fly=1`, a scripted run). */
+  start: StartTarget;
   /** A performance run: the scripted pilot flies, and the keyboard, mouse and pads are left alone. */
   perf: boolean;
   /** The stored benchmark result as `profile / preset`, for the overlay. */
@@ -75,7 +95,7 @@ export interface DemoContext {
   features: DeepFeatures;
   report: CompatReport;
   roots: DemoRoots;
-  flow: { dispatch(event: FlowEvent): void };
+  flow: { dispatch(event: FlowEvent): FlowState; state(): FlowState };
   /** A part died: show the fatal screen. */
   fail(source: FatalSource, code: string, detail: string): void;
 }
@@ -108,6 +128,8 @@ export interface TestHooks {
   input(): TestInput | undefined;
   /** Which menu is open. */
   menu(): DemoMenu;
+  /** The application state's name (`MAIN_MENU`, `DEMO`, ...). */
+  flow(): string;
 }
 
 export interface TestInput {
@@ -141,6 +163,18 @@ export function codeOf(message: string, fallback: string): string {
   return /SYS-\d{3}/.exec(message)?.[0] ?? fallback;
 }
 
+/** Gives the player `text` as a file to keep. */
+function downloadText(name: string, text: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function startDemo(ctx: DemoContext): Promise<Demo> {
   const { flags, features, report, roots } = ctx;
   const modes = report.modes;
@@ -155,14 +189,16 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   const terrain = new MessageChannel();
 
   // What the player chose last time, and the sortie it makes with the URL laid over it.
-  const settings = new SettingsStore(ctx.kv);
+  const settings = ctx.settings;
   const controlsStore = new ControlsStore(ctx.kv);
-  await Promise.all([settings.load(), controlsStore.load()]);
+  await controlsStore.load();
   /** A scripted pilot flies (a performance run, or the circuit): the devices are left alone. */
   const scripted = ctx.perf || flags.script !== false;
   const session = sessionFromFlags(flags, ctx.perf, settings.value);
   const overrides = scripted ? {} : sessionOverrides(session, settings.value);
 
+  /** A sortie is running. Until the player chooses Fly the core is idle and nothing is held or paused. */
+  let flying = ctx.start === 'fly';
   let latestSim: SimStats | undefined;
   let latestRender: RenderStats | undefined;
   /** Held by the person (the overlay, a test) or by the page being hidden. */
@@ -237,6 +273,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
 
   /** The simulation runs unless the person, the page being hidden, or a menu holds it. */
   const syncHold = (): void => {
+    if (!flying) return;
     const want = paused || menuHold;
     if (want === simHeld) return;
     simHeld = want;
@@ -251,11 +288,14 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   let menus: MenuController | undefined;
   let strip: WarningStrip | undefined;
   let feed: StatusFeed | undefined;
+  let screens: ScreenController | undefined;
+  const unsubscribers: (() => void)[] = [];
 
   /** What the pump hands to the page: the keys only the page can act on. */
   const onAction = (id: ActionId): void => {
     if (id === 'system.pause') {
-      menus?.toggle();
+      if (screens?.active === true) screens.escape();
+      else if (flying) menus?.toggle();
     } else if (id === 'flight.mouse_mode' && controls && menus) {
       const mode = controls.pump.mouseMode;
       menus.persist({ mouseMode: mode });
@@ -267,6 +307,58 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       const label = ASSIST_LABELS[level];
       if (label !== undefined) toasts.show(t('toast.assist', { name: t(label) }));
     }
+  };
+
+  /**
+   * Fly: the main menu's choice becomes a sortie. The core is idle (after boot or a reset), so it is
+   * given the session and the script, the pump forgets the last sortie's spawn (a fresh core numbers
+   * its spawns from 1 again), and the clock starts. The click that brought us here is the gesture
+   * that lets audio and pointer lock start.
+   */
+  const fly = (): void => {
+    if (flying) return;
+    // What the menu shows is what flies: the settings with the URL's (until the player changed them)
+    // laid over them, so the URL flags are not applied a second time over the player's choices.
+    const now = menus?.settings() ?? settings.value;
+    sim.configure(
+      sessionFromFlags(defaultFlags(), false, now),
+      flags.script === 'circuit' ? INPUT_SCRIPT.CIRCUIT : INPUT_SCRIPT.NONE,
+    );
+    if (controls) {
+      controls.pump.newSortie();
+      controls.applySettings(now);
+      controls.pump.setContext('flight');
+    }
+    paused = false;
+    menuHold = false;
+    simHeld = false;
+    flying = true;
+    sim.start();
+    void audio.resume();
+    screens?.closeAll();
+    ctx.flow.dispatch({ type: 'fly' });
+    controls?.syncMouseLock();
+  };
+
+  /** The pause menu's Main menu: the sortie is over, the core goes back to idle, the menu shows. */
+  const toMainMenu = (): void => {
+    if (!flying) return;
+    flying = false;
+    paused = false;
+    menuHold = false;
+    simHeld = false;
+    sim.reset();
+    controls?.pump.setContext('menu');
+    controls?.releaseMouse();
+    screens?.show(ctx.flow.dispatch({ type: 'main-menu' }));
+  };
+
+  /** Applies every setting to the parts that read them (an import, a reset). */
+  const applyAllSettings = (next: Readonly<Settings>): void => {
+    controls?.applySettings(next);
+    controls?.pump.requestAssist(next.assist);
+    controls?.pump.setRespawnKind(next.spawn + 1);
+    render.setSettings({ gfxStrength: next.gfxStrength });
   };
 
   if (!scripted) {
@@ -307,6 +399,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       syncMouseLock: () => {
         c.syncMouseLock();
       },
+      onMainMenu: toMainMenu,
       onProfile: (profile) => {
         c.useProfile(profile);
       },
@@ -317,6 +410,71 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       nowMs: monotonicMs,
     });
     c.start();
+
+    const m = menus;
+    screens = new ScreenController({
+      root: roots.menu,
+      settings: () => m.settings(),
+      onChange: (patch) => {
+        m.change(patch);
+      },
+      onReplace: (next) => {
+        void settings.replace(next);
+        applyAllSettings(next);
+      },
+      onReset: () => {
+        void settings.reset().then(applyAllSettings);
+      },
+      onSetupDone: () => {
+        void settings.update({ setupDone: true });
+        // Ask the browser to keep the settings and profiles (ADR-19); it may say no, or have no storage API.
+        try {
+          void navigator.storage.persist().catch(() => false);
+        } catch {
+          // An insecure context or an old browser: the settings are kept as well as it allows.
+        }
+      },
+      flow: ctx.flow,
+      store: controlsStore,
+      devices: () =>
+        c.pads.slots
+          .filter((slot) => slot.present)
+          .map((slot) => ({ kind: kindOfMapping(slot.mapping), name: slot.device })),
+      profile: () => c.pump.profile,
+      useProfile: (profile) => {
+        c.useProfile(profile);
+      },
+      openControls: (back) => {
+        m.openControlsOver(back);
+      },
+      onFly: fly,
+      save: downloadText,
+      info: { storage: settings.backend, build: __BUILD_ID__ },
+      install: {
+        available: () => ctx.install.available,
+        run: () => {
+          void ctx.install.prompt();
+        },
+      },
+      ...(ctx.update === undefined
+        ? {}
+        : {
+            update: {
+              available: () => ctx.update?.available === true,
+              run: () => {
+                ctx.update?.apply();
+              },
+            },
+          }),
+    });
+    // The menu's Install and update rows come and go with the browser and the Service Worker.
+    const refreshScreens = (): void => {
+      screens?.refresh();
+    };
+    unsubscribers.push(ctx.install.onChange(refreshScreens));
+    if (ctx.update !== undefined) unsubscribers.push(ctx.update.onChange(refreshScreens));
+    // Before the first run and the menu, the keyboard is for the menus, not for flying.
+    if (!flying) c.pump.setContext('menu');
   }
 
   // The warning strip and the state the pump needs come from the aircraft's snapshot. A scripted
@@ -358,7 +516,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   /** Paused by the page being hidden (not by the person), so showing it again resumes. */
   let pausedByHiding = false;
   const setPaused = (value: boolean, quiet = false): void => {
-    if (value === paused) return;
+    if (!flying || value === paused) return;
     paused = value;
     syncHold();
     ctx.flow.dispatch({ type: value ? 'pause' : 'resume' });
@@ -441,8 +599,17 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   const watchdog = window.setInterval(() => {
     supervisor.check();
   }, 1000);
+  // A pad plugged in while the first run asks what the player flies with shows up there.
+  let padRevision = controls?.pads.revision ?? 0;
+  const padWatch = window.setInterval(() => {
+    const revision = controls?.pads.revision ?? 0;
+    if (revision === padRevision) return;
+    padRevision = revision;
+    if (screens?.firstRun.isOpen === true) screens.firstRun.refresh();
+  }, 500);
 
-  sim.start();
+  if (flying) sim.start();
+  else screens?.show(ctx.flow.state());
   if (flags.debug !== false) overlay.show();
   // Tests (and the curious) can tell that everything is wired and the loop is going.
   roots.stage.dataset['state'] = 'running';
@@ -484,6 +651,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
               stats: controls.pump.stats,
             },
       menu: () => menus?.current ?? null,
+      flow: () => ctx.flow.state().name,
     };
     (window as unknown as { __flying?: TestHooks }).__flying = hooks;
   }
@@ -491,11 +659,14 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   const stop = (): void => {
     delete roots.stage.dataset['state'];
     window.clearInterval(watchdog);
+    window.clearInterval(padWatch);
     removeHotkey();
     document.removeEventListener('visibilitychange', onVisibility);
     feed?.stop();
     controls?.destroy();
     menus?.destroy();
+    for (const off of unsubscribers.splice(0)) off();
+    screens?.destroy();
     strip?.destroy();
     cancelAudio();
     overlay.destroy();

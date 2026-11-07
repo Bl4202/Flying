@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { flowReducer, INITIAL_FLOW, type FlowEvent, type FlowState } from './gameflow.ts';
+import {
+  FIRST_RUN_STEPS,
+  flowReducer,
+  INITIAL_FLOW,
+  type FlowEvent,
+  type FlowState,
+} from './gameflow.ts';
 
 function run(events: FlowEvent[], from: FlowState = INITIAL_FLOW): FlowState {
   return events.reduce(flowReducer, from);
@@ -28,7 +34,7 @@ describe('gameflow', () => {
 
   it('waits for the person when the screen is shown', () => {
     const waiting = run([BEGIN, OK_SCREEN]);
-    expect(waiting).toEqual({ name: 'COMPAT_CHECK', phase: 'waiting' });
+    expect(waiting).toEqual({ name: 'COMPAT_CHECK', phase: 'waiting', after: 'fly' });
     expect(flowReducer(waiting, { type: 'acknowledge' })).toEqual({
       name: 'DEMO',
       paused: false,
@@ -129,14 +135,22 @@ describe('gameflow', () => {
       BEGIN,
       OK_SILENT,
       OK_SCREEN,
+      { ...OK_SILENT, after: 'first-run' },
+      { ...OK_SCREEN, after: 'menu' },
       FATAL_CHECK,
       { type: 'acknowledge' },
+      { type: 'first-run-step', step: 'assist' },
+      { type: 'first-run-done' },
+      { type: 'run-setup' },
+      { type: 'menu-screen', screen: 'settings' },
+      { type: 'fly' },
+      { type: 'main-menu' },
       { type: 'pause' },
       { type: 'resume' },
       { type: 'menu', menu: 'pause' },
       FATAL_RUNTIME,
     ];
-    const names = new Set(['BOOT', 'COMPAT_CHECK', 'DEMO', 'FATAL']);
+    const names = new Set(['BOOT', 'COMPAT_CHECK', 'FIRST_RUN', 'MAIN_MENU', 'DEMO', 'FATAL']);
     const seen = new Set<string>();
     const walk = (s: FlowState, depth: number): void => {
       seen.add(s.name);
@@ -145,6 +159,108 @@ describe('gameflow', () => {
       for (const e of events) walk(flowReducer(s, e), depth - 1);
     };
     walk(INITIAL_FLOW, 4);
-    expect([...seen].sort()).toEqual(['BOOT', 'COMPAT_CHECK', 'DEMO', 'FATAL']);
+    expect([...seen].sort()).toEqual([
+      'BOOT',
+      'COMPAT_CHECK',
+      'DEMO',
+      'FATAL',
+      'FIRST_RUN',
+      'MAIN_MENU',
+    ]);
+  });
+});
+
+describe('gameflow: first run and the main menu', () => {
+  const to = (after: 'first-run' | 'menu' | 'fly'): FlowEvent => ({
+    type: 'check-done',
+    verdict: 'ok',
+    showScreen: false,
+    after,
+  });
+
+  it('goes where the check says: first run, the menu, or straight to the flight', () => {
+    expect(run([BEGIN, to('first-run')])).toEqual({ name: 'FIRST_RUN', step: 'device' });
+    expect(run([BEGIN, to('menu')])).toEqual({ name: 'MAIN_MENU', screen: 'home' });
+    expect(run([BEGIN, to('fly')])).toEqual({ name: 'DEMO', paused: false, menu: null });
+  });
+
+  it('shows the compat screen first when it has to, and remembers where to go on continuing', () => {
+    const waiting = run([BEGIN, { ...OK_SCREEN, after: 'first-run' }]);
+    expect(waiting).toEqual({ name: 'COMPAT_CHECK', phase: 'waiting', after: 'first-run' });
+    expect(flowReducer(waiting, { type: 'acknowledge' })).toEqual({
+      name: 'FIRST_RUN',
+      step: 'device',
+    });
+    expect(
+      flowReducer(run([BEGIN, { ...OK_SCREEN, after: 'menu' }]), { type: 'acknowledge' }),
+    ).toEqual({ name: 'MAIN_MENU', screen: 'home' });
+  });
+
+  it('moves through the first-run steps in any order the page asks, and ends at the menu', () => {
+    let s = run([BEGIN, to('first-run')]);
+    for (const step of FIRST_RUN_STEPS) {
+      s = flowReducer(s, { type: 'first-run-step', step });
+      expect(s).toEqual({ name: 'FIRST_RUN', step });
+    }
+    const same = flowReducer(s, { type: 'first-run-step', step: 'done' });
+    expect(same).toBe(s);
+    expect(flowReducer(s, { type: 'first-run-done' })).toEqual({
+      name: 'MAIN_MENU',
+      screen: 'home',
+    });
+    // Skipping from the first step is the same event.
+    expect(flowReducer(run([BEGIN, to('first-run')]), { type: 'first-run-done' })).toEqual({
+      name: 'MAIN_MENU',
+      screen: 'home',
+    });
+  });
+
+  it('switches between the menu home and its settings, and runs the setup again from there', () => {
+    const home = run([BEGIN, to('menu')]);
+    const settings = flowReducer(home, { type: 'menu-screen', screen: 'settings' });
+    expect(settings).toEqual({ name: 'MAIN_MENU', screen: 'settings' });
+    expect(flowReducer(settings, { type: 'menu-screen', screen: 'settings' })).toBe(settings);
+    expect(flowReducer(settings, { type: 'menu-screen', screen: 'home' })).toEqual(home);
+    expect(flowReducer(settings, { type: 'run-setup' })).toEqual({
+      name: 'FIRST_RUN',
+      step: 'device',
+    });
+  });
+
+  it("flies from the menu, and the pause menu's main menu comes back to it", () => {
+    const flying = run([BEGIN, to('menu'), { type: 'fly' }]);
+    expect(flying).toEqual({ name: 'DEMO', paused: false, menu: null });
+    const paused = flowReducer(flying, { type: 'menu', menu: 'pause' });
+    expect(flowReducer(paused, { type: 'main-menu' })).toEqual({
+      name: 'MAIN_MENU',
+      screen: 'home',
+    });
+    // A second sortie is the same path again.
+    expect(run([{ type: 'main-menu' }, { type: 'fly' }], paused)).toEqual({
+      name: 'DEMO',
+      paused: false,
+      menu: null,
+    });
+  });
+
+  it('does not fly, show first-run steps or return to the menu from the wrong state', () => {
+    const demo = run([BEGIN, to('fly')]);
+    const menu = run([BEGIN, to('menu')]);
+    expect(flowReducer(demo, { type: 'fly' })).toBe(demo);
+    expect(flowReducer(INITIAL_FLOW, { type: 'fly' })).toBe(INITIAL_FLOW);
+    expect(flowReducer(menu, { type: 'main-menu' })).toBe(menu);
+    expect(flowReducer(menu, { type: 'first-run-step', step: 'assist' })).toBe(menu);
+    expect(flowReducer(menu, { type: 'first-run-done' })).toBe(menu);
+    expect(flowReducer(demo, { type: 'menu-screen', screen: 'settings' })).toBe(demo);
+    expect(flowReducer(demo, { type: 'run-setup' })).toBe(demo);
+    // The flight's menus and pause are not available in the main menu.
+    expect(flowReducer(menu, { type: 'menu', menu: 'pause' })).toBe(menu);
+    expect(flowReducer(menu, { type: 'pause' })).toBe(menu);
+  });
+
+  it('a failure in the menus or the first run is fatal too', () => {
+    for (const s of [run([BEGIN, to('first-run')]), run([BEGIN, to('menu')])]) {
+      expect(flowReducer(s, FATAL_RUNTIME)).toMatchObject({ name: 'FATAL', reason: 'runtime' });
+    }
   });
 });

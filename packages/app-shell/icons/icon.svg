@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Flying</title>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b2a5b"/>
+      <stop offset="0.62" stop-color="#2f7fd6"/>
+      <stop offset="1" stop-color="#bfe0ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#sky)"/>
+  <path d="M0 372 Q256 328 512 372 V512 H0 Z" fill="#183a2a"/>
+  <path d="M0 372 Q256 328 512 372" fill="none" stroke="#e8f4ff" stroke-width="5" opacity="0.8"/>
+  <!-- A delta-wing aircraft seen from above and behind, banking gently. -->
+  <g transform="translate(256 236) rotate(-8)">
+    <path d="M0 -118 L22 -30 L128 48 L128 66 L26 40 L18 92 L44 110 L44 124 L0 112 L-44 124 L-44 110 L-18 92 L-26 40 L-128 66 L-128 48 L-22 -30 Z" fill="#f4f7fb" stroke="#0b2a5b" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M0 -92 L9 -30 L9 70 L-9 70 L-9 -30 Z" fill="#c8d5e6"/>
+  </g>
+</svg>

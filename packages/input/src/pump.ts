@@ -378,6 +378,18 @@ export class InputPump {
     this.#oneShot |= 1 << button;
   }
 
+  /**
+   * A new sortie is about to start on a core that was reset (the main menu's Fly): forget the last
+   * one's spawn. The new core numbers its spawns from 1 again, so without this the pump, still
+   * holding the last acknowledgement, would take the first spawn for one it had already answered
+   * and never release the throttle the sim holds for it (ADR-36, ADR-44).
+   */
+  newSortie(): void {
+    this.#spawnAck = 0;
+    this.#absSync = true;
+    this.#oneShot = 0;
+  }
+
   /** The spawn a respawn goes to: 0 the session's, 1 the runway, 2 in the air. */
   setRespawnKind(kind: number): void {
     this.#spawnReq = kind >= 0 && kind <= 2 ? kind : 0;
