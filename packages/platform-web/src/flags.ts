@@ -18,6 +18,7 @@
  * | `assist` | `full`, `standard` (default), `reduced` or `manual` |
  * | `g` | `off`, `reduced` or `full` (default): the g-effects dial |
  * | `arena` | `rugged` (default) or `plain`: the procedural test arena |
+ * | `fly` | `1`: skip the first run and the main menu and start flying at once (`perf` and `script` imply it) |
  * | `script` | `circuit`: the virtual tester flies the circuit instead of the player (a test aid) |
  * | `res` | `WxH`, for example `1920x1080`: fixes the drawing buffer's size (perf and screenshot runs) |
  * | `quality` | `low`, `medium` or `high`: the graphics preset, in place of the one chosen (a test aid) |
@@ -61,6 +62,8 @@ export interface Flags {
   /** The test arena, if the URL says. */
   arena: ArenaChoice | undefined;
   /** A scripted pilot in place of the player (the circuit the exit gate flies), if the URL says. */
+  /** Start flying at once, with no first run or main menu (also implied by `perf` and `script`). */
+  fly: boolean;
   script: false | 'circuit';
   /** A fixed drawing-buffer size in pixels, if the URL says. */
   res: { width: number; height: number } | undefined;
@@ -92,6 +95,7 @@ const KNOWN = new Set([
   'assist',
   'g',
   'arena',
+  'fly',
   'script',
   'res',
   'quality',
@@ -118,6 +122,7 @@ export function defaultFlags(): Flags {
     assist: undefined,
     g: undefined,
     arena: undefined,
+    fly: false,
     script: false,
     res: undefined,
     quality: undefined,
@@ -239,6 +244,13 @@ export function parseFlags(search: string): Flags {
     const choice = ARENAS.find((a) => a === arena);
     if (choice === undefined) bad('arena', arena, ARENAS.join(' or '));
     else flags.arena = choice;
+  }
+
+  const fly = params.get('fly');
+  if (fly === '1') {
+    flags.fly = true;
+  } else if (fly !== null) {
+    bad('fly', fly, '1');
   }
 
   const script = params.get('script');

@@ -465,7 +465,7 @@ td[data-state='warn'] {
   pointer-events: none;
 }
 
-.menu-root:has(.pause-menu, .binding-editor) {
+.menu-root:has(.pause-menu, .binding-editor, .panel-screen) {
   background: var(--backdrop);
   pointer-events: auto;
 }
@@ -588,6 +588,208 @@ td[data-state='warn'] {
   margin-bottom: 1rem;
   border-color: var(--focus);
   font-weight: 600;
+}
+
+/* The first run, the main menu and the settings share the pause menu's look. */
+.panel-screen {
+  box-sizing: border-box;
+  max-height: 100%;
+  overflow: auto;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.panel-screen {
+  width: min(100%, 34rem);
+}
+
+.panel-screen h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.2rem;
+}
+
+.panel-screen button {
+  min-height: 36px;
+  padding: 0 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.panel-screen button {
+  cursor: pointer;
+}
+
+.panel-screen button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.panel-screen .group {
+  margin: 0 0 0.9rem;
+  padding: 0;
+  border: 0;
+}
+
+.panel-screen legend {
+  padding: 0;
+  margin-bottom: 0.3rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.panel-screen .chip {
+  margin: 0 0.35rem 0.35rem 0;
+}
+
+.panel-screen .chip[aria-pressed='true'] {
+  border-color: var(--focus);
+  border-width: 2px;
+  font-weight: 600;
+}
+
+.panel-screen .preview,
+.panel-screen .note {
+  min-height: 1.5em;
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.panel-screen .note {
+  min-height: 0;
+}
+
+.panel-screen .slider {
+  display: grid;
+  grid-template-columns: 11rem 1fr 4rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.6rem;
+}
+
+.panel-screen .check {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+
+.panel-screen .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.panel-screen {
+  width: min(100%, 34rem);
+}
+
+.panel-screen.settings-screen {
+  width: min(100%, 44rem);
+}
+
+.panel-screen h1,
+.panel-screen h2 {
+  margin: 0 0 0.75rem;
+}
+
+.panel-screen h1 {
+  font-size: 1.8rem;
+}
+
+.panel-screen .tagline,
+.panel-screen .eyebrow,
+.panel-screen .step {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+}
+
+.panel-screen .eyebrow {
+  margin: 0;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.panel-screen .step {
+  font-size: 0.9rem;
+}
+
+.panel-screen button.primary {
+  border-color: var(--focus);
+  border-width: 2px;
+  font-weight: 600;
+}
+
+.panel-screen [data-testid='menu-fly'] {
+  width: 100%;
+  min-height: 48px;
+  margin: 0.5rem 0 1rem;
+  font-size: 1.1rem;
+}
+
+.panel-screen .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin: 0 0 0.75rem;
+}
+
+.panel-screen .row[hidden] {
+  display: none;
+}
+
+.panel-screen .tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0 0 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-screen .tabs button {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
+
+.panel-screen .tabs button[aria-selected='true'] {
+  border-color: var(--focus);
+  border-bottom-color: var(--bg);
+  font-weight: 600;
+}
+
+.panel-screen .tab-body {
+  min-height: 16rem;
+}
+
+.panel-screen .file {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0.75rem 0;
+}
+
+.panel-screen .problems {
+  margin: 0 0 0.75rem;
+  padding-left: 1.2rem;
+  color: var(--bad);
+}
+
+.panel-screen .detected {
+  margin: 0.5rem 0;
+  padding-left: 1.2rem;
+}
+
+.panel-screen input[type='range'] {
+  min-height: 24px;
 }
 
 /* Binding editor. */

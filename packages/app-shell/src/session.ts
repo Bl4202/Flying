@@ -53,11 +53,12 @@ export function sessionFromFlags(
  */
 export function sessionOverrides(
   session: SessionConfig,
-  settings: Pick<Settings, 'spawn' | 'assist' | 'gEffects'>,
-): Partial<Pick<Settings, 'spawn' | 'assist' | 'gEffects'>> {
-  const out: Partial<Pick<Settings, 'spawn' | 'assist' | 'gEffects'>> = {};
+  settings: Pick<Settings, 'spawn' | 'assist' | 'gEffects' | 'arena'>,
+): Partial<Pick<Settings, 'spawn' | 'assist' | 'gEffects' | 'arena'>> {
+  const out: Partial<Pick<Settings, 'spawn' | 'assist' | 'gEffects' | 'arena'>> = {};
   if (session.spawn !== settings.spawn) out.spawn = session.spawn;
   if (session.assist !== settings.assist) out.assist = session.assist;
   if (session.gEffects !== settings.gEffects) out.gEffects = session.gEffects;
+  if (session.arena !== settings.arena) out.arena = session.arena;
   return out;
 }

@@ -45,3 +45,20 @@ cannot set response headers.
 - A production host with real headers makes the worker's header injection redundant but harmless;
   moving hosts is a configuration change (`BASE_PATH`, deploy job), not a code change.
 - The live smoke test (`tests/staging`) checks that the deployed build id equals the commit.
+
+## Amendment 1 (2026-11-05): updates on the player's request, and a shell that never changes under a running build
+
+*Amended by [ADR-44](0044-app-flow-settings-pwa.md).* Two things in the original policy turned out
+wrong once the game had a menu to put a choice in.
+
+- **A running build's cache was written to.** The worker answered navigations from the network first
+  and stored the answer under the *running* build's cache name, so a new `index.html` could end up
+  beside the old build's assets and, offline, be served with chunks that did not match it. A worker now
+  answers navigations from its own build's cache, and asks the network only when it has none (a first
+  visit). Nothing writes to a cache after its worker installed.
+- **"Never `skipWaiting`" becomes "only when the player asks".** A new worker still installs beside the
+  running one and waits. The main menu shows **Update ready — reload**; choosing it sends the waiting
+  worker a `skip-waiting` message, and the page reloads when the new worker is in control. The menu is the
+  only place that offers it, so a flight is never interrupted; a player who never opens the menu keeps
+  the build they have, which still works offline.
+

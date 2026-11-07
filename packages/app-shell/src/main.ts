@@ -7,10 +7,12 @@
 import {
   detectAsync,
   ensureIsolation,
+  InstallPrompt,
   installGlobalHandlers,
   openKv,
   parseFlags,
   RingLogger,
+  UpdateWatcher,
   type IsolationOutcome,
   type ServiceWorkerStatus,
 } from '@flying/platform-web';
@@ -22,12 +24,14 @@ import {
   mountCompatScreen,
   mountFatalScreen,
   readCompatAck,
+  SettingsStore,
   shouldShowCompat,
   t,
   writeCompatAck,
   type FatalSource,
   type FlowEvent,
   type FlowState,
+  type StartTarget,
 } from '@flying/ui';
 import { runAudioSelfTest } from './audio-selftest.ts';
 import { runBenchmarkPage } from './benchmark-page.ts';
@@ -48,8 +52,9 @@ const logger = new RingLogger();
 installGlobalHandlers(logger, window, 'main');
 
 let flow: FlowState = INITIAL_FLOW;
-function dispatch(event: FlowEvent): void {
+function dispatch(event: FlowEvent): FlowState {
   flow = flowReducer(flow, event);
+  return flow;
 }
 /** A function rather than a comparison inline, so the compiler does not carry an earlier narrowing past an `await`. */
 const isFatal = (): boolean => flow.name === 'FATAL';
@@ -60,6 +65,14 @@ async function main(): Promise<void> {
     logger.warn('flags', warning);
   }
   document.title = t('app.name');
+  // The browser fires `beforeinstallprompt` as soon as the page qualifies, which can be before the
+  // game is up: listen from the start and hold the offer for the main menu.
+  const install = new InstallPrompt(
+    window,
+    () =>
+      matchMedia('(display-mode: standalone)').matches ||
+      (navigator as { standalone?: boolean }).standalone === true,
+  );
   const stage = element('stage');
   const screenRoot = element('screen-root');
   const loading = document.createElement('p');
@@ -69,6 +82,7 @@ async function main(): Promise<void> {
 
   let outcome: IsolationOutcome = crossOriginIsolated ? 'isolated' : 'degraded';
   let serviceWorker: ServiceWorkerStatus | 'dev' = 'dev';
+  let update: UpdateWatcher | undefined;
   if (import.meta.env.PROD) {
     const base = import.meta.env.BASE_URL;
     const result = await ensureIsolation({ swUrl: `${base}sw.js`, scope: base });
@@ -77,6 +91,16 @@ async function main(): Promise<void> {
     }
     outcome = result.outcome;
     serviceWorker = result.serviceWorker;
+    if (serviceWorker === 'active') {
+      const registration = await navigator.serviceWorker.getRegistration(base);
+      if (registration) {
+        update = new UpdateWatcher(registration, navigator.serviceWorker, () => {
+          location.reload();
+        });
+        // Ask whether a newer build is out (it installs in the background and waits for the player).
+        void update.check();
+      }
+    }
   }
   const features = await detectAsync();
   loading.remove();
@@ -99,6 +123,15 @@ async function main(): Promise<void> {
   dispatch({ type: 'begin-check' });
   const report = evaluateCompat({ features, flags });
   const kv = await openKv('flying');
+  const settings = new SettingsStore(kv);
+  await settings.load();
+  // A scripted run and `?fly=1` go straight to the flight; a first visit sees the setup; the rest see the menu.
+  const start: StartTarget =
+    flags.fly || flags.perf !== false || flags.script !== false
+      ? 'fly'
+      : settings.value.setupDone
+        ? 'menu'
+        : 'first-run';
   const ack = await readCompatAck(kv);
   const showScreen = shouldShowCompat({ forced: flags.compat, report, ack });
   const firstCode = report.codes[0];
@@ -106,6 +139,7 @@ async function main(): Promise<void> {
     type: 'check-done',
     verdict: report.verdict,
     showScreen,
+    after: start,
     ...(firstCode ? { code: firstCode } : {}),
   });
 
@@ -183,6 +217,10 @@ async function main(): Promise<void> {
         ? `${stored.classification.profile} / ${stored.classification.preset}`
         : undefined,
       kv,
+      settings,
+      start,
+      install,
+      update,
       features,
       report,
       roots: {
@@ -192,7 +230,7 @@ async function main(): Promise<void> {
         strip: element('strip-root'),
         menu: element('menu-root'),
       },
-      flow: { dispatch },
+      flow: { dispatch, state: () => flow },
       fail,
     });
     if (isFatal()) {

@@ -82,6 +82,30 @@ describe('sessionOverrides', () => {
     });
   });
 
+  it('lists the arena the URL chose, so the menu shows the arena that flies', () => {
+    const session = sessionFromFlags(flags({ arena: 'plain' }), false, DEFAULT_SETTINGS);
+    expect(sessionOverrides(session, DEFAULT_SETTINGS)).toEqual({ arena: ARENA.PLAIN });
+  });
+
+  it('is the whole story at Fly: the settings with the overrides over them make the session, with no flags', () => {
+    // The player's menu shows `{ ...stored, ...overrides }`; flying it needs no second look at the URL.
+    const session = sessionFromFlags(
+      flags({ spawn: 'air', arena: 'plain' }),
+      false,
+      DEFAULT_SETTINGS,
+    );
+    const shown = { ...DEFAULT_SETTINGS, ...sessionOverrides(session, DEFAULT_SETTINGS) };
+    expect(sessionFromFlags(defaultFlags(), false, shown)).toEqual(session);
+    // The player changes the arena and the assist in the menu: their choice flies, not the URL's.
+    const changed = { ...shown, arena: ARENA.RUGGED, assist: ASSIST_LEVEL.FULL };
+    expect(sessionFromFlags(defaultFlags(), false, changed)).toEqual({
+      spawn: SPAWN_KIND.AIR,
+      assist: ASSIST_LEVEL.FULL,
+      gEffects: G_EFFECTS.FULL,
+      arena: ARENA.RUGGED,
+    });
+  });
+
   it('lists the scripted session of a performance run', () => {
     const session = sessionFromFlags(defaultFlags(), true, DEFAULT_SETTINGS);
     expect(sessionOverrides(session, DEFAULT_SETTINGS).spawn).toBe(SPAWN_KIND.AIR);

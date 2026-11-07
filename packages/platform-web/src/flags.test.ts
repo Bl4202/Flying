@@ -10,7 +10,7 @@ describe('parseFlags', () => {
 
   it('reads every documented flag', () => {
     const f = parseFlags(
-      '?debug=perf&renderer=webgl2&flags=transfer,mainrender,timer,stall&compat=1&selftest=renderer&perf=ps0&seconds=120&bench=quick&spawn=air&assist=reduced&g=off&script=circuit',
+      '?debug=perf&renderer=webgl2&flags=transfer,mainrender,timer,stall&compat=1&selftest=renderer&perf=ps0&seconds=120&bench=quick&spawn=air&assist=reduced&g=off&fly=1&script=circuit',
     );
     expect(f).toEqual({
       debug: 'perf',
@@ -27,6 +27,7 @@ describe('parseFlags', () => {
       spawn: 'air',
       assist: 'reduced',
       g: 'off',
+      fly: true,
       script: 'circuit',
       warnings: [],
     });
@@ -36,6 +37,9 @@ describe('parseFlags', () => {
     expect(parseFlags('debug=1').debug).toBe('overlay');
     expect(parseFlags('selftest=1').selftest).toBe('hash');
     expect(parseFlags('selftest=audio').selftest).toBe('audio');
+    expect(parseFlags('fly=1').fly).toBe(true);
+    expect(parseFlags('fly=0').fly).toBe(false);
+    expect(parseFlags('fly=0').warnings).toHaveLength(1);
     expect(parseFlags('bench=full').bench).toBe('full');
     for (const r of ['auto', 'webgpu', 'webgl2', 'null'] as const) {
       expect(parseFlags(`renderer=${r}`).renderer).toBe(r);

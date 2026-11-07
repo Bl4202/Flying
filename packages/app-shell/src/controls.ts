@@ -20,7 +20,7 @@ import {
 } from '@flying/input';
 import type { InputSink } from '@flying/sim-bridge';
 import { monotonicMs, sharedNowMs } from '@flying/platform-web';
-import { isOverlayChord, type ControlsStore, type Settings } from '@flying/ui';
+import { isOverlayChord, type ControlsStore, type Settings, type SettingsPatch } from '@flying/ui';
 
 export interface FlightControlsDeps {
   window: Window;
@@ -168,7 +168,7 @@ export class FlightControls {
   }
 
   /** Applies a change the player made: `patch` is what changed, `next` all the settings now. */
-  applyChange(patch: Partial<Omit<Settings, 'version'>>, next: Readonly<Settings>): void {
+  applyChange(patch: SettingsPatch, next: Readonly<Settings>): void {
     if (patch.assist !== undefined) this.pump.requestAssist(patch.assist);
     // The respawn kinds are 0 the session's, 1 the runway, 2 the air; a setting of the spawn is
     // 0 the runway, 1 the air.

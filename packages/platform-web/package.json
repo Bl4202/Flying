@@ -18,6 +18,9 @@
     "./metrics": "./src/metrics.ts",
     "./time": "./src/time.ts",
     "./ipc/spsc-ring": "./src/ipc/spsc-ring.ts",
-    "./ipc/triple-buffer": "./src/ipc/triple-buffer.ts"
+    "./ipc/triple-buffer": "./src/ipc/triple-buffer.ts",
+    "./sw-strategy": "./src/sw-strategy.ts",
+    "./sw-update": "./src/sw-update.ts",
+    "./install": "./src/install.ts"
   }
 }

@@ -13,6 +13,7 @@ export const FIXED_NAMES: readonly string[] = [
   'index.html',
   'sw.js',
   'build-manifest.json',
+  'manifest.webmanifest',
   '_headers',
 ];
 

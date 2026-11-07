@@ -54,6 +54,93 @@ function cspMeta(): Plugin {
   };
 }
 
+/** The icons the manifest names, rendered once by `pnpm icons` from the SVGs beside them. */
+const ICONS = [
+  { file: 'icon-192.png', sizes: '192x192', purpose: 'any' },
+  { file: 'icon-512.png', sizes: '512x512', purpose: 'any' },
+  { file: 'icon-maskable-512.png', sizes: '512x512', purpose: 'maskable' },
+] as const;
+const THEME_COLOR = '#0b2a5b';
+const BACKGROUND_COLOR = '#101418';
+
+/**
+ * The installable app (ADR-44): emits `manifest.webmanifest` under that fixed name (a browser looks it
+ * up by the URL in the page, and the Service Worker precaches it with everything else) and the icons
+ * it names under hashed names, and adds the manifest link, the icon and the theme colour to the page.
+ * The head is written without whitespace between the tags: the DOM budget counts every text node.
+ */
+function webManifest(): Plugin {
+  let base = '/';
+  const iconDir = resolve(import.meta.dirname, 'icons');
+  const refs = new Map<string, string>();
+  return {
+    name: 'fg-web-manifest',
+    apply: 'build',
+    configResolved(config) {
+      base = config.base;
+    },
+    buildStart() {
+      for (const icon of [...ICONS.map((i) => i.file), 'icon.svg']) {
+        const path = resolve(iconDir, icon);
+        if (!existsSync(path)) {
+          throw new Error(`packages/app-shell/icons/${icon} is missing: run \`pnpm icons\``);
+        }
+        refs.set(icon, this.emitFile({ type: 'asset', name: icon, source: readFileSync(path) }));
+      }
+    },
+    generateBundle() {
+      const file = (name: string): string => {
+        const ref = refs.get(name);
+        if (ref === undefined) throw new Error(`no emitted icon ${name}`);
+        return this.getFileName(ref);
+      };
+      const manifest = {
+        id: base,
+        name: 'Flying',
+        short_name: 'Flying',
+        description: 'A flight simulator that runs in your browser.',
+        start_url: base,
+        scope: base,
+        display: 'standalone',
+        orientation: 'landscape',
+        background_color: BACKGROUND_COLOR,
+        theme_color: THEME_COLOR,
+        icons: ICONS.map((i) => ({
+          src: file(i.file),
+          sizes: i.sizes,
+          type: 'image/png',
+          purpose: i.purpose,
+        })),
+      };
+      this.emitFile({
+        type: 'asset',
+        fileName: 'manifest.webmanifest',
+        source: `${JSON.stringify(manifest, null, 2)}\n`,
+      });
+      // Remembered for the page, which links the icon by its hashed name.
+      refs.set('favicon', file('icon.svg'));
+      refs.set('apple', file('icon-192.png'));
+    },
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        const favicon = refs.get('favicon') ?? '';
+        const apple = refs.get('apple') ?? '';
+        const tags =
+          `<link rel="manifest" href="${base}manifest.webmanifest" />` +
+          `<meta name="theme-color" content="${THEME_COLOR}" />` +
+          `<link rel="icon" type="image/svg+xml" href="${base}${favicon}" />` +
+          `<link rel="apple-touch-icon" href="${base}${apple}" />`;
+        const withTags = html.replace('<link rel="icon" href="data:," />', tags);
+        // No whitespace between the tags of the head.
+        return withTags.replace(/<head>([\s\S]*?)<\/head>/, (_m, inner: string) => {
+          return `<head>${inner.replace(/>\s+</g, '><').trim()}</head>`;
+        });
+      },
+    },
+  };
+}
+
 /** Emits build-manifest.json (the precache list) and bundles the Service Worker as sw.js. */
 function serviceWorker(buildId: string): Plugin {
   return {
@@ -97,7 +184,7 @@ export default defineConfig(({ command, isPreview }) => {
       __BUILD_ID__: JSON.stringify(buildId),
       __THREADS_INITIAL_PAGES__: JSON.stringify(threadsInitialPages(command)),
     },
-    plugins: [wgsl(), cspMeta(), serviceWorker(buildId)],
+    plugins: [wgsl(), cspMeta(), webManifest(), serviceWorker(buildId)],
     server: {
       headers: ISOLATION_HEADERS,
       fs: { allow: [repoRoot] },

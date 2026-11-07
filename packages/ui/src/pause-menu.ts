@@ -9,10 +9,8 @@
  */
 import { ASSIST_LEVEL, G_EFFECTS, SPAWN_KIND } from '@flying/sim-bridge';
 import { h } from './dom.ts';
-import { type MouseModeSetting, type Settings } from './settings.ts';
+import { type MouseModeSetting, type Settings, type SettingsPatch } from './settings.ts';
 import { t, type StringKey } from './strings.ts';
-
-export type SettingsPatch = Partial<Omit<Settings, 'version'>>;
 
 export interface PauseMenuDeps {
   /** The settings now. */
@@ -25,6 +23,8 @@ export interface PauseMenuDeps {
   /** Open the binding editor. */
   onControls(): void;
   onRespawn(): void;
+  /** Leave the sortie for the main menu. Omit it where there is no main menu (a scripted run). */
+  onMainMenu?: () => void;
   /** Whether automatic ground-collision avoidance exists; if not, its option is left out. */
   autoGcas?: boolean;
 }
@@ -332,6 +332,19 @@ export class PauseMenu {
         }),
       ),
     );
+    const onMainMenu = this.#d.onMainMenu;
+    if (onMainMenu !== undefined) {
+      parts.push(
+        h(
+          doc,
+          'div',
+          { class: 'actions' },
+          button('pause-main-menu', 'pause.main-menu', () => {
+            onMainMenu();
+          }),
+        ),
+      );
+    }
 
     return h(
       doc,

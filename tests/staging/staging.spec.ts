@@ -74,7 +74,8 @@ test('the live game runs: the sim ticks, frames are drawn, and the picture is no
   page.on('pageerror', (e) => problems.push(e.message));
 
   const byId = (id: string) => page.locator(`[data-testid="${id}"]`);
-  await page.goto(`${base}?debug=1`);
+  // `fly=1`: straight to the flight, so the core ticks (the game otherwise opens at the setup or the menu).
+  await page.goto(`${base}?debug=1&fly=1`);
   // First visit on a fresh browser: the compat screen comes first.
   const screen = byId('compat-screen');
   const stage = byId('stage');
@@ -106,4 +107,53 @@ test('the live game runs: the sim ticks, frames are drawn, and the picture is no
   );
   expect(pixels?.distinctColours ?? 0).toBeGreaterThanOrEqual(8);
   expect(problems).toEqual([]);
+});
+
+test('the live game starts again with the network off, from what the first visit stored (AC-66.3)', async ({
+  page,
+  context,
+}) => {
+  test.skip(url === undefined || expectedSha === undefined, 'STAGING_URL / EXPECTED_SHA not set');
+  const base = (url ?? '').endsWith('/') ? (url ?? '') : `${url ?? ''}/`;
+  const byId = (id: string) => page.locator(`[data-testid="${id}"]`);
+  const stage = byId('stage');
+  const readings = () =>
+    page.evaluate(() => {
+      const hooks = (window as unknown as { __flying?: Hooks }).__flying;
+      const s = hooks?.stats();
+      return { tick: s?.sim?.tick ?? 0, frames: s?.render?.frames ?? 0 };
+    });
+
+  await page.goto(`${base}?debug=1&fly=1`);
+  const screen = byId('compat-screen');
+  await expect(screen.or(stage.and(page.locator('[data-state="running"]')))).toBeVisible({
+    timeout: 60_000,
+  });
+  if (await screen.isVisible()) {
+    await byId('compat-continue').click();
+  }
+  await expect(stage).toHaveAttribute('data-state', 'running', { timeout: 60_000 });
+  // A worker controls the page and has the build in its cache.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async () => {
+          if (navigator.serviceWorker.controller === null) return false;
+          const names = (await caches.keys()).filter((n) => n.startsWith('fg-'));
+          const first = names[0];
+          return first !== undefined && (await (await caches.open(first)).keys()).length > 5;
+        }),
+      { timeout: 60_000 },
+    )
+    .toBe(true);
+
+  await context.setOffline(true);
+  await page.reload();
+  await expect(stage).toHaveAttribute('data-state', 'running', { timeout: 60_000 });
+  await expect.poll(async () => (await readings()).tick, { timeout: 30_000 }).toBeGreaterThan(0);
+  const a = await readings();
+  await page.waitForTimeout(2000);
+  const b = await readings();
+  expect(b.tick - a.tick).toBeGreaterThan(60);
+  expect(b.frames - a.frames).toBeGreaterThan(30);
 });

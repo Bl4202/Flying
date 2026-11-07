@@ -46,6 +46,7 @@ async function setup(overrides: SettingsOverrides = {}) {
     released: 0,
     synced: 0,
     patches: [] as unknown[],
+    mainMenu: 0,
     profiles: [] as string[],
   };
   const menus = new MenuController({
@@ -63,6 +64,9 @@ async function setup(overrides: SettingsOverrides = {}) {
     },
     syncMouseLock: () => {
       log.synced += 1;
+    },
+    onMainMenu: () => {
+      log.mainMenu += 1;
     },
     onProfile: (p) => log.profiles.push(p.id),
     onSettings: (patch) => log.patches.push(patch),
@@ -185,6 +189,13 @@ describe('MenuController', () => {
     expect(r.menus.settings().spawn).toBe(SPAWN_KIND.AIR);
   });
 
+  it("shows the URL's arena until the player changes it, then the player's choice stands", async () => {
+    const r = await setup({ arena: 1 });
+    expect(r.menus.settings().arena).toBe(1);
+    r.menus.change({ arena: 0 });
+    expect(r.menus.settings().arena).toBe(0);
+  });
+
   it('stores a change the controls already made without applying it again', async () => {
     const r = await setup({ assist: ASSIST_LEVEL.MANUAL });
     r.menus.persist({ assist: ASSIST_LEVEL.REDUCED });
@@ -214,5 +225,49 @@ describe('MenuController', () => {
     select.value = 'gamepad-standard';
     select.dispatchEvent(new Event('change'));
     expect(r.log.profiles).toEqual(['gamepad-standard']);
+  });
+
+  it('leaves for the main menu: closes the menus, tells the application, and does not fly on', async () => {
+    const r = await setup();
+    r.menus.openPause();
+    expect(r.log.holds).toEqual([true]);
+    r.id('pause-main-menu').click();
+    expect(r.menus.current).toBeNull();
+    expect(r.log.menus).toEqual(['pause', null]);
+    expect(r.log.mainMenu).toBe(1);
+    // It is not a resume: the sim is not released, the mouse not taken again, the controls stay silent.
+    expect(r.log.holds).toEqual([true]);
+    expect(r.log.synced).toBe(0);
+    expect(r.pump.context).toBe('menu');
+    expect(r.root.querySelector('[data-testid="pause-menu"]')).toBeNull();
+  });
+
+  it('leaves for the main menu from the editor too', async () => {
+    const r = await setup();
+    r.menus.openControls();
+    r.menus.leaveForMainMenu();
+    expect(r.menus.current).toBeNull();
+    expect(r.log.mainMenu).toBe(1);
+    expect(r.root.querySelector('[data-testid="binding-editor"]')).toBeNull();
+  });
+
+  it('opens the editor over a screen, and closing it goes back to that screen, not the pause menu', async () => {
+    const r = await setup();
+    let back = 0;
+    r.menus.openControlsOver(() => {
+      back += 1;
+    });
+    expect(r.menus.current).toBe('controls');
+    r.id('be-close').click();
+    expect(back).toBe(1);
+    expect(r.menus.current).toBeNull();
+    expect(r.root.querySelector('[data-testid="pause-menu"]')).toBeNull();
+    expect(r.root.querySelector('[data-testid="binding-editor"]')).toBeNull();
+    // The next time it opens from the pause menu, it returns there as before.
+    r.menus.openPause();
+    r.menus.openControls();
+    r.id('be-close').click();
+    expect(r.menus.current).toBe('pause');
+    expect(back).toBe(1);
   });
 });

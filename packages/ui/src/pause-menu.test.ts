@@ -2,13 +2,18 @@
 import { describe, expect, it } from 'vitest';
 import { ASSIST_LEVEL, G_EFFECTS, SPAWN_KIND } from '@flying/sim-bridge';
 import { countNodes } from './dom.ts';
-import { PauseMenu, type PauseMenuDeps, type SettingsPatch } from './pause-menu.ts';
-import { DEFAULT_SETTINGS, type Settings } from './settings.ts';
+import { PauseMenu, type PauseMenuDeps } from './pause-menu.ts';
+import {
+  applySettingsPatch,
+  DEFAULT_SETTINGS,
+  type Settings,
+  type SettingsPatch,
+} from './settings.ts';
 
 function setup(extra: Partial<PauseMenuDeps> = {}) {
   const root = document.createElement('div');
   document.body.append(root);
-  let settings: Settings = { ...DEFAULT_SETTINGS };
+  let settings: Settings = applySettingsPatch(DEFAULT_SETTINGS, {});
   const changes: SettingsPatch[] = [];
   const calls = { resume: 0, controls: 0, respawn: 0 };
   let flying = ASSIST_LEVEL.STANDARD as number;
@@ -17,7 +22,7 @@ function setup(extra: Partial<PauseMenuDeps> = {}) {
     assistInForce: () => flying,
     onChange: (patch) => {
       changes.push(patch);
-      settings = { ...settings, ...patch };
+      settings = applySettingsPatch(settings, patch);
     },
     onResume: () => {
       calls.resume += 1;
@@ -225,5 +230,27 @@ describe('PauseMenu', () => {
     const { menu, root } = setup({ autoGcas: true });
     menu.open();
     expect(countNodes(root)).toBeLessThan(160);
+  });
+});
+
+describe('PauseMenu: the main menu', () => {
+  it('has no Main menu button unless it was given somewhere to go', () => {
+    const r = setup();
+    r.menu.open();
+    expect(r.root.querySelector('[data-testid="pause-main-menu"]')).toBeNull();
+  });
+
+  it('leaves the sortie for the main menu when asked', () => {
+    let left = 0;
+    const r = setup({
+      onMainMenu: () => {
+        left += 1;
+      },
+    });
+    r.menu.open();
+    const button = r.root.querySelector<HTMLElement>('[data-testid="pause-main-menu"]');
+    expect(button?.textContent).toBe('Main menu');
+    button?.click();
+    expect(left).toBe(1);
   });
 });

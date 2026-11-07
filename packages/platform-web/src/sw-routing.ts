@@ -3,8 +3,8 @@ export type Route = 'navigation' | 'asset' | 'passthrough';
 /**
  * Decides how the Service Worker handles a request.
  *
- * - `navigation`: network-first with a cached-shell fallback (so updates are picked up when online
- *   and the game still opens offline).
+ * - `navigation`: the build's own cached shell (the network only on a first visit), so a page that
+ *   opens is always the build in control; a newer build waits until the player asks for it.
  * - `asset`: cache-first. Everything the build emits is content-addressed, so a cached copy is
  *   never stale.
  * - `passthrough`: left to the browser (non-GET, cross-origin, outside the scope).

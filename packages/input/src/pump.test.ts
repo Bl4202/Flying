@@ -761,6 +761,27 @@ describe('InputPump: simulation requests', () => {
     expect(r.pump.throttle).toBe(moved);
   });
 
+  it('acknowledges the first spawn of a new sortie again, though it numbers from 1 like the last', () => {
+    const r = rig();
+    r.pump.observe(obs({ spawnSeq: 1, throttle: 0.3 }));
+    r.advance(1);
+    r.pump.update();
+    expect(r.last().spawnAck).toBe(1);
+    // The sortie ends and a fresh core starts one: its first spawn is again number 1. Without
+    // the reset the pump takes it for the spawn it has already answered and the throttle hold stays.
+    r.pump.observe(obs({ spawnSeq: 1, throttle: 0.9 }));
+    expect(r.pump.throttle).toBe(0.3);
+    r.pump.newSortie();
+    r.advance(1);
+    r.pump.update();
+    expect(r.last().spawnAck).toBe(0);
+    r.pump.observe(obs({ spawnSeq: 1, throttle: 0.9 }));
+    expect(r.pump.throttle).toBe(0.9);
+    r.advance(1);
+    r.pump.update();
+    expect(r.last().spawnAck).toBe(1);
+  });
+
   it('hands the lever back at every respawn', () => {
     const r = rig();
     r.pump.observe(obs({ spawnSeq: 1, throttle: 0 }));

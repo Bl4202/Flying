@@ -23,7 +23,7 @@ import {
 } from '@flying/ui';
 
 /** The settings a URL flag can set for one visit. */
-export type SettingsOverrides = Partial<Pick<Settings, 'spawn' | 'assist' | 'gEffects'>>;
+export type SettingsOverrides = Partial<Pick<Settings, 'spawn' | 'assist' | 'gEffects' | 'arena'>>;
 
 export interface MenuControllerDeps {
   root: HTMLElement;
@@ -42,6 +42,8 @@ export interface MenuControllerDeps {
   /** Gives the pointer back when a menu opens, takes it again (if the mouse flies) when it closes. */
   releaseMouse: () => void;
   syncMouseLock: () => void;
+  /** The player chose Main menu: the sortie is over (the sim is reset and the main menu shown). */
+  onMainMenu: () => void;
   /** The player chose or edited a profile: fly with it. */
   onProfile: (profile: ControlsProfile) => void;
   /** The player changed settings in a menu: apply them. `next` is every setting now. */
@@ -54,6 +56,8 @@ export class MenuController {
   readonly #pause: PauseMenu;
   #editor: BindingEditor | undefined;
   #menu: DemoMenu = null;
+  /** Where closing the editor goes instead of the pause menu (it was opened over a screen). */
+  #back: (() => void) | undefined;
 
   constructor(deps: MenuControllerDeps) {
     this.#d = deps;
@@ -71,6 +75,9 @@ export class MenuController {
       },
       onRespawn: () => {
         this.respawn();
+      },
+      onMainMenu: () => {
+        this.leaveForMainMenu();
       },
     });
   }
@@ -122,11 +129,33 @@ export class MenuController {
       model,
       hub: d.pads,
       onClose: () => {
-        this.openPause();
+        const back = this.#back;
+        this.#back = undefined;
+        if (back === undefined) this.openPause();
+        else this.#closeOverScreen(back);
       },
     });
     this.#editor.open();
     this.#set('controls');
+  }
+
+  /**
+   * Opens the controls editor over a screen outside the flight (the first run, the settings). The
+   * sim is not running, so nothing is held; closing the editor calls `back` to show the screen again.
+   */
+  openControlsOver(back: () => void): void {
+    this.#back = back;
+    this.openControls();
+  }
+
+  /** Leaves the sortie for the main menu: closes the menus without flying on. */
+  leaveForMainMenu(): void {
+    this.#closeEditor();
+    this.#pause.close();
+    this.#back = undefined;
+    this.#menu = null;
+    this.#d.setMenu(null);
+    this.#d.onMainMenu();
   }
 
   /** Closes whatever is open and flies on. */
@@ -158,6 +187,7 @@ export class MenuController {
     if (patch.spawn !== undefined) delete overrides.spawn;
     if (patch.assist !== undefined) delete overrides.assist;
     if (patch.gEffects !== undefined) delete overrides.gEffects;
+    if (patch.arena !== undefined) delete overrides.arena;
     void this.#d.settings.update(patch);
   }
 
@@ -171,6 +201,14 @@ export class MenuController {
     this.#d.pump.setContext('menu');
     this.#d.releaseMouse();
     this.#d.hold(true);
+  }
+
+  /** The editor closed over a screen: back to the screen, the controls still silent. */
+  #closeOverScreen(back: () => void): void {
+    this.#closeEditor();
+    this.#menu = null;
+    this.#d.setMenu(null);
+    back();
   }
 
   #closeEditor(): void {

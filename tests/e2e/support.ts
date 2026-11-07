@@ -34,8 +34,13 @@ export async function overlaySurfaces(page: Page): Promise<[number, number, numb
  * Opens the game and gets past the compat screen if it shows (a first run always shows it, and in
  * CI so does every run, because there is no WebGPU adapter), leaving the loop running.
  */
-export async function openGame(page: Page, url: string): Promise<void> {
-  await page.goto(url);
+export async function openGame(
+  page: Page,
+  url: string,
+  options: { menu?: boolean } = {},
+): Promise<void> {
+  // The game opens at the first run or the main menu; most specs want the flight, so `fly=1`.
+  await page.goto(options.menu === true ? url : withFly(url));
   const screen = byId(page, 'compat-screen');
   const canvas = byId(page, 'render-canvas');
   await expect(screen.or(canvas)).toBeVisible({ timeout: 30_000 });
@@ -55,6 +60,13 @@ export async function openGame(page: Page, url: string): Promise<void> {
       .poll(async () => Number.isFinite(await overlayNumber(page, 'ov-tas')), { timeout: 10_000 })
       .toBe(true);
   }
+}
+
+/** `url` with `fly=1` added, unless it already says what to do. */
+export function withFly(url: string): string {
+  const u = new URL(url);
+  if (!u.searchParams.has('fly')) u.searchParams.set('fly', '1');
+  return u.href;
 }
 
 /** Gets past the compat screen if it shows (a first run always does); does not wait for the game. */
@@ -201,6 +213,7 @@ declare global {
           }
         | undefined;
       menu(): null | 'pause' | 'controls';
+      flow(): string;
     };
   }
 }
@@ -296,4 +309,56 @@ export async function sampleAfter(page: Page, ms: number): Promise<Sample> {
 /** Ticks per second between two samples, by the reports' own timestamps. */
 export function simRate(a: Sample, b: Sample): number {
   return (b.sim.tick - a.sim.tick) / ((b.sim.atMs - a.sim.atMs) / 1000);
+}
+
+/** Gets past the compat screen if it shows; does not wait for anything else. */
+export async function continuePastCompat(page: Page): Promise<void> {
+  const screen = byId(page, 'compat-screen');
+  const canvas = byId(page, 'render-canvas');
+  await expect(screen.or(canvas)).toBeVisible({ timeout: 30_000 });
+  if (await screen.isVisible()) await byId(page, 'compat-continue').click();
+  await expect(canvas).toBeVisible({ timeout: 30_000 });
+}
+
+/** The settings as stored in this browser (`settings/2`), or undefined if nothing is stored yet. */
+export function storedSettings(page: Page): Promise<Record<string, unknown> | undefined> {
+  return page.evaluate(
+    () =>
+      new Promise<Record<string, unknown> | undefined>((resolve) => {
+        const open = indexedDB.open('flying');
+        open.onerror = () => {
+          resolve(undefined);
+        };
+        open.onsuccess = () => {
+          const db = open.result;
+          if (!db.objectStoreNames.contains('kv')) {
+            db.close();
+            resolve(undefined);
+            return;
+          }
+          const request = db.transaction('kv', 'readonly').objectStore('kv').get('settings/2');
+          request.onsuccess = () => {
+            db.close();
+            resolve(request.result as Record<string, unknown> | undefined);
+          };
+          request.onerror = () => {
+            db.close();
+            resolve(undefined);
+          };
+        };
+      }),
+  );
+}
+
+/** Waits until the stored settings satisfy `check`: a change is written asynchronously, and a reload would cut it short. */
+export async function waitForStored(
+  page: Page,
+  check: (stored: Record<string, unknown>) => boolean,
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      const stored = await storedSettings(page);
+      return stored !== undefined && check(stored);
+    })
+    .toBe(true);
 }
