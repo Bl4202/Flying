@@ -5,6 +5,13 @@ export const HEADERS_BASE = 'http://127.0.0.1:4173/Flying/';
 /** Preview with no headers at all, as GitHub Pages serves: isolation comes from the Service Worker. */
 export const PAGES_BASE = 'http://127.0.0.1:4174/Flying/';
 
+/**
+ * A small drawing buffer at the lowest preset. The specs that check the threads (rates, stalls,
+ * pausing) and not the picture add this, so that a software rasteriser, which is all CI has, keeps
+ * up with the scene and a frame count measures the loop and not the fill rate.
+ */
+export const CHEAP = 'res=480x270&quality=low';
+
 /** Collects anything that would indicate a CSP violation or a script error. */
 export function watchErrors(page: Page): string[] {
   const problems: string[] = [];

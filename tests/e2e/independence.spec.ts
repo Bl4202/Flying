@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { byId, HEADERS_BASE, openGame, sampleAfter, simRate } from './support.ts';
+import { byId, CHEAP, HEADERS_BASE, openGame, sampleAfter, simRate } from './support.ts';
 
-const URL = `${HEADERS_BASE}?debug=1&flags=stall`;
+const URL = `${HEADERS_BASE}?debug=1&flags=stall&${CHEAP}`;
 
 /** The loop is running and has been for long enough that its first-frame costs are behind it. */
 async function settled(page: Parameters<typeof openGame>[0]) {

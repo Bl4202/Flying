@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import {
   byId,
+  CHEAP,
   HEADERS_BASE,
   openGame,
   overlayNumber,
@@ -22,7 +23,7 @@ test.describe('no isolation: no headers and no Service Worker', () => {
   test('runs the single build over copied messages, and the loop and input still work', async ({
     page,
   }) => {
-    await openGame(page, `${PAGES_BASE}?debug=1&spawn=air`);
+    await openGame(page, `${PAGES_BASE}?debug=1&spawn=air&${CHEAP}`);
     // Transfer mode: the single WASM build, snapshots and inputs by message, timer-driven ticks.
     await expect(byId(page, 'ov-mode')).toHaveAttribute('data-value', 'single · message · timer');
 
@@ -59,7 +60,7 @@ test.describe('no isolation: no headers and no Service Worker', () => {
 
 test.describe('isolated, with the degraded paths forced on', () => {
   test('copied messages and timer ticks work with the threads build too', async ({ page }) => {
-    await openGame(page, `${HEADERS_BASE}?debug=1&flags=transfer,timer`);
+    await openGame(page, `${HEADERS_BASE}?debug=1&flags=transfer,timer&${CHEAP}`);
     await expect(byId(page, 'ov-mode')).toHaveAttribute('data-value', 'threads · message · timer');
     const { a, b } = await windowOfPlay(page);
     const rate = simRate(a, b);
@@ -69,7 +70,7 @@ test.describe('isolated, with the degraded paths forced on', () => {
   });
 
   test('the main-thread renderer draws, and the sim keeps its rate', async ({ page }) => {
-    await openGame(page, `${HEADERS_BASE}?debug=1&flags=mainrender`);
+    await openGame(page, `${HEADERS_BASE}?debug=1&flags=mainrender&${CHEAP}`);
     expect(await page.evaluate(() => window.__flying?.host())).toBe('main');
     const { a, b } = await windowOfPlay(page);
     const rate = simRate(a, b);
