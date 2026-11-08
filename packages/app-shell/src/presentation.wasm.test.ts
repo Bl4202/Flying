@@ -1,14 +1,26 @@
-import { readFileSync } from 'node:fs';
+/**
+ * The presentation loader against the real baked sim pack (`cargo xtask content`): the bundle has to
+ * name the pack it was baked with.
+ *
+ * Skipped when the build outputs are absent, so `pnpm test` works on a fresh checkout. CI's build
+ * job sets REQUIRE_WASM=1 after building, which turns "absent" into a failure instead.
+ */
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parsePresentBundle } from '@flying/sim-bridge';
 import { AIRCRAFT_ID, loadPresentation } from './presentation.ts';
 
+const packUrl = new URL('../../../content-out/core.cpack', import.meta.url);
+const built = existsSync(packUrl);
+if (!built && process.env['REQUIRE_WASM'] === '1') {
+  throw new Error('REQUIRE_WASM=1 but content-out/ is missing');
+}
+
 const text = (rel: string): string => readFileSync(new URL(rel, import.meta.url), 'utf8');
 const vector = (): unknown => JSON.parse(text('../../../tests/vectors/present_bundle.json'));
-const pack = (): Uint8Array =>
-  new Uint8Array(readFileSync(new URL('../../../content-out/core.cpack', import.meta.url)));
+const pack = (): Uint8Array => new Uint8Array(readFileSync(packUrl));
 
-describe('loadPresentation', () => {
+describe.skipIf(!built)('loadPresentation', () => {
   it("loads the Kestrel's HUD, cockpit, model, font and audio from a bundle that matches the pack", async () => {
     const p = await loadPresentation({
       bundle: () => Promise.resolve(parsePresentBundle(vector())),
