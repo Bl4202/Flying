@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { byId, HEADERS_BASE, openGame, simSample, watchErrors } from './support.ts';
+import { byId, CHEAP, HEADERS_BASE, openGame, simSample, watchErrors } from './support.ts';
 
 test('the loop runs: 60 Hz ticks, frames advance, and the picture has more than a clear colour', async ({
   page,
 }) => {
   const problems = watchErrors(page);
-  await openGame(page, `${HEADERS_BASE}?debug=1`);
+  await openGame(page, `${HEADERS_BASE}?debug=1&${CHEAP}`);
 
   const before = await simSample(page);
   const framesBefore = await page.evaluate(() => window.__flying?.stats().render?.frames ?? 0);
@@ -29,12 +29,12 @@ test('the loop runs: 60 Hz ticks, frames advance, and the picture has more than 
 });
 
 test('the overlay shows the content hash of the loaded pack', async ({ page }) => {
-  await openGame(page, `${HEADERS_BASE}?debug=1`);
+  await openGame(page, `${HEADERS_BASE}?debug=1&${CHEAP}`);
   await expect(byId(page, 'ov-content')).toHaveAttribute('data-value', /^[0-9a-f]{16}$/);
 });
 
 test('a hidden tab pauses the sim, and showing it again resumes', async ({ page }) => {
-  await openGame(page, `${HEADERS_BASE}?debug=1`);
+  await openGame(page, `${HEADERS_BASE}?debug=1&${CHEAP}`);
   const setVisibility = (state: 'hidden' | 'visible') =>
     page.evaluate((s) => {
       Object.defineProperty(document, 'visibilityState', { value: s, configurable: true });
@@ -55,7 +55,7 @@ test('a hidden tab pauses the sim, and showing it again resumes', async ({ page 
 });
 
 test('a person who paused stays paused through hiding and showing the tab', async ({ page }) => {
-  await openGame(page, `${HEADERS_BASE}?debug=1`);
+  await openGame(page, `${HEADERS_BASE}?debug=1&${CHEAP}`);
   await byId(page, 'ov-pause').click();
   await expect(byId(page, 'ov-core')).toHaveAttribute('data-value', 'paused');
   await page.evaluate(() => {
