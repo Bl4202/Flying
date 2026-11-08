@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { byId, HEADERS_BASE } from './support.ts';
+import { byId, HEADERS_BASE, checkScreensBackend, SCREENS_RENDERER } from './support.ts';
 
 const SCREENS = `${HEADERS_BASE}?selftest=screens`;
 
@@ -21,6 +21,9 @@ async function measure(
       text: (await cell.textContent()) ?? '',
     };
   }
+  checkScreensBackend(rows, (backend) =>
+    test.info().annotations.push({ type: 'backend', description: backend }),
+  );
   return rows;
 }
 
@@ -30,7 +33,7 @@ test.describe('the horizon in screenshots (S1 to S3)', () => {
   test('S1 and S2: the dip is right at five heights, and the horizon is the image of the horizon circle', async ({
     page,
   }) => {
-    const rows = await measure(page, `${SCREENS}&case=horizon&renderer=webgl2`);
+    const rows = await measure(page, `${SCREENS}&case=horizon&renderer=${SCREENS_RENDERER}`);
     for (const id of [...S1, ...S2]) {
       test.info().annotations.push({ type: id, description: rows[id]?.text ?? 'missing' });
       expect(rows[id]?.result, `${id}: ${rows[id]?.text ?? 'missing'}`).toBe('pass');
@@ -43,7 +46,7 @@ test.describe('the horizon in screenshots (S1 to S3)', () => {
   }) => {
     const rows = await measure(
       page,
-      `${SCREENS}&case=horizon&renderer=webgl2&debug=1&fault=flat-earth`,
+      `${SCREENS}&case=horizon&renderer=${SCREENS_RENDERER}&debug=1&fault=flat-earth`,
     );
     // The dip is wrong where the Earth's curve matters: from 5 km up it is more than a degree out.
     for (const id of ['s1-5000', 's1-10000', 's1-15000']) {

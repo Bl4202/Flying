@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
-import { byId, HEADERS_BASE, openGame } from './support.ts';
+import { byId, HEADERS_BASE, openGame, checkScreensBackend, SCREENS_RENDERER } from './support.ts';
 
-const SCREENS = `${HEADERS_BASE}?selftest=screens&case=terrain&renderer=webgl2`;
+const SCREENS = `${HEADERS_BASE}?selftest=screens&case=terrain&renderer=${SCREENS_RENDERER}`;
 
 async function measure(
   page: Page,
@@ -17,6 +17,9 @@ async function measure(
       text: (await cell.textContent()) ?? '',
     };
   }
+  checkScreensBackend(rows, (backend) =>
+    test.info().annotations.push({ type: 'backend', description: backend }),
+  );
   return rows;
 }
 
@@ -53,7 +56,7 @@ test.describe('the terrain in screenshots (S5)', () => {
 });
 
 test('all four terrain levels reach the renderer once a sortie starts', async ({ page }) => {
-  await openGame(page, `${HEADERS_BASE}?flags=stall&renderer=webgl2`);
+  await openGame(page, `${HEADERS_BASE}?flags=stall&renderer=${SCREENS_RENDERER}`);
   await expect
     .poll(async () => page.evaluate(() => window.__flying?.stats().render?.terrainLevels ?? 0), {
       timeout: 15_000,

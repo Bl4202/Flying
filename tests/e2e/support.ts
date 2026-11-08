@@ -6,6 +6,25 @@ export const HEADERS_BASE = 'http://127.0.0.1:4173/Flying/';
 export const PAGES_BASE = 'http://127.0.0.1:4174/Flying/';
 
 /**
+ * The renderer the screenshot gates run on: WebGL2 in CI, and on a reference machine
+ * `SCREENS_RENDERER=webgpu PW_CHANNEL=chrome` (the headless shell has no WebGPU adapter).
+ */
+export const SCREENS_RENDERER = process.env['SCREENS_RENDERER'] ?? 'webgl2';
+
+/**
+ * Fails when the screenshot gates ran on another renderer than the one asked for (`webgpu` quietly
+ * falls back to WebGL2 where there is no adapter), and records the backend with the test.
+ */
+export function checkScreensBackend(
+  rows: Record<string, { text: string } | undefined>,
+  annotate: (backend: string) => void,
+): void {
+  const backend = rows['backend']?.text ?? 'missing';
+  annotate(backend);
+  expect(backend.startsWith(SCREENS_RENDERER), `the pictures were drawn by ${backend}`).toBe(true);
+}
+
+/**
  * A small drawing buffer at the lowest preset. The specs that check the threads (rates, stalls,
  * pausing) and not the picture add this, so that a software rasteriser, which is all CI has, keeps
  * up with the scene and a frame count measures the loop and not the fill rate.

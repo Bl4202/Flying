@@ -83,6 +83,8 @@ const PLAIN_BASE_M = 40;
 
 interface Rig {
   render: RenderClient;
+  /** The backend and device the pictures were drawn by, as the renderer reported them. */
+  backend(): string;
   /** Puts the eye at `pose` and returns the picture once it has stopped changing. */
   capture(pose: Pose): Promise<RgbaImage>;
   stop(): void;
@@ -150,6 +152,7 @@ async function startRig(flags: Flags, arena: number, cameraSettings: boolean): P
       throw new Error(message);
     },
   });
+  let backend = 'unknown';
   const render = await RenderClient.create({
     container: stage,
     workerUrl: renderWorkerUrl,
@@ -165,7 +168,9 @@ async function startRig(flags: Flags, arena: number, cameraSettings: boolean): P
     snapshot: drawSnapshots.source,
     terrainPort: terrain.port2,
     viewBuffer: null,
-    onEvent: () => undefined,
+    onEvent: (event) => {
+      if (event.type === 'ready') backend = `${event.backend} ${event.description}`;
+    },
     shaders: SHADERS,
   });
 
@@ -201,6 +206,7 @@ async function startRig(flags: Flags, arena: number, cameraSettings: boolean): P
 
   return {
     render,
+    backend: () => backend,
     async capture(next: Pose): Promise<RgbaImage> {
       pose = next;
       render.setSettings({ gfxStrength: 100, debugFovDeg: next.fovDeg ?? 70 });
@@ -683,6 +689,8 @@ export async function runScreensSelfTest(args: ScreensSelfTestArgs): Promise<voi
       });
       await hud(rig, table, loaded);
     } else await horizon(rig, table);
+    // Which renderer drew the pictures: a run that asked for WebGPU must not have fallen back.
+    table.row('backend', 'Renderer', rig.backend(), 'pass');
   } catch (e) {
     table.row('error', 'Error', `fail: ${e instanceof Error ? e.message : String(e)}`, 'fail');
   } finally {
