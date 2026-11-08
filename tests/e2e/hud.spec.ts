@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
-import { byId, HEADERS_BASE } from './support.ts';
+import { byId, HEADERS_BASE, checkScreensBackend, SCREENS_RENDERER } from './support.ts';
 
-const SCREENS = `${HEADERS_BASE}?selftest=screens&case=hud&renderer=webgl2`;
+const SCREENS = `${HEADERS_BASE}?selftest=screens&case=hud&renderer=${SCREENS_RENDERER}`;
 
 async function measure(
   page: Page,
@@ -17,6 +17,9 @@ async function measure(
       text: (await cell.textContent()) ?? '',
     };
   }
+  checkScreensBackend(rows, (backend) =>
+    test.info().annotations.push({ type: 'backend', description: backend }),
+  );
   return rows;
 }
 
