@@ -35,6 +35,29 @@ function strong(over: Partial<ClassifyInput> = {}): ClassifyInput {
   };
 }
 
+describe('the Mac M4 that gates the 60 FPS exit (ADR-28, amendment 1)', () => {
+  // The browser benchmark's CPU score of that machine at each milestone: v0.1a, and v0.1b with the
+  // heavier kernel (the control system, the gear and physiology). Its GPU and cores did not change.
+  const m4 = (ticks: number): ClassifyInput => ({
+    cpu: cpu(ticks),
+    gpuHeavyMs: 0.8,
+    gpuBackend: 'webgpu',
+    cores: 10,
+    memory: { deviceMemoryGb: 8 },
+  });
+
+  it('reads High at the v0.1a kernel and again at the current one, once the thresholds are re-based', () => {
+    expect(classify(m4(148_828)).profile).toBe('high');
+    expect(classify(m4(58_177)).profile).toBe('high');
+  });
+
+  it('keeps the re-based tiers apart: a machine two-thirds as fast is Recommended, half as fast Minimum', () => {
+    expect(classify(m4(58_177 / 1.5)).parts.cpu).toBe('recommended');
+    expect(classify(m4(58_177 / 2)).parts.cpu).toBe('minimum');
+    expect(classify(m4(58_177 / 4)).parts.cpu).toBe('below-minimum');
+  });
+});
+
 describe('tier boundaries', () => {
   const t = { minimum: 10, recommended: 20, high: 30 };
   it('higher is better: each value lands in the highest tier it reaches', () => {
