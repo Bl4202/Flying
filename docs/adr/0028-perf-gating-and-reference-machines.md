@@ -77,3 +77,22 @@ benchmark's workload does not change). A future kernel change that moves the sco
 With the re-base the M4 is benchmarked as High, as at v0.1a, and is the machine that gates v0.1c's
 60 FPS exit (ADR-39 P1, P2). No machine of the GDD's Recommended spec (6 cores, GTX 1660 / RTX 2060
 class) has been tested; the v0.1c exit checklist records that gap.
+
+**Measured (2026-11-08, WP11).** The kernel under Node (WASM single, the benchmark kernel's own
+procedure: `node packages/tools/src/kernel-rate.ts`) on the M4, the v0.1c build and a worktree of
+the `v0.1a` tag's build alternately, two rounds of three 10 s runs each after a 2 s warm-up:
+
+| Build | Session the kernel flies | Ticks per second (per run) | Median |
+|---|---|---|---|
+| v0.1a tag (ABI 2) | the default session (the kernel had no `fg_configure`) | 136 088, 136 005, 135 930; 134 925, 134 866, 134 425 | 135 436 |
+| v0.1c (ABI 4) | the scripted session (air start, Standard) | 55 741, 57 050, 56 929; 56 996, 56 939, 56 843 | 56 934 |
+
+The ratio is **0.420**. The browser reports on the same machine give 58 177 / 148 828 = 0.391: the
+two differ by 7 %, inside the 10 % allowance, so the Node figure is used, as the decision says. (The
+v0.1a measurement recorded in `thresholds.json` was 137 000; today's 135 436 is within 1.2 % of it.)
+
+The thresholds become **17 200 / 31 100 / 44 900** (Minimum / Recommended / High; were 41 000 /
+74 000 / 107 000), rounded to the nearest hundred. The M4's two recorded browser scores classify as
+High, 148 828 at the v0.1a kernel and 58 177 at the current one (`classify.test.ts` keeps both). The
+GPU thresholds, the core counts and the memory floor are unchanged; a benchmark result already stored
+in a browser keeps the classification it was made with until the benchmark runs again.
