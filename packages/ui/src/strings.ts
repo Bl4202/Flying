@@ -135,6 +135,7 @@ const EN = {
   'perf.verdict.fail': 'FAIL: {failed} of {total} gates do not hold.',
   'perf.gate.pass': 'pass',
   'perf.gate.fail': 'fail',
+  'perf.gate.reading': 'reading, not a gate',
   'perf.copy': 'Copy report',
   'perf.copied': 'Copied.',
   'perf.copy-failed': 'Could not copy; select the text above and copy it by hand.',

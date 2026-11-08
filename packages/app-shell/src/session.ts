@@ -31,11 +31,12 @@ type SessionSettings = Pick<Settings, 'spawn' | 'assist' | 'gEffects'> & { arena
 
 export function sessionFromFlags(
   flags: Flags,
-  perf: boolean,
+  /** A performance run: `true` for the bare scripted session, or the scenario whose start it flies. */
+  perf: boolean | { start: { spawn: number; arena: number } },
   settings?: SessionSettings,
 ): SessionConfig {
-  if (perf) {
-    return { ...SCRIPTED_SESSION };
+  if (perf !== false) {
+    return { ...SCRIPTED_SESSION, ...(perf === true ? {} : perf.start) };
   }
   const base = settings ?? DEFAULT_SESSION;
   return {

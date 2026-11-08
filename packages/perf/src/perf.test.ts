@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { RenderStats } from '@flying/render/messages';
 import { newAircraftStatus, type Quantiles, type SimStats } from '@flying/sim-bridge';
-import { evaluateGates, PS0_LIMITS, verdictOf } from './gates.ts';
+import { ARENA_LIMITS, evaluateGates, PS0_LIMITS, verdictOf } from './gates.ts';
 import { describeMachine } from './machine.ts';
 import { isPerfReport, type PerfMetrics } from './report.ts';
 import { runScenario, type Progress, type PerfTarget } from './runner.ts';
-import { findScenario, PS0 } from './scenarios.ts';
+import { ARENA, findScenario, PS0, type Scenario } from './scenarios.ts';
 
 const q = (over: Partial<Quantiles> = {}): Quantiles => ({
   count: 100,
@@ -26,6 +26,9 @@ interface Behaviour {
   dropMsPerSecond: number;
   dropsFrom: number;
   fps: number;
+  /** Main-thread long tasks and lost devices counted, cumulative from the start. */
+  longTasks: number | null;
+  deviceLosses: number;
 }
 
 const HEALTHY: Behaviour = {
@@ -36,6 +39,8 @@ const HEALTHY: Behaviour = {
   dropMsPerSecond: 0,
   dropsFrom: 0,
   fps: 60,
+  longTasks: 0,
+  deviceLosses: 0,
 };
 
 /** A world that advances by sleeping: every 250 ms both threads publish a report. */
@@ -125,6 +130,8 @@ function world(b: Partial<Behaviour> = {}) {
       runStart = elapsedS;
       resets.push(elapsedS);
     },
+    longTasks: () => beh.longTasks,
+    deviceLosses: () => beh.deviceLosses,
   };
   const env = {
     sharedNowMs: () => now,
@@ -150,9 +157,14 @@ function world(b: Partial<Behaviour> = {}) {
   return { target, env, resets, silent: () => (sim = render = undefined) };
 }
 
-function run(w: ReturnType<typeof world>, seconds = 10, onProgress?: (p: Progress) => void) {
+function run(
+  w: ReturnType<typeof world>,
+  seconds = 10,
+  onProgress?: (p: Progress) => void,
+  scenario: Scenario = PS0,
+) {
   return runScenario({
-    scenario: PS0,
+    scenario,
     seconds,
     target: w.target,
     env: w.env,
@@ -241,7 +253,12 @@ describe('runScenario (PS-0)', () => {
     // Never publishes: sleep still advances time, but there are no reports to read.
     const silent = {
       ...w,
-      target: { stats: () => ({ sim: undefined, render: undefined }), resetRun: () => undefined },
+      target: {
+        stats: () => ({ sim: undefined, render: undefined }),
+        resetRun: () => undefined,
+        longTasks: () => null,
+        deviceLosses: () => 0,
+      },
     };
     await expect(run(silent)).rejects.toThrow(/SYS-120/);
   });
@@ -291,6 +308,8 @@ describe('gates', () => {
     gappedFrames: 0,
     inputsDropped: 0,
     snapshotsDropped: 0,
+    longTasks: 0,
+    deviceLosses: 0,
     ...over,
   });
 
@@ -317,9 +336,93 @@ describe('gates', () => {
   });
 });
 
+describe('the arena gates (ADR-39 P1, P2)', () => {
+  const metrics = (over: Partial<PerfMetrics> = {}): PerfMetrics => ({
+    windowS: 120,
+    ticks: 7200,
+    simHz: 60,
+    droppedMs: 0,
+    droppedEvents: 0,
+    step: q({ avg: 1, p99: 2 }),
+    frames: 7200,
+    renderFps: 60,
+    frameMs: q({ avg: 16.67, p99: 17.5 }),
+    renderCpuMs: q({ avg: 3, p99: 6 }),
+    staleFrames: 0,
+    gappedFrames: 0,
+    inputsDropped: 0,
+    snapshotsDropped: 0,
+    longTasks: 0,
+    deviceLosses: 0,
+    ...over,
+  });
+  const verdict = (over: Partial<PerfMetrics> = {}) =>
+    verdictOf(evaluateGates(metrics(over), 'arena'));
+  const failed = (over: Partial<PerfMetrics>): string[] =>
+    evaluateGates(metrics(over), 'arena')
+      .filter((g) => !g.pass && g.informational !== true)
+      .map((g) => g.id);
+
+  it('passes a run at 60 FPS and fails each limit just past its edge, naming it', () => {
+    expect(verdict()).toBe('pass');
+    const A = ARENA_LIMITS;
+    expect(verdict({ frameMs: q({ avg: A.frameAvgMs, p99: A.frameP99Ms }) })).toBe('pass');
+    expect(failed({ frameMs: q({ avg: 16.71, p99: 17.5 }) })).toEqual(['frame-avg']);
+    expect(failed({ frameMs: q({ avg: 16.67, p99: 22.21 }) })).toEqual(['frame-p99']);
+    expect(failed({ renderCpuMs: q({ avg: 3, p99: 11.01 }) })).toEqual(['render-cpu-p99']);
+    expect(failed({ deviceLosses: 1 })).toEqual(['device-loss']);
+    expect(failed({ longTasks: 1 })).toEqual(['long-tasks']);
+    expect(failed({ simHz: 59.8 })).toEqual(['sim-rate']);
+  });
+
+  it('keeps the PS-0 gates, and does not judge PS-0 by the arena ones', () => {
+    const ids = (set: 'ps0' | 'arena') => evaluateGates(metrics(), set).map((g) => g.id);
+    expect(ids('arena')).toEqual(expect.arrayContaining(ids('ps0')));
+    expect(ids('ps0')).not.toContain('frame-avg');
+    expect(verdictOf(evaluateGates(metrics({ frameMs: q({ avg: 40 }) }), 'ps0'))).toBe('pass');
+  });
+
+  it('reads long tasks as missing, not as good, where the browser cannot count them', () => {
+    const gates = evaluateGates(metrics({ longTasks: null }), 'arena');
+    const long = gates.find((g) => g.id === 'long-tasks');
+    expect(long).toMatchObject({ pass: false, informational: true });
+    expect(verdictOf(gates)).toBe('pass');
+  });
+
+  it('records the Minimum-class frame rate as a reading that is not in the verdict', () => {
+    const gates = evaluateGates(metrics({ renderFps: 24, frameMs: q({ avg: 16.67 }) }), 'arena');
+    expect(gates.find((g) => g.id === 'fps-minimum')).toMatchObject({
+      pass: false,
+      informational: true,
+    });
+    expect(verdictOf(gates)).toBe('pass');
+  });
+
+  it('runs the scenario: the circuit from the runway, 120 s after a 5 s warm-up, judged by these gates', async () => {
+    expect(ARENA).toMatchObject({ warmupS: 5, defaultSeconds: 120, gates: 'arena' });
+    expect(ARENA.view).toMatchObject({ camera: 'cockpit', quality: 'high', audio: true });
+    expect(ARENA.view?.res).toEqual({ width: 1920, height: 1080 });
+    const report = await run(world({ longTasks: 0 }), 10, undefined, ARENA);
+    expect(report.scenario).toBe('ARENA');
+    expect(report.verdict).toBe('pass');
+    expect(report.gates.map((g) => g.id)).toContain('frame-p99');
+    expect(report.metrics).toMatchObject({ longTasks: 0, deviceLosses: 0 });
+  });
+
+  it('counts only what happened in the measured window', () => {
+    // 3 long tasks and 1 lost device before the warm-up ended do not count against the run.
+    const w = world({ longTasks: 3, deviceLosses: 1 });
+    return run(w, 10, undefined, ARENA).then((r) => {
+      expect(r.metrics).toMatchObject({ longTasks: 0, deviceLosses: 0 });
+      expect(r.verdict).toBe('pass');
+    });
+  });
+});
+
 describe('scenarios and machine', () => {
-  it('finds PS-0 by id, ignoring case', () => {
+  it('finds PS-0 and the arena by id, ignoring case', () => {
     expect(findScenario('ps-0')).toBe(PS0);
+    expect(findScenario('arena')).toBe(ARENA);
     expect(findScenario('PS-9')).toBeUndefined();
   });
 

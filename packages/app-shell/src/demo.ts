@@ -44,6 +44,7 @@ import {
   type MachineInfo,
   type PerfTarget,
   type RunModes,
+  type Scenario,
 } from '@flying/perf';
 import simWorkerUrl from '@flying/sim-host/sim.worker?worker&url';
 import renderWorkerUrl from '@flying/render/render.worker?worker&url';
@@ -80,6 +81,7 @@ import { loadPresentBundle } from './present-bundle.ts';
 import { kindOfMapping, ScreenController } from './screens.ts';
 import { coreContentUrl, runSelfTestWorker, selfTestRequest, wasmUrl } from './selftest.ts';
 import { judgeSelfTest, goldenCheckpoint, SEED } from './selftest-judge.ts';
+import { countLongTasks } from './long-tasks.ts';
 import { sessionFromFlags, sessionOverrides } from './session.ts';
 import { StatusFeed } from './status-feed.ts';
 import { Supervisor } from './supervisor.ts';
@@ -110,6 +112,8 @@ export interface DemoContext {
   start: StartTarget;
   /** A performance run: the scripted pilot flies, and the keyboard, mouse and pads are left alone. */
   perf: boolean;
+  /** The scenario a performance run flies (its start, its script and what it shows). */
+  scenario: Scenario | undefined;
   /** The stored benchmark result as `profile / preset`, for the overlay. */
   benchmarkSummary: string | undefined;
   /** The preset the first-run benchmark chose, if it has run. */
@@ -242,7 +246,9 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   await controlsStore.load();
   /** A scripted pilot flies (a performance run, or the circuit): the devices are left alone. */
   const scripted = ctx.perf || flags.script !== false;
-  const session = sessionFromFlags(flags, ctx.perf, settings.value);
+  const session = sessionFromFlags(flags, ctx.scenario ?? ctx.perf, settings.value);
+  /** The run measures the sound too: its context is resumed, and the status feed drives it. */
+  const soundOn = ctx.scenario?.view?.audio === true;
   const overrides = scripted ? {} : sessionOverrides(session, settings.value);
 
   /** A sortie is running. Until the player chooses Fly the core is idle and nothing is held or paused. */
@@ -255,6 +261,9 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   let menuHold = false;
   let simHeld = false;
   let readyEvents = 0;
+  /** Graphics devices lost since the page opened, for a performance run's gate. */
+  let deviceLosses = 0;
+  const longTasks = countLongTasks();
 
   const onRenderEvent = (event: RenderEvent): void => {
     switch (event.type) {
@@ -268,6 +277,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
         }
         break;
       case 'lost':
+        deviceLosses += 1;
         toasts.show(t('toast.renderer-lost', { reason: event.reason }), 'warn');
         break;
       case 'error':
@@ -299,11 +309,13 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
         threadsInitialPages: __THREADS_INITIAL_PAGES__,
         contentUrl: coreContentUrl,
         seed: SEED,
-        script: ctx.perf
-          ? INPUT_SCRIPT.ERRATIC
-          : flags.script === 'circuit'
-            ? INPUT_SCRIPT.CIRCUIT
-            : INPUT_SCRIPT.NONE,
+        script: ctx.scenario
+          ? ctx.scenario.script
+          : ctx.perf
+            ? INPUT_SCRIPT.ERRATIC
+            : flags.script === 'circuit'
+              ? INPUT_SCRIPT.CIRCUIT
+              : INPUT_SCRIPT.NONE,
         session,
         snapshot: snapshots.sink,
         input: inputs.source,
@@ -626,9 +638,10 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   view.start();
 
   // The warning strip and the state the pump needs come from the aircraft's snapshot. A scripted
-  // pilot (not a performance run) gets the strip too, so the circuit can be watched.
-  if (!ctx.perf) {
-    const s = new WarningStrip(roots.strip);
+  // pilot (not a performance run) gets the strip too, so the circuit can be watched. A performance
+  // run that measures the sound gets the feed that drives it, and no strip.
+  if (!ctx.perf || soundOn) {
+    const s = ctx.perf ? undefined : new WarningStrip(roots.strip);
     strip = s;
     let appliedStart = false;
     let lastStrip = Number.NEGATIVE_INFINITY;
@@ -650,15 +663,17 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
         const now = monotonicMs();
         if (now - lastStrip >= STRIP_MS) {
           lastStrip = now;
-          s.update(status);
+          s?.update(status);
         }
       },
     });
     feed.start();
   }
 
-  // Audio waits for a gesture; the null backend only records that it was asked.
+  // Audio waits for a gesture; the null backend only records that it was asked. A run that measures
+  // the sound has no gesture to wait for, so it asks at once (the reference browser lets it).
   const cancelAudio = resumeOnFirstGesture(audio, window);
+  if (soundOn) void audio.resume();
 
   /** Paused by the page being hidden (not by the person), so showing it again resumes. */
   let pausedByHiding = false;
@@ -846,6 +861,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     for (const off of unsubscribers.splice(0)) off();
     screens?.destroy();
     strip?.destroy();
+    longTasks.stop();
     cancelAudio();
     overlay.destroy();
     sink.close();
@@ -866,6 +882,8 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
           sim.resetRun();
           render.resetRun();
         },
+        longTasks: () => longTasks.count(),
+        deviceLosses: () => deviceLosses,
       },
       build: () => ({
         id: __BUILD_ID__,

@@ -4,6 +4,8 @@ import {
   judgeRun,
   parseLocalArgs,
   renderSummary,
+  reportFile,
+  scenarioQuery,
   type FlightSummary,
   type LatencySummary,
   type LocalOptions,
@@ -22,6 +24,7 @@ const flight: FlightSummary = {
 
 function facts(over: Partial<RunFacts> = {}): RunFacts {
   return {
+    scenario: 'PS-0',
     compatVerdict: 'ok',
     compatCodes: [],
     adapter: 'apple metal-3',
@@ -74,6 +77,10 @@ describe('parseLocalArgs', () => {
       machineClass: 'minimum',
       spawn: 'runway',
       latency: 500,
+      scenario: 'ps0',
+      camera: undefined,
+      res: undefined,
+      quality: undefined,
     });
   });
 
@@ -86,10 +93,52 @@ describe('parseLocalArgs', () => {
       seconds: 120,
       fly: 60,
       headless: false,
-      out: 'docs/exit/v0.1b/machines',
+      out: 'docs/exit/v0.1c/machines',
+      scenario: 'ps0',
       spawn: 'air',
       latency: 0,
     });
+  });
+
+  it('takes the arena scenario, its view, and skips the hands-on flight unless asked', () => {
+    const base = ['--name', 'a', '--class', 'recommended', '--scenario', 'arena'];
+    expect(parseLocalArgs(base)).toMatchObject({
+      scenario: 'arena',
+      fly: 0,
+      camera: undefined,
+      res: undefined,
+      quality: undefined,
+    });
+    expect(
+      parseLocalArgs([...base, '--camera', 'chase', '--res', '1920x1080', '--quality', 'medium']),
+    ).toMatchObject({ camera: 'chase', res: '1920x1080', quality: 'medium' });
+    expect(parseLocalArgs([...base, '--fly', '30']).fly).toBe(30);
+    expect(() => parseLocalArgs([...base, '--camera', 'orbit'])).toThrow(/--camera/);
+    expect(() => parseLocalArgs([...base, '--res', 'big'])).toThrow(/--res/);
+    expect(() => parseLocalArgs([...base, '--quality', 'ultra'])).toThrow(/--quality/);
+    expect(() => parseLocalArgs(['--name', 'a', '--class', 'high', '--scenario', 'ps9'])).toThrow(
+      /--scenario/,
+    );
+  });
+
+  it('builds the page query and the report file of the measured run from the scenario', () => {
+    const ps0 = parseLocalArgs(['--name', 'a', '--class', 'high', '--seconds', '30']);
+    expect(scenarioQuery(ps0)).toBe('perf=ps0&seconds=30');
+    expect(reportFile(ps0)).toBe('perf-ps0.json');
+    const arena = parseLocalArgs([
+      '--name',
+      'a',
+      '--class',
+      'high',
+      '--scenario',
+      'arena',
+      '--camera',
+      'chase',
+      '--res',
+      '1280x720',
+    ]);
+    expect(scenarioQuery(arena)).toBe('perf=arena&seconds=120&camera=chase&res=1280x720');
+    expect(reportFile(arena)).toBe('perf-arena.json');
   });
 
   it('refuses what it does not understand', () => {
@@ -207,6 +256,35 @@ describe('renderSummary', () => {
     expect(text).toContain('profile high, preset ultra');
     expect(text).toContain('- [x] compat verdict is not fatal (ok)');
     expect(text).toContain('Adapter: apple metal-3');
+  });
+
+  it('names the arena scenario, what it looked through and its failed gates', () => {
+    const arena = parseLocalArgs([
+      '--name',
+      'a-arena-chase',
+      '--class',
+      'recommended',
+      '--scenario',
+      'arena',
+      '--camera',
+      'chase',
+    ]);
+    const f = facts({
+      scenario: 'ARENA',
+      flight: null,
+      perf: {
+        verdict: 'fail',
+        simHz: 60,
+        renderFps: 52.4,
+        failedGates: ['frame-avg', 'frame-p99'],
+      },
+    });
+    const text = renderSummary(arena, f, judgeRun(f, 'recommended'), '2026-11-09');
+    expect(text).toContain(
+      'ARENA (120 s, chase, 1920x1080, high): FAIL, sim 60.000 Hz, render 52.4 FPS',
+    );
+    expect(text).toContain('ARENA strict gates hold (failed: frame-avg, frame-p99)');
+    expect(text).toContain('`perf-arena.json`');
   });
 
   it('lists failures, errors and notices', () => {

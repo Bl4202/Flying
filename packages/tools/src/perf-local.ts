@@ -1,10 +1,13 @@
 /**
  * Scripted reference-machine run: opens the build in real Chrome, notes the compat verdict, flies
- * a scripted minute, runs the full benchmark and PS-0, and writes the reports and a summary
- * under `docs/exit/v0.0b/machines/<name>/`. Run it on the machine being measured:
+ * a scripted minute, runs the full benchmark and PS-0 (or, with `--scenario arena`, the v0.1c arena
+ * run), and writes the reports and a summary under `docs/exit/v0.1c/machines/<name>/`. Run it on
+ * the machine being measured:
  *
  *   pnpm perf:local --name m4-webgpu --class recommended
  *   pnpm perf:local --name m4-webgl2-throttled --class minimum --renderer webgl2 --throttle 4
+ *   pnpm perf:local --name a-arena-cockpit --class recommended --scenario arena
+ *   pnpm perf:local --name a-arena-chase --class recommended --scenario arena --camera chase
  *
  * See docs/runbooks/reference-machines.md. Not part of CI: it needs a real GPU and a headed
  * browser to mean anything.
@@ -16,6 +19,8 @@ import {
   judgeRun,
   parseLocalArgs,
   renderSummary,
+  reportFile,
+  scenarioQuery,
   type FlightSummary,
   type LatencySummary,
   type LocalOptions,
@@ -49,7 +54,12 @@ const save = (name: string, content: string): void => {
   writeFileSync(join(outDir, name), content.endsWith('\n') ? content : `${content}\n`);
 };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: opts.headless });
+// The arena run measures the sound, and a scripted run has no click to start it with.
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: opts.headless,
+  args: opts.scenario === 'arena' ? ['--autoplay-policy=no-user-gesture-required'] : [],
+});
 const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
 const page = await context.newPage();
 const consoleErrors: string[] = [];
@@ -64,6 +74,7 @@ if (opts.throttle > 1) {
 }
 
 const facts: RunFacts = {
+  scenario: opts.scenario === 'arena' ? 'ARENA' : 'PS-0',
   compatVerdict: null,
   compatCodes: [],
   adapter: '',
@@ -269,9 +280,9 @@ try {
   save('benchmark.json', JSON.stringify(bench, null, 2));
   if (bench.classification) facts.benchmark = bench.classification;
 
-  // 3. PS-0, strict.
-  console.log(`PS-0 for ${String(opts.seconds)} s…`);
-  await page.goto(url(`perf=ps0&seconds=${String(opts.seconds)}`));
+  // 3. The scenario, strict.
+  console.log(`${facts.scenario} for ${String(opts.seconds)} s…`);
+  await page.goto(url(scenarioQuery(opts)));
   await passCompat();
   await byId(page, 'perf-status')
     .and(page.locator('[data-state="done"]'))
@@ -281,7 +292,7 @@ try {
     metrics: { simHz: number; renderFps: number };
     gates: { id: string; pass: boolean }[];
   };
-  save('perf-ps0.json', JSON.stringify(report, null, 2));
+  save(reportFile(opts), JSON.stringify(report, null, 2));
   facts.perf = {
     verdict: report.verdict,
     simHz: report.metrics.simHz,

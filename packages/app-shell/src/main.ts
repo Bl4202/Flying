@@ -36,7 +36,7 @@ import {
 import { runAudioSelfTest } from './audio-selftest.ts';
 import { runBenchmarkPage } from './benchmark-page.ts';
 import { codeOf, startDemo, type Demo } from './demo.ts';
-import { runPerfPage } from './perf-run.ts';
+import { runPerfPage, scenarioOf, withScenarioView } from './perf-run.ts';
 import { runRendererSelfTest } from './renderer-selftest.ts';
 import { runScreensSelfTest } from './screens-selftest.ts';
 import { runSelfTestPage } from './selftest-page.ts';
@@ -61,7 +61,9 @@ function dispatch(event: FlowEvent): FlowState {
 const isFatal = (): boolean => flow.name === 'FATAL';
 
 async function main(): Promise<void> {
-  const flags = parseFlags(location.search);
+  // A performance scenario brings the view it is measured in (camera, preset, buffer size) unless the URL says.
+  const scenario = scenarioOf(parseFlags(location.search).perf);
+  const flags = withScenarioView(parseFlags(location.search), scenario);
   for (const warning of flags.warnings) {
     logger.warn('flags', warning);
   }
@@ -219,6 +221,7 @@ async function main(): Promise<void> {
     demo = await startDemo({
       flags,
       perf: flags.perf !== false,
+      scenario,
       benchmarkSummary: stored
         ? `${stored.classification.profile} / ${stored.classification.preset}`
         : undefined,

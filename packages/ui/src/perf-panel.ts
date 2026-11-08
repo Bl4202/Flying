@@ -104,7 +104,7 @@ export function mountPerfPanel(root: HTMLElement, options: PerfPanelOptions): Pe
     done: (report) => {
       status.dataset['state'] = 'done';
       status.textContent = t('perf.done');
-      const failed = report.gates.filter((g) => !g.pass).length;
+      const failed = report.gates.filter((g) => !g.pass && g.informational !== true).length;
       verdict.dataset['verdict'] = report.verdict;
       verdict.textContent =
         report.verdict === 'pass'
@@ -115,7 +115,13 @@ export function mountPerfPanel(root: HTMLElement, options: PerfPanelOptions): Pe
         gates.append(
           h(doc, 'li', {
             data: { gate: g.id, pass: String(g.pass) },
-            text: `${g.rule}: ${g.value.toFixed(3)} (${t(g.pass ? 'perf.gate.pass' : 'perf.gate.fail')})`,
+            text: `${g.rule}: ${Number.isFinite(g.value) ? g.value.toFixed(3) : '–'} (${t(
+              g.informational === true
+                ? 'perf.gate.reading'
+                : g.pass
+                  ? 'perf.gate.pass'
+                  : 'perf.gate.fail',
+            )})`,
           }),
         );
       }

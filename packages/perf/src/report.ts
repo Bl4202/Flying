@@ -58,6 +58,13 @@ export interface PerfMetrics {
   gappedFrames: number;
   inputsDropped: number;
   snapshotsDropped: number;
+  /**
+   * Main-thread tasks longer than 50 ms since the warm-up ended (the browser's `longtask` entries),
+   * or null where the browser does not report them.
+   */
+  longTasks: number | null;
+  /** Times the graphics device was lost since the warm-up ended. */
+  deviceLosses: number;
 }
 
 export interface GateResult {
@@ -68,6 +75,8 @@ export interface GateResult {
   /** The limit the value is compared with. */
   limit: number;
   pass: boolean;
+  /** Reported for the record, left out of the verdict (a reading that is not a gate). */
+  informational?: boolean;
 }
 
 export interface PerfReport {

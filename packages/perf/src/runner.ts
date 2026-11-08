@@ -22,6 +22,13 @@ export interface PerfTarget {
   stats(): { sim: SimStats | undefined; render: RenderStats | undefined };
   /** Forgets run-level statistics on both threads. */
   resetRun(): void;
+  /**
+   * Main-thread tasks over 50 ms since the page opened, or null where the browser does not report
+   * them. The runner takes the difference over the measured window.
+   */
+  longTasks(): number | null;
+  /** Times the graphics device was lost since the page opened. */
+  deviceLosses(): number;
 }
 
 export interface RunnerEnv {
@@ -91,7 +98,20 @@ async function sleepWithProgress(
   }
 }
 
-export function computeMetrics(base: Both, end: Both): PerfMetrics {
+/** What the main thread counted (not part of the sim or render reports). */
+export interface Counted {
+  longTasks: number | null;
+  deviceLosses: number;
+}
+
+export function computeMetrics(
+  base: Both,
+  end: Both,
+  counted: { base: Counted; end: Counted } = {
+    base: { longTasks: null, deviceLosses: 0 },
+    end: { longTasks: null, deviceLosses: 0 },
+  },
+): PerfMetrics {
   const windowS = Math.max((end.sim.atMs - base.sim.atMs) / 1000, 1e-9);
   const renderWindowS = Math.max((end.render.atMs - base.render.atMs) / 1000, 1e-9);
   const ticks = end.sim.tick - base.sim.tick;
@@ -111,6 +131,11 @@ export function computeMetrics(base: Both, end: Both): PerfMetrics {
     gappedFrames: end.render.gappedFrames - base.render.gappedFrames,
     inputsDropped: end.sim.inputsDropped - base.sim.inputsDropped,
     snapshotsDropped: end.sim.snapshotsDropped - base.sim.snapshotsDropped,
+    longTasks:
+      counted.base.longTasks === null || counted.end.longTasks === null
+        ? null
+        : counted.end.longTasks - counted.base.longTasks,
+    deviceLosses: counted.end.deviceLosses - counted.base.deviceLosses,
   };
 }
 
@@ -134,6 +159,10 @@ export async function runScenario(opts: RunOptions): Promise<PerfReport> {
     'statistics after the warm-up',
   );
 
+  const countedBase: Counted = {
+    longTasks: opts.target.longTasks(),
+    deviceLosses: opts.target.deviceLosses(),
+  };
   await sleepWithProgress(opts, 'measure', opts.seconds);
   const end = await waitForBoth(
     opts,
@@ -142,8 +171,11 @@ export async function runScenario(opts: RunOptions): Promise<PerfReport> {
     'closing statistics',
   );
 
-  const metrics = computeMetrics(base, end);
-  const gates = evaluateGates(metrics);
+  const metrics = computeMetrics(base, end, {
+    base: countedBase,
+    end: { longTasks: opts.target.longTasks(), deviceLosses: opts.target.deviceLosses() },
+  });
+  const gates = evaluateGates(metrics, opts.scenario.gates);
   opts.onProgress?.({ phase: 'done', elapsedS: total, totalS: total });
   return {
     schema: PERF_REPORT_SCHEMA,
