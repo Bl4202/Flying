@@ -17,7 +17,7 @@ import { SHADERS } from './shader-sources.ts';
 
 interface WorkerScope {
   onmessage: ((event: MessageEvent<RenderCommand>) => void) | null;
-  postMessage(message: RenderEvent): void;
+  postMessage(message: RenderEvent, transfer?: Transferable[]): void;
   close(): void;
   requestAnimationFrame?: (callback: () => void) => number;
 }
@@ -75,6 +75,8 @@ async function handle(command: RenderCommand): Promise<void> {
         ...(command.hudPalette === undefined ? {} : { hudPalette: command.hudPalette }),
         ...(command.hudOverlay === undefined ? {} : { hudOverlay: command.hudOverlay }),
         ...(command.hudScale === undefined ? {} : { hudScale: command.hudScale }),
+        ...(command.hudTexts === undefined ? {} : { hudTexts: command.hudTexts }),
+        ...(command.debugFovDeg === undefined ? {} : { debugFovDeg: command.debugFovDeg }),
       };
       session?.setSettings(settings);
       break;
@@ -99,6 +101,25 @@ async function handle(command: RenderCommand): Promise<void> {
         meanLuma: 0,
       };
       post({ type: 'pixels', id: command.id, ...summary });
+      break;
+    }
+    case 'read-image': {
+      const image = (await session?.imageData()) ?? {
+        width: 0,
+        height: 0,
+        pixels: new Uint8Array(0),
+      };
+      const pixels = image.pixels.buffer as ArrayBuffer;
+      scope.postMessage(
+        {
+          type: 'image',
+          id: command.id,
+          width: image.width,
+          height: image.height,
+          pixels,
+        } satisfies RenderEvent,
+        [pixels],
+      );
       break;
     }
     case 'reset-run':

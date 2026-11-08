@@ -49,7 +49,16 @@ describe('renderSettingsOf', () => {
       gfxStrength: 30,
       hud: { palette: 'amber', overlayScale: 150 },
     });
-    expect(renderSettingsOf(s)).toEqual({ gfxStrength: 30, hudPalette: 'amber', hudScale: 1.5 });
+    expect(renderSettingsOf(s)).toMatchObject({
+      gfxStrength: 30,
+      hudPalette: 'amber',
+      hudScale: 1.5,
+    });
+  });
+
+  it('hands over the HUD words in the shipped language', () => {
+    const texts = renderSettingsOf(DEFAULT_SETTINGS).hudTexts;
+    expect(texts?.warnings['pullup']).toBe('PULL UP');
   });
 });
 

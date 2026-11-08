@@ -6,6 +6,7 @@ import type { BusLevels } from '@flying/audio';
 import type { QualityChoice } from '@flying/platform-web';
 import type { ViewSettings } from '@flying/input';
 import { qualityFor, type Quality, type RenderSettings } from '@flying/render';
+import { hudTexts } from './hud-texts.ts';
 import { reducedMotionOn, type PresetSetting, type Settings } from '@flying/ui';
 
 /** The benchmark's presets (`perf`'s `Preset`), which include one the renderer has no more to give to. */
@@ -30,6 +31,7 @@ export function renderSettingsOf(s: Readonly<Settings>): RenderSettings {
     gfxStrength: s.gfxStrength,
     hudPalette: s.hud.palette,
     hudScale: s.hud.overlayScale / 100,
+    hudTexts: hudTexts(),
   };
 }
 

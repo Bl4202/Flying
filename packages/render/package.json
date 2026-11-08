@@ -14,7 +14,9 @@
     "./gpu-bench": "./src/gpu-bench.ts",
     "./renderer": "./src/renderer.ts",
     "./null-renderer": "./src/null-renderer.ts",
-    "./present": "./src/present.ts"
+    "./present": "./src/present.ts",
+    "./snapshot-fixture": "./src/snapshot-fixture.ts",
+    "./hud-texts": "./src/hud/texts.ts"
   },
   "dependencies": {
     "@flying/platform-web": "workspace:*",

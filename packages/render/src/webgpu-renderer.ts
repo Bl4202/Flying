@@ -66,6 +66,8 @@ interface LevelGpu {
   vertices: GPUBuffer;
   indices: GPUBuffer;
   indexCount: number;
+  /** The indices of the surface alone, without the skirts. */
+  surfaceIndexCount: number;
 }
 
 export class WebGpuRenderer implements Renderer {
@@ -399,7 +401,12 @@ export class WebGpuRenderer implements Renderer {
     const padded = new Uint16Array(indexBytes / 2);
     padded.set(mesh.indices);
     device.queue.writeBuffer(indices, 0, padded);
-    this.#levels[level] = { vertices, indices, indexCount: mesh.indices.length };
+    this.#levels[level] = {
+      vertices,
+      indices,
+      indexCount: mesh.indices.length,
+      surfaceIndexCount: mesh.surfaceTriangleCount * 3,
+    };
   }
 
   render(frame: FrameData): void {
@@ -483,7 +490,10 @@ export class WebGpuRenderer implements Renderer {
       pass.setBindGroup(0, this.#bindGroups[level] as GPUBindGroup);
       pass.setVertexBuffer(0, gpu.vertices);
       pass.setIndexBuffer(gpu.indices, 'uint16');
-      pass.drawIndexed(gpu.indexCount, level === 0 ? frame.patchInstances : 1);
+      pass.drawIndexed(
+        frame.noSkirts ? gpu.surfaceIndexCount : gpu.indexCount,
+        level === 0 ? frame.patchInstances : 1,
+      );
     }
     pass.setBindGroup(0, this.#bindGroups[0] as GPUBindGroup);
     if (frame.model) {

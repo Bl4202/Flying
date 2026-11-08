@@ -3,7 +3,10 @@
 // (or the worker) for those.
 export * from './camera.ts';
 export * from './gpu-bench.ts';
+export * from './classify.ts';
+export * from './image-analysis.ts';
 export { HUD_PALETTES, type HudPalette } from './hud/hud.ts';
+export { DEFAULT_HUD_TEXTS, type HudTexts } from './hud/texts.ts';
 export * from './interp.ts';
 export * from './main-thread-host.ts';
 export * from './markers.ts';

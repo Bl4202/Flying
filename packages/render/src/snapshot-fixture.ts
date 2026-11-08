@@ -59,6 +59,45 @@ export const LOOKING_DOWN: [number, number, number, number] = quatFromColumns(
   [0, -1, 0],
 );
 
+/**
+ * The attitude `[w, x, y, z]` for a heading (degrees clockwise from north), a pitch (nose up positive)
+ * and a roll (right wing down positive): body forward, right and down in BF (east, north, up).
+ */
+export function attitudeQuat(
+  headingDeg: number,
+  pitchDeg: number,
+  rollDeg: number,
+): [number, number, number, number] {
+  const d = Math.PI / 180;
+  const h = headingDeg * d;
+  const p = pitchDeg * d;
+  const r = rollDeg * d;
+  const f: [number, number, number] = [
+    Math.sin(h) * Math.cos(p),
+    Math.cos(h) * Math.cos(p),
+    Math.sin(p),
+  ];
+  // Wings level: the right wing is horizontal, to the right of the heading; down is forward x right.
+  const r0: [number, number, number] = [Math.cos(h), -Math.sin(h), 0];
+  const d0: [number, number, number] = [
+    f[1] * r0[2] - f[2] * r0[1],
+    f[2] * r0[0] - f[0] * r0[2],
+    f[0] * r0[1] - f[1] * r0[0],
+  ];
+  // Rolling right swings the right wing down and the belly out to the left.
+  const right: [number, number, number] = [
+    r0[0] * Math.cos(r) + d0[0] * Math.sin(r),
+    r0[1] * Math.cos(r) + d0[1] * Math.sin(r),
+    r0[2] * Math.cos(r) + d0[2] * Math.sin(r),
+  ];
+  const down: [number, number, number] = [
+    d0[0] * Math.cos(r) - r0[0] * Math.sin(r),
+    d0[1] * Math.cos(r) - r0[1] * Math.sin(r),
+    d0[2] * Math.cos(r) - r0[2] * Math.sin(r),
+  ];
+  return quatFromColumns(f, right, down);
+}
+
 /** The unit quaternion `[w, x, y, z]` of the rotation whose columns are the images of x, y, z. */
 export function quatFromColumns(
   cx: [number, number, number],
