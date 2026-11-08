@@ -29,6 +29,7 @@ describe('parseFlags', () => {
       g: 'off',
       fly: true,
       script: 'circuit',
+      view: false,
       warnings: [],
     });
   });
@@ -37,7 +38,11 @@ describe('parseFlags', () => {
     expect(parseFlags('debug=1').debug).toBe('overlay');
     expect(parseFlags('selftest=1').selftest).toBe('hash');
     expect(parseFlags('selftest=audio').selftest).toBe('audio');
+    expect(parseFlags('selftest=screens').selftest).toBe('screens');
     expect(parseFlags('fly=1').fly).toBe(true);
+    expect(parseFlags('view=classify').view).toBe('classify');
+    expect(parseFlags('view=wire').view).toBe(false);
+    expect(parseFlags('view=wire').warnings).toHaveLength(1);
     expect(parseFlags('camera=chase').camera).toBe('chase');
     expect(parseFlags('camera=cockpit').camera).toBe('cockpit');
     expect(parseFlags('camera=orbit').camera).toBeUndefined();

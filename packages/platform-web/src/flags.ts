@@ -10,7 +10,7 @@
  * | `renderer` | `auto` (default), `webgpu`, `webgl2`, `null` |
  * | `flags` | comma list of `transfer`, `mainrender`, `timer`, `stall` (test switches) |
  * | `compat` | `1`: show the compat screen even if it was acknowledged |
- * | `selftest` | `1` (golden hash), `renderer` (renderer contract), `audio` (the flight audio in this browser) |
+ * | `selftest` | `1` (golden hash), `renderer` (renderer contract), `audio` (the flight audio in this browser), `screens` (the screenshot gates; `case=horizon` or `terrain`) |
  * | `perf` | `ps0`: run the PS-0 scenario |
  * | `seconds` | duration of a perf run, 1 to 3600 |
  * | `bench` | `quick` or `full`: run the first-run benchmark |
@@ -23,7 +23,8 @@
  * | `script` | `circuit`: the virtual tester flies the circuit instead of the player (a test aid) |
  * | `res` | `WxH`, for example `1920x1080`: fixes the drawing buffer's size (perf and screenshot runs) |
  * | `quality` | `low`, `medium` or `high`: the graphics preset, in place of the one chosen (a test aid) |
- * | `fault` | `flat-earth`: a seeded render fault the screenshot tests must catch; needs `debug` |
+ * | `view` | `classify`: draws flat key colours instead of the picture, so a test can tell from a pixel what drew it |
+ * | `fault` | `flat-earth`, `no-skirts` or `hud-body-axes`: a seeded render fault the screenshot tests must catch; needs `debug` |
  */
 
 export type RendererChoice = 'auto' | 'webgpu' | 'webgl2' | 'null';
@@ -32,7 +33,7 @@ export type AssistChoice = 'full' | 'standard' | 'reduced' | 'manual';
 export type GEffectsChoice = 'off' | 'reduced' | 'full';
 export type ArenaChoice = 'rugged' | 'plain';
 export type QualityChoice = 'low' | 'medium' | 'high';
-export type FaultChoice = 'flat-earth';
+export type FaultChoice = 'flat-earth' | 'no-skirts' | 'hud-body-axes';
 
 /** Limits of `res`, pixels. */
 export const RES_MIN = { width: 160, height: 90 } as const;
@@ -50,7 +51,7 @@ export interface Flags {
   /** Expose the stall hooks that tests use to freeze a thread. */
   stall: boolean;
   compat: boolean;
-  selftest: false | 'hash' | 'renderer' | 'audio';
+  selftest: false | 'hash' | 'renderer' | 'audio' | 'screens';
   perf: false | 'ps0';
   seconds: number | undefined;
   bench: false | 'quick' | 'full';
@@ -74,6 +75,8 @@ export interface Flags {
   quality: QualityChoice | undefined;
   /** A seeded render fault, if the URL says and debugging is on. */
   fault: FaultChoice | undefined;
+  /** `classify` draws flat key colours instead of the picture (a test aid). */
+  view: false | 'classify';
   /** Problems found while parsing, in order. */
   warnings: string[];
 }
@@ -104,6 +107,7 @@ const KNOWN = new Set([
   'res',
   'quality',
   'fault',
+  'view',
 ]);
 
 const size = (r: { width: number; height: number }): string =>
@@ -132,6 +136,7 @@ export function defaultFlags(): Flags {
     res: undefined,
     quality: undefined,
     fault: undefined,
+    view: false,
     warnings: [],
   };
 }
@@ -195,8 +200,10 @@ export function parseFlags(search: string): Flags {
     flags.selftest = 'renderer';
   } else if (selftest === 'audio') {
     flags.selftest = 'audio';
+  } else if (selftest === 'screens') {
+    flags.selftest = 'screens';
   } else if (selftest !== null) {
-    bad('selftest', selftest, '1, renderer or audio');
+    bad('selftest', selftest, '1, renderer, audio or screens');
   }
 
   const perf = params.get('perf');
@@ -297,11 +304,18 @@ export function parseFlags(search: string): Flags {
   }
 
   const fault = params.get('fault');
-  if (fault === 'flat-earth') {
+  if (fault === 'flat-earth' || fault === 'no-skirts' || fault === 'hud-body-axes') {
     if (flags.debug === false) bad('fault', fault, 'combined with debug=1 (faults are test aids)');
-    else flags.fault = 'flat-earth';
+    else flags.fault = fault;
   } else if (fault !== null) {
-    bad('fault', fault, 'flat-earth');
+    bad('fault', fault, 'flat-earth, no-skirts or hud-body-axes');
+  }
+
+  const view = params.get('view');
+  if (view === 'classify') {
+    flags.view = 'classify';
+  } else if (view !== null) {
+    bad('view', view, 'classify');
   }
 
   return flags;

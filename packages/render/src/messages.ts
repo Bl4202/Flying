@@ -7,6 +7,7 @@ import type { Quantiles, SnapshotEndpoint } from '@flying/sim-bridge';
 import type { ViewState } from '@flying/sim-bridge/view-channel';
 import type { CockpitView } from './camera-rig.ts';
 import type { HudPalette } from './hud/hud.ts';
+import type { HudTexts } from './hud/texts.ts';
 import type { RenderPresentation } from './present.ts';
 import type { Backend, SampleCount } from './renderer.ts';
 import type { DebugView, RenderFault } from './scene.ts';
@@ -27,6 +28,10 @@ export interface RenderSettings {
   hudOverlay?: boolean;
   /** The overlay's size, 0.5 to 2 (default 1). */
   hudScale?: number;
+  /** The words the HUD writes (default English); the app supplies them from its strings. */
+  hudTexts?: HudTexts;
+  /** Vertical field of view, degrees, for a view with no camera rig (screenshot tests; default 70). */
+  debugFovDeg?: number;
 }
 
 export interface RenderInit {
@@ -58,6 +63,8 @@ export type RenderCommand =
   /** The aircraft's presentation data: its meshes, HUD and font. */
   | { type: 'presentation'; presentation: RenderPresentation }
   | { type: 'read-pixels'; id: number }
+  /** The last frame as RGBA pixels, top row first (tests). */
+  | { type: 'read-image'; id: number }
   | { type: 'reset-run' }
   | { type: 'stall'; ms: number }
   | { type: 'stop' };
@@ -65,6 +72,8 @@ export type RenderCommand =
 export interface RenderStats {
   /** When this report was made, on the shared clock. */
   atMs: number;
+  /** Which terrain levels have arrived, one bit each (bit 0 is the finest). */
+  terrainLevels?: number;
   backend: Backend;
   description: string;
   width: number;
@@ -109,4 +118,5 @@ export type RenderEvent =
       skyFraction: number;
       meanLuma: number;
     }
+  | { type: 'image'; id: number; width: number; height: number; pixels: ArrayBuffer }
   | { type: 'error'; message: string };

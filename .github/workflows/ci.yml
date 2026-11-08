@@ -126,7 +126,8 @@ jobs:
   e2e:
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # v0.1c added the screenshot gates, the menus and the audio specs (about a third more tests).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup

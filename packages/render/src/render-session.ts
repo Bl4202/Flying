@@ -212,6 +212,17 @@ export class RenderSession {
     }
   }
 
+  /** Reads the last frame back as RGBA pixels, top row first. */
+  async imageData(): Promise<{ width: number; height: number; pixels: Uint8Array }> {
+    const loop = this.#loop;
+    if (!loop) return { width: 0, height: 0, pixels: new Uint8Array(0) };
+    return {
+      width: loop.width,
+      height: loop.height,
+      pixels: await loop.renderer.debugReadPixels(),
+    };
+  }
+
   /** Reads the last frame back and summarises it. */
   async pixelSummary(): Promise<{
     width: number;

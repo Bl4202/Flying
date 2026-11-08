@@ -60,6 +60,9 @@ function quantiles(h: Histogram): Quantiles {
   };
 }
 
+/** Heading north, wings level: what the faulted HUD believes the attitude is. */
+const LEVEL_NORTH = new Float32Array([0, Math.SQRT1_2, Math.SQRT1_2, 0]);
+
 export class RenderLoop {
   readonly #d: RenderLoopDeps;
   readonly #buf = new Uint8Array(SNAPSHOT.SIZE);
@@ -136,7 +139,8 @@ export class RenderLoop {
       frame,
       {
         posBf: state.ownshipPosBf,
-        quatBf: state.ownshipQuat,
+        // The seeded `hud-body-axes` fault: the ladder is built as if the aircraft were level.
+        quatBf: this.#settings.fault === 'hud-body-axes' ? LEVEL_NORTH : state.ownshipQuat,
         velBf: state.ownshipVelBf,
         status: this.#status,
         warnings: warningBits(this.#status),
@@ -188,7 +192,12 @@ export class RenderLoop {
   setPresentation(presentation: RenderPresentation): void {
     this.#presentation = presentation;
     this.#modelRig = new ModelRig(presentation.model);
-    this.#hud = new Hud(presentation.hud, presentation.cockpit, presentation.font);
+    this.#hud = new Hud(
+      presentation.hud,
+      presentation.cockpit,
+      presentation.font,
+      this.#settings.hudTexts,
+    );
     this.#uploadAircraft(this.#renderer);
     this.setCockpit(cockpitView(presentation.cockpit));
   }
@@ -235,6 +244,7 @@ export class RenderLoop {
   /** Applies the player's rendering settings. */
   setSettings(settings: RenderSettings): void {
     this.#settings = settings;
+    if (settings.hudTexts) this.#hud?.setTexts(settings.hudTexts);
     this.#gfxStrength = Math.min(Math.max(settings.gfxStrength, 0), 100);
     this.#renderer.setSampleCount(settings.sampleCount ?? 1);
   }
@@ -279,6 +289,9 @@ export class RenderLoop {
       timeS: now / 1000,
       terrain: this.#terrain,
       gfxStrength: this.#gfxStrength,
+      ...(this.#settings.debugFovDeg === undefined
+        ? {}
+        : { fovY: (this.#settings.debugFovDeg * Math.PI) / 180 }),
       debugView: this.#settings.debugView ?? 'normal',
       fault: this.#settings.fault ?? null,
     });
@@ -328,6 +341,7 @@ export class RenderLoop {
       inputToDrawMs: quantiles(this.#latency),
       inputToDrawRun: quantiles(this.#latencyRun),
       snapshotAgeMs: quantiles(this.#age),
+      terrainLevels: this.#terrain.installed().reduce((mask, mesh) => mask | (1 << mesh.level), 0),
       frames: this.frames,
       snapshotsTaken: d.interp.accepted,
       staleFrames: this.staleFrames,

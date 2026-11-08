@@ -144,3 +144,53 @@ sound, first run, install, offline) is requested, recorded in the exit doc, and 
   can expose a backend-specific error.
 - The 60 FPS gate runs on a machine above the GDD's Recommended spec; the exit doc says so.
 - Changing any threshold here needs an amendment to this ADR (AC-66.4).
+
+## Amendment 1 (2026-11-07): what the screenshot gates measure, and S6 is cut
+
+Written when S1 to S5 were first run. The numbers and the method differ from the plan in the ways below;
+the gates' limits do not.
+
+**Method.** `?selftest=screens&case=horizon|terrain|hud` (`app-shell/src/screens-selftest.ts`) starts the
+real Sim Worker (it streams the four terrain levels for the arena), the production Render Worker, and
+publishes fixture snapshots at 30 Hz: no flight and no clock. Each case reads the frame back (`readImage`,
+RGBA, top row first) and measures it with the pure functions of `render/src/image-analysis.ts`, which are
+tested in Node against images made on purpose (a horizon placed to a hundredth of a pixel, the analytic
+image of the horizon circle under roll and field of view). The classify view is `?view=classify`. The
+specs read one table row per gate.
+
+**What was measured** (bundled Chromium, WebGL2 on SwiftShader, 1280 x 720, Low quality):
+
+| Gate | Result | Limit |
+|---|---|---|
+| S1 dip at 100 m, 1, 5, 10, 15 km | errors +0.027, -0.012, -0.048, +0.010, -0.041 degrees | 0.05 |
+| S2 curvature at 10 and 15 km, under 30 degrees of roll, at 100 degrees | rms 0.21 to 0.32 px, max at most 0.55 px | 0.5 and 1 |
+| S2 fitted angle under roll | 30.06 against 30.10 expected | 0.1 |
+| S4 HUD line against the level, ten headings and pitches | within 0.068 degrees | 0.1 |
+| S4 HUD line above the horizon against the dip | within 0.054 degrees | 0.1 |
+| S5 globe-coloured pixels in 24 seam views | 0, with two or three terrain levels in every view | 0 |
+
+**Each gate is shown to fail.** `fault=flat-earth` (S3) makes the dip read 0 degrees and every S1 case from
+100 m up and every S2 case fail by up to 3.9 degrees; `fault=no-skirts` makes the 24 seam views show 8 to
+2 375 globe pixels each in the views that cross a seam; `fault=hud-body-axes` makes every pitched S4 case
+fail. All are debug-only (`debug=1`) and seeded in the renderer, as the plan's fault table lists.
+
+**Things the first runs corrected in the method**, kept here because they are easy to get wrong again:
+
+- A BF height is measured from the plane the sphere touches at the anchor, not from the ground. Out at
+  `d` metres the ground has fallen by `d^2 / 2R` (10 m at 11 km, 5 km at 250 km), so a pose for "h above
+  the ground" is `z = base + h - drop`. S1 stands over the airfield, where the drop is zero; S5 subtracts it.
+- The strongest brightness step is the horizon in the normal view, but in the classify view it is the
+  boundary between two terrain levels' key colours at altitude; classify edges are found by key.
+- The cockpit camera shakes by design (buffet, ground roll), and the HUD and the horizon move with it, so
+  S4 sets the shake to 0 to measure the HUD's absolute position.
+- A sub-pixel edge is its gradient's centroid, not a parabola through the peak (which is biased by 0.1 px).
+
+**S6 is cut.** The SSIM regression against committed images is item 9 of the plan's cut list and is not on
+the exit line. S1 to S5 measure the picture against geometry; S6 would only compare it with a past picture,
+needs an image codec in the test tooling, and its goldens would have to be blessed from a CI run. It stays
+a candidate for a later milestone.
+
+**CI.** The `e2e` job's timeout is 30 minutes (it was 20; the suite is a third larger). The circuit gate
+already flies both arenas (`cargo xtask circuit` defaults to `--arena all`) and the determinism job runs the
+`plain-circuit` suite, so neither needed a new step.
+

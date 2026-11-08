@@ -38,6 +38,7 @@ import { runBenchmarkPage } from './benchmark-page.ts';
 import { codeOf, startDemo, type Demo } from './demo.ts';
 import { runPerfPage } from './perf-run.ts';
 import { runRendererSelfTest } from './renderer-selftest.ts';
+import { runScreensSelfTest } from './screens-selftest.ts';
 import { runSelfTestPage } from './selftest-page.ts';
 
 function element(id: string): HTMLElement {
@@ -112,6 +113,11 @@ async function main(): Promise<void> {
 
   if (flags.selftest === 'renderer') {
     await runRendererSelfTest({ root: element('selftest-root'), features });
+    return;
+  }
+
+  if (flags.selftest === 'screens') {
+    await runScreensSelfTest({ root: element('selftest-root'), flags });
     return;
   }
 

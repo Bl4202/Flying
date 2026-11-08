@@ -32,7 +32,7 @@ export interface RenderClientOptions {
   container: HTMLElement;
   /** URL of `render.worker.ts` as built. */
   workerUrl: string;
-  flags: Pick<Flags, 'renderer' | 'mainrender' | 'stall' | 'res' | 'quality' | 'fault'>;
+  flags: Pick<Flags, 'renderer' | 'mainrender' | 'stall' | 'res' | 'quality' | 'fault' | 'view'>;
   snapshot: SnapshotEndpoint;
   /** The end of the terrain channel that comes here; the other end is with the Sim Worker. */
   terrainPort: MessagePort | null;
@@ -44,6 +44,13 @@ export interface RenderClientOptions {
   factories?: RendererFactories;
   createWorker?: (url: string) => RenderWorkerLike;
   readyTimeoutMs?: number;
+}
+
+/** A frame as RGBA bytes, top row first. */
+export interface RenderImage {
+  width: number;
+  height: number;
+  pixels: Uint8Array;
 }
 
 export interface PixelSummary {
@@ -88,6 +95,7 @@ export class RenderClient {
   #canvas: HTMLCanvasElement;
   #observer: ResizeObserver | undefined;
   #pending = new Map<number, (s: PixelSummary) => void>();
+  #pendingImages = new Map<number, (image: RenderImage) => void>();
   #nextId = 1;
   #opts: RenderClientOptions;
   /** The drawing buffer's size last given to the renderer. */
@@ -292,6 +300,12 @@ export class RenderClient {
       this.#replaceCanvas();
       return;
     }
+    if (event.type === 'image') {
+      const resolve = this.#pendingImages.get(event.id);
+      this.#pendingImages.delete(event.id);
+      resolve?.({ width: event.width, height: event.height, pixels: new Uint8Array(event.pixels) });
+      return;
+    }
     if (event.type === 'pixels') {
       const resolve = this.#pending.get(event.id);
       this.#pending.delete(event.id);
@@ -338,6 +352,18 @@ export class RenderClient {
     });
   }
 
+  /** Reads the last frame back as RGBA pixels, top row first (tests). */
+  readImage(): Promise<RenderImage> {
+    if (this.#mainHost) {
+      return this.#mainHost.session.imageData();
+    }
+    const id = this.#nextId++;
+    return new Promise<RenderImage>((resolve) => {
+      this.#pendingImages.set(id, resolve);
+      this.#send({ type: 'read-image', id });
+    });
+  }
+
   /** Tells the renderer the player's rendering settings. */
   setSettings(settings: RenderSettings): void {
     this.#settings = settings;
@@ -376,6 +402,7 @@ export class RenderClient {
       ...this.#settings,
       sampleCount: this.#quality.sampleCount,
       ...(fault === undefined ? {} : { fault }),
+      ...(this.#opts.flags.view === 'classify' ? { debugView: 'classify' as const } : {}),
     };
     if (this.#worker) this.#send({ type: 'settings', ...settings });
     else this.#mainHost?.session.setSettings(settings);

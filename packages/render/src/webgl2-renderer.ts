@@ -162,6 +162,8 @@ export class WebGl2Renderer implements Renderer {
     () => undefined,
   );
   readonly #indexCounts: number[] = Array.from({ length: TERRAIN_LEVEL_COUNT }, () => 0);
+  /** The indices of each level's surface alone, without its skirts. */
+  readonly #surfaceCounts: number[] = Array.from({ length: TERRAIN_LEVEL_COUNT }, () => 0);
   /** The aircraft meshes as last given, to upload again if the context is restored. */
   readonly #meshSources = new Map<MeshSlot, ModelMesh>();
   readonly #meshGl = new Map<MeshSlot, MeshGl>();
@@ -406,6 +408,7 @@ export class WebGl2Renderer implements Renderer {
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.indices, gl.STATIC_DRAW);
     gl.bindVertexArray(null);
     this.#indexCounts[level] = mesh.indices.length;
+    this.#surfaceCounts[level] = mesh.surfaceTriangleCount * 3;
   }
 
   /** The multisampled framebuffer for the current size and sample count, made when needed. */
@@ -502,7 +505,7 @@ export class WebGl2Renderer implements Renderer {
     gl.useProgram(res.terrainProgram);
     for (let level = 0; level < TERRAIN_LEVEL_COUNT; level++) {
       const slot = res.levels[level] as LevelGl;
-      const count = this.#indexCounts[level] ?? 0;
+      const count = (frame.noSkirts ? this.#surfaceCounts[level] : this.#indexCounts[level]) ?? 0;
       if ((frame.levelMask & (1 << level)) === 0 || count === 0) continue;
       gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, slot.ubo);
       gl.bindVertexArray(slot.vao);

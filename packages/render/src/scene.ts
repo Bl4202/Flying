@@ -79,7 +79,7 @@ export interface LevelSet {
 export type DebugView = 'normal' | 'classify';
 
 /** A seeded render fault, for the screenshot tests that must fail (ADR-39). Honoured in debug only. */
-export type RenderFault = 'flat-earth';
+export type RenderFault = 'flat-earth' | 'no-skirts' | 'hud-body-axes';
 
 /** Most copies of the terrain patch one frame may draw (the benchmark's heaviest load level). */
 export const MAX_PATCH_INSTANCES = 64;
@@ -138,6 +138,8 @@ export interface FrameData {
   modelUniform: Float32Array;
   /** Draw the aircraft's exterior. */
   model: boolean;
+  /** Draw the terrain without its skirts (the seeded `no-skirts` fault: the seam test must fail). */
+  noSkirts: boolean;
   /** Draw it without its canopy (the cockpit view looks out through where it is). */
   hideCanopy: boolean;
   /** Draw the cockpit interior (the cockpit view only). */
@@ -163,6 +165,7 @@ export class SceneBuilder {
     sky: true,
     modelUniform: new Float32Array(MODEL_UNIFORM_FLOATS),
     model: false,
+    noSkirts: false,
     hideCanopy: false,
     cockpit: false,
     hud: false,
@@ -212,6 +215,8 @@ export class SceneBuilder {
       sky?: boolean;
       /** Where the eye is and how it looks; without one, the aircraft's reference point and attitude. */
       camera?: CameraPose;
+      /** The field of view for a view with no camera (default 70 degrees; screenshot tests). */
+      fovY?: number;
       /** Draws the aircraft: its exterior in the chase view, the cockpit and the exterior without its canopy in the cockpit view. */
       model?: ModelRig;
     },
@@ -219,10 +224,11 @@ export class SceneBuilder {
     const f = this.#frame;
     const cam = opts.camera;
     const q = cam?.quatBf ?? state.ownshipQuat;
-    projection(this.#proj, cam?.fovY ?? FOV_Y, opts.aspect, cam?.near ?? NEAR_M, opts.zRange);
+    const fovY = cam?.fovY ?? opts.fovY ?? FOV_Y;
+    projection(this.#proj, fovY, opts.aspect, cam?.near ?? NEAR_M, opts.zRange);
     viewRotation(this.#view, [q[0] ?? 1, q[1] ?? 0, q[2] ?? 0, q[3] ?? 0]);
     this.#eyeBf = cam?.eyeBf ?? state.ownshipPosBf;
-    this.#fovY = cam?.fovY ?? FOV_Y;
+    this.#fovY = fovY;
     mul4(this.#vp, this.#proj, this.#view);
     f.sky = opts.sky ?? true;
     f.patchInstances = Math.min(
@@ -232,6 +238,7 @@ export class SceneBuilder {
     // The HUD is added after the frame is built (by `Hud.fillFrame`); start with none.
     f.hud = false;
     f.hudCount = 0;
+    f.noSkirts = opts.fault === 'no-skirts';
     f.model = opts.model !== undefined;
     f.hideCanopy = f.cockpit = f.model && cam?.mode === 'cockpit';
     opts.model?.update(f.modelUniform, state, this.#eyeBf);
