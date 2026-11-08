@@ -194,6 +194,7 @@ declare global {
               frames: number;
               atMs: number;
               fps: number;
+              terrainLevels?: number;
               backend: string;
               frameMsRun: { count: number; max: number };
             }
