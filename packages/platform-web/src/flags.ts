@@ -11,7 +11,7 @@
  * | `flags` | comma list of `transfer`, `mainrender`, `timer`, `stall` (test switches) |
  * | `compat` | `1`: show the compat screen even if it was acknowledged |
  * | `selftest` | `1` (golden hash), `renderer` (renderer contract), `audio` (the flight audio in this browser), `screens` (the screenshot gates; `case=horizon` or `terrain`) |
- * | `perf` | `ps0`: run the PS-0 scenario |
+ * | `perf` | `ps0` (the empty loop) or `arena` (the circuit over the rugged arena, with the HUD and the sound): run that scenario |
  * | `seconds` | duration of a perf run, 1 to 3600 |
  * | `bench` | `quick` or `full`: run the first-run benchmark |
  * | `spawn` | `runway` (default) or `air`: where the aircraft starts |
@@ -52,7 +52,7 @@ export interface Flags {
   stall: boolean;
   compat: boolean;
   selftest: false | 'hash' | 'renderer' | 'audio' | 'screens';
-  perf: false | 'ps0';
+  perf: false | 'ps0' | 'arena';
   seconds: number | undefined;
   bench: false | 'quick' | 'full';
   /** Where the aircraft starts, if the URL says; otherwise the game's default (the runway). */
@@ -207,10 +207,10 @@ export function parseFlags(search: string): Flags {
   }
 
   const perf = params.get('perf');
-  if (perf === 'ps0') {
-    flags.perf = 'ps0';
+  if (perf === 'ps0' || perf === 'arena') {
+    flags.perf = perf;
   } else if (perf !== null) {
-    bad('perf', perf, 'ps0');
+    bad('perf', perf, 'ps0 or arena');
   }
 
   const seconds = params.get('seconds');

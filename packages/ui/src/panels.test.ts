@@ -73,6 +73,8 @@ function perfReport(over: Partial<PerfReport> = {}): PerfReport {
       gappedFrames: 0,
       inputsDropped: 0,
       snapshotsDropped: 0,
+      longTasks: 0,
+      deviceLosses: 0,
     },
     gates: [
       { id: 'sim-rate', rule: 'sim rate 60 ± 0.1 Hz', value: 60, limit: 60, pass: true },
@@ -122,6 +124,29 @@ describe('perf panel', () => {
 
     byId(r, 'perf-download')?.click();
     expect(sink.downloads[0]?.[0]).toBe('perf-ps-0-2026-10-13t12-00-00.json');
+  });
+
+  it('shows a reading that is not a gate as such, and does not count it as a failure', () => {
+    const r = root();
+    const panel = mountPerfPanel(r, { scenario: 'ARENA', io: io() });
+    panel.done(
+      perfReport({
+        gates: [
+          { id: 'frame-avg', rule: 'frame average', value: 16.6, limit: 16.7, pass: true },
+          {
+            id: 'long-tasks',
+            rule: 'no long task',
+            value: Number.NaN,
+            limit: 0,
+            pass: false,
+            informational: true,
+          },
+        ],
+      }),
+    );
+    const row = r.querySelector('[data-gate="long-tasks"]');
+    expect(row?.textContent).toBe('no long task: – (reading, not a gate)');
+    expect(byId(r, 'perf-verdict')?.textContent).toBe('PASS: every gate holds.');
   });
 
   it('says how many gates failed', () => {

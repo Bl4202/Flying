@@ -1,6 +1,7 @@
 import { defaultFlags, type Flags } from '@flying/platform-web';
 import { ARENA, ASSIST_LEVEL, G_EFFECTS, SPAWN_KIND } from '@flying/sim-bridge/layout';
 import { describe, expect, it } from 'vitest';
+import { ARENA as ARENA_SCENARIO, PS0 } from '@flying/perf';
 import { DEFAULT_SETTINGS } from '@flying/ui';
 import { sessionFromFlags, sessionOverrides } from './session.ts';
 
@@ -101,6 +102,22 @@ describe('sessionOverrides', () => {
     expect(sessionFromFlags(defaultFlags(), false, changed)).toEqual({
       spawn: SPAWN_KIND.AIR,
       assist: ASSIST_LEVEL.FULL,
+      gEffects: G_EFFECTS.FULL,
+      arena: ARENA.RUGGED,
+    });
+  });
+
+  it("flies the scenario's own start in a performance run, whatever the URL and the settings say", () => {
+    const flown = flags({ spawn: 'air', assist: 'manual', arena: 'plain' });
+    expect(sessionFromFlags(flown, ARENA_SCENARIO, DEFAULT_SETTINGS)).toEqual({
+      spawn: SPAWN_KIND.RUNWAY,
+      assist: ASSIST_LEVEL.STANDARD,
+      gEffects: G_EFFECTS.FULL,
+      arena: ARENA.RUGGED,
+    });
+    expect(sessionFromFlags(flown, PS0, DEFAULT_SETTINGS)).toEqual({
+      spawn: SPAWN_KIND.AIR,
+      assist: ASSIST_LEVEL.STANDARD,
       gEffects: G_EFFECTS.FULL,
       arena: ARENA.RUGGED,
     });

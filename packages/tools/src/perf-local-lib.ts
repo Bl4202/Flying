@@ -26,9 +26,20 @@ export interface LocalOptions {
   spawn: SpawnArg;
   /** Control-latency samples to take after the flight (AC-58.3); 0 skips the measurement. */
   latency: number;
+  /** The scenario the measured run flies. */
+  scenario: ScenarioArg;
+  /** The camera of an arena run; the scenario's own (the cockpit) when absent. */
+  camera: CameraArg | undefined;
+  /** The drawing-buffer size of an arena run, `WxH`; the scenario's own (1920x1080) when absent. */
+  res: string | undefined;
+  /** The graphics preset of an arena run; the scenario's own (High) when absent. */
+  quality: 'low' | 'medium' | 'high' | undefined;
 }
 
 export type SpawnArg = 'air' | 'runway';
+/** The scenario the measured run flies (`?perf=`): the bare loop, or the arena circuit (v0.1c). */
+export type ScenarioArg = 'ps0' | 'arena';
+export type CameraArg = 'cockpit' | 'chase';
 
 /** The gate of AC-58.3: the 95th percentile of the control latency, ms (strict, reference machine). */
 export const LATENCY_P95_MS = 25;
@@ -37,7 +48,8 @@ export const DEFAULT_BASE = 'https://bl4202.github.io/Flying/';
 
 const USAGE = `usage: node perf-local.ts --name NAME --class minimum|recommended|high
   [--base URL] [--renderer auto|webgl2|webgpu] [--throttle N] [--seconds N] [--fly N]
-  [--spawn air|runway] [--latency SAMPLES] [--headless] [--out DIR]`;
+  [--spawn air|runway] [--latency SAMPLES] [--headless] [--out DIR]
+  [--scenario ps0|arena] [--camera cockpit|chase] [--res WxH] [--quality low|medium|high]`;
 
 export function parseLocalArgs(argv: readonly string[]): LocalOptions {
   const opts: LocalOptions = {
@@ -48,12 +60,17 @@ export function parseLocalArgs(argv: readonly string[]): LocalOptions {
     seconds: 120,
     fly: 60,
     headless: false,
-    out: 'docs/exit/v0.1b/machines',
+    out: 'docs/exit/v0.1c/machines',
     machineClass: 'recommended',
     spawn: 'air',
     latency: 0,
+    scenario: 'ps0',
+    camera: undefined,
+    res: undefined,
+    quality: undefined,
   };
   let sawClass = false;
+  let sawFly = false;
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     const value = (): string => {
@@ -102,6 +119,7 @@ export function parseLocalArgs(argv: readonly string[]): LocalOptions {
         break;
       case '--fly':
         opts.fly = Math.round(number(0, 3600));
+        sawFly = true;
         break;
       case '--spawn': {
         const sp = value();
@@ -114,6 +132,37 @@ export function parseLocalArgs(argv: readonly string[]): LocalOptions {
       case '--latency':
         opts.latency = Math.round(number(1, 100_000));
         break;
+      case '--scenario': {
+        const sc = value();
+        if (sc !== 'ps0' && sc !== 'arena') {
+          throw new Error(`--scenario must be ps0 or arena, not ${sc}`);
+        }
+        opts.scenario = sc;
+        break;
+      }
+      case '--camera': {
+        const cam = value();
+        if (cam !== 'cockpit' && cam !== 'chase') {
+          throw new Error(`--camera must be cockpit or chase, not ${cam}`);
+        }
+        opts.camera = cam;
+        break;
+      }
+      case '--res': {
+        const r = value();
+        if (!/^\d{3,5}x\d{3,5}$/.test(r))
+          throw new Error(`--res must be WxH, like 1920x1080, not ${r}`);
+        opts.res = r;
+        break;
+      }
+      case '--quality': {
+        const qv = value();
+        if (qv !== 'low' && qv !== 'medium' && qv !== 'high') {
+          throw new Error(`--quality must be low, medium or high, not ${qv}`);
+        }
+        opts.quality = qv;
+        break;
+      }
       case '--out':
         opts.out = value();
         break;
@@ -130,6 +179,8 @@ export function parseLocalArgs(argv: readonly string[]): LocalOptions {
   if (!sawClass) {
     throw new Error(`--class is required\n${USAGE}`);
   }
+  // The arena run flies its own scripted circuit; the hands-on manoeuvre before it is for PS-0 runs.
+  if (opts.scenario === 'arena' && !sawFly) opts.fly = 0;
   return opts;
 }
 
@@ -155,6 +206,8 @@ export interface LatencySummary {
 }
 
 export interface RunFacts {
+  /** The scenario the measured run flies, as the report names it: `PS-0` or `ARENA`. */
+  scenario: string;
   compatVerdict: 'ok' | 'degraded' | 'fatal' | null;
   compatCodes: string[];
   adapter: string;
@@ -196,8 +249,8 @@ export function judgeRun(facts: RunFacts, cls: MachineClass): { checks: Check[];
   add(
     'ps0',
     facts.perf === null
-      ? 'PS-0 strict gates hold (the run did not finish)'
-      : `PS-0 strict gates hold${facts.perf.failedGates.length > 0 ? ` (failed: ${facts.perf.failedGates.join(', ')})` : ''}`,
+      ? `${facts.scenario} strict gates hold (the run did not finish)`
+      : `${facts.scenario} strict gates hold${facts.perf.failedGates.length > 0 ? ` (failed: ${facts.perf.failedGates.join(', ')})` : ''}`,
     facts.perf?.verdict === 'pass',
   );
   const lost = facts.flight?.toasts.filter((t) => /lost/i.test(t)) ?? [];
@@ -229,6 +282,26 @@ export function judgeRun(facts: RunFacts, cls: MachineClass): { checks: Check[];
   return { checks, pass: checks.every((c) => c.pass) };
 }
 
+/** The file the measured run's report is saved to. */
+export function reportFile(opts: LocalOptions): string {
+  return `perf-${opts.scenario}.json`;
+}
+
+/** What an arena run was looking through, for the summary: `, cockpit, 1920x1080, high`. */
+function scenarioView(opts: LocalOptions): string {
+  if (opts.scenario !== 'arena') return '';
+  return `, ${opts.camera ?? 'cockpit'}, ${opts.res ?? '1920x1080'}, ${opts.quality ?? 'high'}`;
+}
+
+/** The query of the measured run's page, past `perf=`: its length and, for the arena, what it shows. */
+export function scenarioQuery(opts: LocalOptions): string {
+  const parts = [`perf=${opts.scenario}`, `seconds=${String(opts.seconds)}`];
+  if (opts.camera !== undefined) parts.push(`camera=${opts.camera}`);
+  if (opts.res !== undefined) parts.push(`res=${opts.res}`);
+  if (opts.quality !== undefined) parts.push(`quality=${opts.quality}`);
+  return parts.join('&');
+}
+
 export function renderSummary(
   opts: LocalOptions,
   facts: RunFacts,
@@ -251,8 +324,8 @@ export function renderSummary(
       ? '- Flight: not run'
       : `- Flight (${String(f.seconds)} s scripted, ${opts.spawn} start): ${f.fpsAvg.toFixed(1)} FPS average, ${f.fpsMin.toFixed(1)} minimum, frame p99 ${f.frameP99Ms.toFixed(1)} ms, longest frame ${f.frameMaxMs.toFixed(1)} ms, sim ${f.simHzAvg.toFixed(2)} Hz`,
     p === null
-      ? '- PS-0: did not finish'
-      : `- PS-0 (${String(opts.seconds)} s): ${p.verdict.toUpperCase()}, sim ${p.simHz.toFixed(3)} Hz, render ${p.renderFps.toFixed(1)} FPS`,
+      ? `- ${facts.scenario}: did not finish`
+      : `- ${facts.scenario} (${String(opts.seconds)} s${scenarioView(opts)}): ${p.verdict.toUpperCase()}, sim ${p.simHz.toFixed(3)} Hz, render ${p.renderFps.toFixed(1)} FPS`,
     opts.latency === 0
       ? '- Control latency: not measured'
       : facts.latency === null
@@ -275,7 +348,7 @@ export function renderSummary(
   }
   lines.push(
     '',
-    'Raw reports: `compat.json`, `flight.json`, `latency.json`, `benchmark.json`, `perf-ps0.json`.',
+    `Raw reports: \`compat.json\`, \`flight.json\`, \`latency.json\`, \`benchmark.json\`, \`${reportFile(opts)}\`.`,
     '',
   );
   return lines.join('\n');

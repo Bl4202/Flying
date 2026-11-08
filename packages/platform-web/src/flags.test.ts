@@ -55,6 +55,15 @@ describe('parseFlags', () => {
     }
   });
 
+  it('knows the two performance scenarios', () => {
+    expect(parseFlags('perf=ps0').perf).toBe('ps0');
+    expect(parseFlags('perf=arena&res=1920x1080&camera=chase')).toMatchObject({
+      perf: 'arena',
+      res: { width: 1920, height: 1080 },
+      camera: 'chase',
+    });
+  });
+
   it('ignores bad values, keeps the default, and says so', () => {
     const f = parseFlags(
       'debug=yes&renderer=vulkan&flags=transfer,bogus&compat=2&seconds=0&bench=slow&perf=ps9&selftest=2&spawn=moon&assist=auto&g=huge&script=bot',
