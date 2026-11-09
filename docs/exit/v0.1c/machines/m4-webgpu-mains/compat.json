@@ -1,0 +1,51 @@
+{
+  "verdict": "ok",
+  "codes": [],
+  "rows": [
+    {
+      "id": "compat-row-wasm",
+      "state": "ok",
+      "text": "WebAssemblyRequired✓ OKWebAssembly is available."
+    },
+    {
+      "id": "compat-row-simd",
+      "state": "ok",
+      "text": "WebAssembly SIMDRequired✓ OKSIMD instructions are available."
+    },
+    {
+      "id": "compat-row-renderer",
+      "state": "ok",
+      "text": "GraphicsRequired✓ OKWebGPU is available (apple metal-3)."
+    },
+    {
+      "id": "compat-row-isolation",
+      "state": "ok",
+      "text": "Cross-origin isolationOptional✓ OKShared memory is available between threads."
+    },
+    {
+      "id": "compat-row-threads",
+      "state": "ok",
+      "text": "WebAssembly threadsOptional✓ OKThe multi-threaded build will be used."
+    },
+    {
+      "id": "compat-row-offscreen",
+      "state": "ok",
+      "text": "OffscreenCanvasOptional✓ OKDrawing runs on its own thread."
+    },
+    {
+      "id": "compat-row-sw",
+      "state": "ok",
+      "text": "Service WorkerOptional✓ OKThe game can be cached and started offline."
+    },
+    {
+      "id": "compat-row-opfs",
+      "state": "ok",
+      "text": "File storage (OPFS)Optional✓ OKLarge downloads can be kept in the browser’s file storage."
+    },
+    {
+      "id": "compat-row-gamepad",
+      "state": "ok",
+      "text": "GamepadOptional✓ OKGame controllers can be used."
+    }
+  ]
+}

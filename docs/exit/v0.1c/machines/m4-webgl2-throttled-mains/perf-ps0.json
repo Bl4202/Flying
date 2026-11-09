@@ -1,0 +1,106 @@
+{
+  "schema": "perf_report/1",
+  "scenario": "PS-0",
+  "startedAt": "2026-11-09T03:38:06.257Z",
+  "warmupS": 3,
+  "seconds": 120,
+  "build": {
+    "id": "1124d4351a39deb41c5f8d44f475f750f19b414a",
+    "abi": 4,
+    "contentHash": "588264193afd399a"
+  },
+  "machine": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "platform": "MacIntel",
+    "hardwareConcurrency": 10,
+    "deviceMemoryGb": 8,
+    "screen": "1600x900@1",
+    "adapter": "apple metal-3",
+    "renderer": "webgl2 ANGLE (Apple, ANGLE Metal Renderer: Apple M4, Unspecified Version)"
+  },
+  "modes": {
+    "variant": "threads",
+    "snapshotChannel": "shared",
+    "inputChannel": "shared",
+    "renderHost": "worker",
+    "sleeper": "atomics",
+    "renderer": "webgl2"
+  },
+  "metrics": {
+    "windowS": 119.91527001953125,
+    "ticks": 7195,
+    "simHz": 60.00069881699063,
+    "droppedMs": 0,
+    "droppedEvents": 0,
+    "step": {
+      "count": 7199,
+      "avg": 0.03339561029744986,
+      "p50": 0.05,
+      "p95": 0.1,
+      "p99": 0.15000000000000002,
+      "max": 0.40500009059906006
+    },
+    "frames": 14398,
+    "renderFps": 120.0210699385385,
+    "frameMs": {
+      "count": 14405,
+      "avg": 8.33193786879953,
+      "p50": 8.5,
+      "p95": 9.25,
+      "p99": 9.5,
+      "max": 15.590000033378601
+    },
+    "renderCpuMs": {
+      "count": 14405,
+      "avg": 0.009657063760595245,
+      "p50": 0.17500007152557373,
+      "p95": 0.17500007152557373,
+      "p99": 0.17500007152557373,
+      "max": 0.17500007152557373
+    },
+    "staleFrames": 0,
+    "gappedFrames": 0,
+    "inputsDropped": 0,
+    "snapshotsDropped": 0,
+    "longTasks": 0,
+    "deviceLosses": 0
+  },
+  "gates": [
+    {
+      "id": "sim-rate",
+      "rule": "sim rate 60 ± 0.1 Hz",
+      "value": 60.00069881699063,
+      "limit": 60,
+      "pass": true
+    },
+    {
+      "id": "dropped",
+      "rule": "no simulated time dropped after warm-up",
+      "value": 0,
+      "limit": 0,
+      "pass": true
+    },
+    {
+      "id": "step-p99",
+      "rule": "tick cost p99 ≤ 7 ms",
+      "value": 0.15000000000000002,
+      "limit": 7,
+      "pass": true
+    },
+    {
+      "id": "step-avg",
+      "rule": "tick cost average ≤ 4 ms",
+      "value": 0.03339561029744986,
+      "limit": 4,
+      "pass": true
+    },
+    {
+      "id": "render-cpu",
+      "rule": "render CPU average ≤ 7 ms",
+      "value": 0.009657063760595245,
+      "limit": 7,
+      "pass": true
+    }
+  ],
+  "verdict": "pass"
+}

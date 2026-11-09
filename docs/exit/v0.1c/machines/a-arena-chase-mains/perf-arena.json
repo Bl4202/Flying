@@ -1,0 +1,149 @@
+{
+  "schema": "perf_report/1",
+  "scenario": "ARENA",
+  "startedAt": "2026-11-09T03:17:56.186Z",
+  "warmupS": 5,
+  "seconds": 120,
+  "build": {
+    "id": "1124d4351a39deb41c5f8d44f475f750f19b414a",
+    "abi": 4,
+    "contentHash": "588264193afd399a"
+  },
+  "machine": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "platform": "MacIntel",
+    "hardwareConcurrency": 10,
+    "deviceMemoryGb": 8,
+    "screen": "1600x900@1",
+    "adapter": "apple metal-3",
+    "renderer": "webgpu apple metal-3"
+  },
+  "modes": {
+    "variant": "threads",
+    "snapshotChannel": "shared",
+    "inputChannel": "shared",
+    "renderHost": "worker",
+    "sleeper": "atomics",
+    "renderer": "webgpu"
+  },
+  "metrics": {
+    "windowS": 120.18881494140625,
+    "ticks": 7211,
+    "simHz": 59.99726350172821,
+    "droppedMs": 0,
+    "droppedEvents": 0,
+    "step": {
+      "count": 7223,
+      "avg": 0.19249342361942942,
+      "p50": 0.2,
+      "p95": 0.35000000000000003,
+      "p99": 0.6000000000000001,
+      "max": 0.9850000143051147
+    },
+    "frames": 14419,
+    "renderFps": 120.01258782183976,
+    "frameMs": {
+      "count": 14452,
+      "avg": 8.332506573483979,
+      "p50": 8.5,
+      "p95": 10.5,
+      "p99": 10.5,
+      "max": 21.524999976158142
+    },
+    "renderCpuMs": {
+      "count": 14452,
+      "avg": 0.15143855537630468,
+      "p50": 0.25,
+      "p95": 0.25,
+      "p99": 0.25,
+      "max": 2.2949999570846558
+    },
+    "staleFrames": 0,
+    "gappedFrames": 32,
+    "inputsDropped": 0,
+    "snapshotsDropped": 0,
+    "longTasks": 0,
+    "deviceLosses": 0
+  },
+  "gates": [
+    {
+      "id": "sim-rate",
+      "rule": "sim rate 60 ± 0.1 Hz",
+      "value": 59.99726350172821,
+      "limit": 60,
+      "pass": true
+    },
+    {
+      "id": "dropped",
+      "rule": "no simulated time dropped after warm-up",
+      "value": 0,
+      "limit": 0,
+      "pass": true
+    },
+    {
+      "id": "step-p99",
+      "rule": "tick cost p99 ≤ 7 ms",
+      "value": 0.6000000000000001,
+      "limit": 7,
+      "pass": true
+    },
+    {
+      "id": "step-avg",
+      "rule": "tick cost average ≤ 4 ms",
+      "value": 0.19249342361942942,
+      "limit": 4,
+      "pass": true
+    },
+    {
+      "id": "render-cpu",
+      "rule": "render CPU average ≤ 7 ms",
+      "value": 0.15143855537630468,
+      "limit": 7,
+      "pass": true
+    },
+    {
+      "id": "render-cpu-p99",
+      "rule": "render CPU p99 ≤ 11 ms",
+      "value": 0.25,
+      "limit": 11,
+      "pass": true
+    },
+    {
+      "id": "frame-avg",
+      "rule": "frame interval average ≤ 16.7 ms (60 FPS)",
+      "value": 8.332506573483979,
+      "limit": 16.7,
+      "pass": true
+    },
+    {
+      "id": "frame-p99",
+      "rule": "frame interval p99 ≤ 22.2 ms (1 % low 45 FPS)",
+      "value": 10.5,
+      "limit": 22.2,
+      "pass": true
+    },
+    {
+      "id": "device-loss",
+      "rule": "the graphics device is not lost",
+      "value": 0,
+      "limit": 0,
+      "pass": true
+    },
+    {
+      "id": "long-tasks",
+      "rule": "no main-thread task over 50 ms after warm-up",
+      "value": 0,
+      "limit": 0,
+      "pass": true
+    },
+    {
+      "id": "fps-minimum",
+      "rule": "at least 30 FPS (the Minimum-class reading, run B)",
+      "value": 120.01258782183976,
+      "limit": 30,
+      "pass": true,
+      "informational": true
+    }
+  ],
+  "verdict": "pass"
+}
