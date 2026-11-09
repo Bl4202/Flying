@@ -1,0 +1,83 @@
+{
+  "schema": "benchmark_report/1",
+  "mode": "full",
+  "startedAt": "2026-11-09T03:37:47.044Z",
+  "durationS": 18.697065000057222,
+  "build": {
+    "id": "1124d4351a39deb41c5f8d44f475f750f19b414a",
+    "abi": 4,
+    "contentHash": ""
+  },
+  "machine": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "platform": "MacIntel",
+    "hardwareConcurrency": 10,
+    "deviceMemoryGb": 8,
+    "screen": "1600x900@1",
+    "adapter": "apple metal-3",
+    "renderer": "webgl2 ANGLE (Apple, ANGLE Metal Renderer: Apple M4, Unspecified Version)"
+  },
+  "cpu": {
+    "singleTicksPerSecond": 57325.70823209338,
+    "workers": 8,
+    "multiTicksPerSecond": 249235.73309361062,
+    "speedup": 4.347713107782902
+  },
+  "gpu": {
+    "backend": "webgl2",
+    "description": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4, Unspecified Version)",
+    "width": 1920,
+    "height": 1080,
+    "levels": [
+      {
+        "patches": 1,
+        "frames": 240,
+        "msPerFrame": 0.2074583331743876
+      },
+      {
+        "patches": 16,
+        "frames": 240,
+        "msPerFrame": 0.3521249999602636
+      },
+      {
+        "patches": 64,
+        "frames": 240,
+        "msPerFrame": 0.917062499622504
+      }
+    ]
+  },
+  "memory": {
+    "deviceMemoryGb": 8,
+    "jsHeapLimitMb": 4096,
+    "jsHeapUsedMb": 6.297589302062988,
+    "measuredMb": 5.1648454666137695
+  },
+  "storage": {
+    "available": true,
+    "writeMBps": 586.4949205351138,
+    "readMBps": 2324.2418520080005,
+    "note": ""
+  },
+  "classification": {
+    "profile": "high",
+    "preset": "ultra",
+    "parts": {
+      "cpu": "high",
+      "gpu": "high",
+      "cores": "high",
+      "memory": "high"
+    },
+    "limitedBy": "none",
+    "facts": {
+      "cpuTicksPerSecond": 57325.70823209338,
+      "speedup": 4.347713107782902,
+      "workers": 8,
+      "gpuHeavyMs": 0.917062499622504,
+      "gpuBackend": "webgl2",
+      "cores": 10,
+      "memoryGb": 8
+    },
+    "complete": true
+  },
+  "notes": []
+}
