@@ -32,6 +32,35 @@ CI is lenient: the sim must keep at least 57 Hz and the report must be valid. St
 the reference machines (`docs/runbooks/reference-machines.md`) and in the nightly workflow, which
 keeps a two-minute report as an artifact.
 
+## The arena scenario (v0.1c)
+
+PS-0 measures the bare loop. `?perf=arena` measures what the v0.1c exit is about: the circuit script flown
+from the runway over the rugged arena for 120 s after a 5 s warm-up, with the sky, the four terrain
+levels, the aircraft, the cockpit or chase camera, the HUD and the sound all on. Unless the URL says
+otherwise it draws in the cockpit, at the High preset, in a 1920 x 1080 buffer (`?camera=`, `?quality=`,
+`?res=`).
+
+```text
+pnpm perf:local --name a-arena-cockpit --class recommended --scenario arena
+pnpm perf:local --name a-arena-chase --class recommended --scenario arena --camera chase
+pnpm perf:local --name b-arena --class minimum --scenario arena --renderer webgl2 --throttle 4
+PERF_SECONDS=120 PERF_STRICT=1 pnpm perf:smoke                # the arena spec too (tests/e2e/perf/arena.spec.ts)
+```
+
+| Gate (strict) | Limit |
+|---|---|
+| PS-0's five | as above |
+| render CPU time, p99 | 11.0 ms |
+| frame interval, average | 16.7 ms (an average of 60 FPS) |
+| frame interval, p99 | 22.2 ms (a 1 % low of 45 FPS) |
+| the graphics device is not lost | 0 |
+| main-thread tasks over 50 ms after warm-up | 0 (a missing reading where the browser has no `longtask` entries, not a pass) |
+| at least 30 FPS (Minimum class, run B) | a reading, not part of the verdict (`informational`) |
+
+CI runs the arena spec at 480 x 270 and the lowest preset on its software rasteriser and holds the sim to 57 Hz
+and the report to its shape; the frame gates are for a machine with a GPU. A headed run needs mains power.
+The report adds `longTasks` and `deviceLosses` to `metrics`, and a gate can be `informational`.
+
 ## First-run benchmark (prototype)
 
 `?bench=quick` (about 4 s) or `?bench=full` (about 25 s), or the Benchmark button in the debug
@@ -56,6 +85,13 @@ included), which ticks at 0.41 of the v0.0b spectator kernel's rate on the same 
 single under Node on the M4: about 137 000 against 333 000 ticks per second). The three CPU
 thresholds were scaled by that ratio (100 000 / 180 000 / 260 000 became 41 000 / 74 000 / 107 000
 ticks per second), so every machine keeps the tier it had. They stay provisional.
+
+*Re-based at v0.1c (ADR-28 amendment 1).* The kernel changed again in v0.1b (the control system, the gear
+and physiology), and the M4 read Minimum (58 177 ticks per second against 74 000). The thresholds were scaled
+by 0.420, the ratio of the v0.1c kernel to the v0.1a tag's measured alternately under Node on the M4
+(`node packages/tools/src/kernel-rate.ts --root DIR`: 56 934 against 135 436 ticks per second; the browser
+reports give 0.391, 7 % apart), and are now 17 200 / 31 100 / 44 900. The M4 reads High again. A kernel change
+that moves the score by more than 10 % is re-based the same way in the same milestone.
 
 ## Native tick benchmark (PS-9 skeleton)
 
