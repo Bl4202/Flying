@@ -132,6 +132,7 @@ fn subsystem(kind: u32) -> u64 {
             hash_kind::OWNSHIP => h.ownship,
             hash_kind::INPUT => h.input,
             hash_kind::CONTENT => h.content,
+            hash_kind::COMBAT => h.combat,
             _ => 0,
         }
     })
@@ -527,6 +528,7 @@ mod tests {
             (hash_kind::OWNSHIP, h.ownship),
             (hash_kind::INPUT, h.input),
             (hash_kind::CONTENT, h.content),
+            (hash_kind::COMBAT, h.combat),
         ] {
             let kind = kind as u32;
             assert_eq!(

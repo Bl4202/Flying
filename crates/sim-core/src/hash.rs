@@ -64,6 +64,19 @@ impl StateHasher {
     }
 }
 
+/// The tag the combat column holds when the session has no combat: "NOCOMBAT" in ASCII, read as a
+/// little-endian `u64` (ADR-45, DT1).
+pub const NO_COMBAT_TAG: u64 = 0x5441_424D_4F43_4F4E;
+
+/// The combat column of a session with no combat: the hash of [`NO_COMBAT_TAG`]. It is a constant,
+/// so the free-flight goldens can show that adding combat changed nothing else (ADR-45, DT1).
+#[must_use]
+pub fn no_combat_hash() -> u64 {
+    let mut h = StateHasher::new();
+    h.write_u64(NO_COMBAT_TAG);
+    h.finish()
+}
+
 /// Per-subsystem hashes plus the combined hash, so a mismatch can be localised.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SubsystemHashes {
@@ -79,14 +92,25 @@ pub struct SubsystemHashes {
     pub input: u64,
     /// The loaded content pack's identity (zero-content packs hash too).
     pub content: u64,
-    /// Hash of the six above, in that order.
+    /// The combat state; [`no_combat_hash`] when the session has none. Holds every number of the
+    /// combat state and nothing observational (events, counters).
+    pub combat: u64,
+    /// Hash of the seven above, in that order.
     pub combined: u64,
 }
 
 impl SubsystemHashes {
     /// Combines the subsystem hashes.
     #[must_use]
-    pub fn new(tick: u64, rng: u64, bodies: u64, ownship: u64, input: u64, content: u64) -> Self {
+    pub fn new(
+        tick: u64,
+        rng: u64,
+        bodies: u64,
+        ownship: u64,
+        input: u64,
+        content: u64,
+        combat: u64,
+    ) -> Self {
         let mut h = StateHasher::new();
         h.write_u64(tick);
         h.write_u64(rng);
@@ -94,6 +118,7 @@ impl SubsystemHashes {
         h.write_u64(ownship);
         h.write_u64(input);
         h.write_u64(content);
+        h.write_u64(combat);
         Self {
             tick,
             rng,
@@ -101,6 +126,7 @@ impl SubsystemHashes {
             ownship,
             input,
             content,
+            combat,
             combined: h.finish(),
         }
     }
@@ -139,16 +165,28 @@ mod tests {
 
     #[test]
     fn combined_depends_on_every_part() {
-        let base = SubsystemHashes::new(1, 2, 3, 4, 5, 6);
+        let base = SubsystemHashes::new(1, 2, 3, 4, 5, 6, 7);
         for changed in [
-            SubsystemHashes::new(9, 2, 3, 4, 5, 6),
-            SubsystemHashes::new(1, 9, 3, 4, 5, 6),
-            SubsystemHashes::new(1, 2, 9, 4, 5, 6),
-            SubsystemHashes::new(1, 2, 3, 9, 5, 6),
-            SubsystemHashes::new(1, 2, 3, 4, 9, 6),
-            SubsystemHashes::new(1, 2, 3, 4, 5, 9),
+            SubsystemHashes::new(9, 2, 3, 4, 5, 6, 7),
+            SubsystemHashes::new(1, 9, 3, 4, 5, 6, 7),
+            SubsystemHashes::new(1, 2, 9, 4, 5, 6, 7),
+            SubsystemHashes::new(1, 2, 3, 9, 5, 6, 7),
+            SubsystemHashes::new(1, 2, 3, 4, 9, 6, 7),
+            SubsystemHashes::new(1, 2, 3, 4, 5, 9, 7),
+            SubsystemHashes::new(1, 2, 3, 4, 5, 6, 9),
         ] {
             assert_ne!(base.combined, changed.combined);
         }
+        assert_eq!(base.combat, 7);
+    }
+
+    #[test]
+    fn the_no_combat_tag_spells_nocombat_and_its_hash_is_a_constant() {
+        assert_eq!(&NO_COMBAT_TAG.to_le_bytes(), b"NOCOMBAT");
+        // FNV-1a 64 of the eight tag bytes: pinned, because the free-flight goldens carry it.
+        let mut h = StateHasher::new();
+        h.write_bytes(b"NOCOMBAT");
+        assert_eq!(no_combat_hash(), h.finish());
+        assert_eq!(no_combat_hash(), no_combat_hash());
     }
 }

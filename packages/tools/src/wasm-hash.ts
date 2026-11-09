@@ -121,6 +121,7 @@ for (const target of ticks) {
     ownship: hex64(sim.hash(HASH_KIND.OWNSHIP)),
     input: hex64(sim.hash(HASH_KIND.INPUT)),
     content: hex64(sim.hash(HASH_KIND.CONTENT)),
+    combat: hex64(sim.hash(HASH_KIND.COMBAT)),
   };
   console.log(JSON.stringify(line));
 }

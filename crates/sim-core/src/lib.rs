@@ -43,7 +43,7 @@ pub use simmath::math;
 /// Default master seed for tools and tests.
 pub const DEFAULT_SEED: u64 = 0x1F1E_5EED_0000_0001;
 
-pub use hash::SubsystemHashes;
+pub use hash::{NO_COMBAT_TAG, SubsystemHashes, no_combat_hash};
 pub use input::InputFrame;
 pub use session::{Arena, Assist, ConfigError, GEffects, SessionConfig, Spawn};
 pub use sim::{CoreState, LoadContentError, SimCore};
