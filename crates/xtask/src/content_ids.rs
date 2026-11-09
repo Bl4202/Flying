@@ -24,6 +24,7 @@ const SIM_CRATES: &[&str] = &[
     "simmath",
     "flight",
     "fcs",
+    "weapons",
     "flight-test",
     "sim-core",
     "sim-wasm",

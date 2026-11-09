@@ -4,6 +4,7 @@ members = [
     "crates/simmath",
     "crates/flight",
     "crates/fcs",
+    "crates/weapons",
     "crates/flight-test",
     "crates/sim-core",
     "crates/sim-wasm",
@@ -18,6 +19,7 @@ default-members = [
     "crates/simmath",
     "crates/flight",
     "crates/fcs",
+    "crates/weapons",
     "crates/flight-test",
     "crates/sim-core",
     "crates/protocol",
@@ -43,6 +45,7 @@ libm = { version = "=0.2.16", default-features = false }
 simmath = { path = "crates/simmath" }
 flight = { path = "crates/flight" }
 fcs = { path = "crates/fcs" }
+weapons = { path = "crates/weapons" }
 flight-test = { path = "crates/flight-test" }
 sim-core = { path = "crates/sim-core" }
 protocol = { path = "crates/protocol" }

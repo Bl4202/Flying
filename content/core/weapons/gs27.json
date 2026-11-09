@@ -9,7 +9,7 @@
     "muzzle_mps": 1025,
     "rpm": 1700,
     "spinup_s": 0,
-    "dispersion_mrad": 1.5,
+    "dispersion_mrad": 0.5,
     "round_mass_kg": 0.26,
     "drag_cd": {
       "axis": "mach",

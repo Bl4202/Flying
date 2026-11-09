@@ -31,7 +31,7 @@ v0.1d gates (ADR-45, MS2) are written against.
 | `rpm` | 1 700 (28.33 rounds/s) | GDD 15.12 ("28 rps"); the audio profile's `rate_hz` must equal `rpm / 60` within 0.01 Hz |
 | `muzzle_mps` | 1 025 m/s | *target* |
 | `round_mass_kg` | 0.26 kg | *target*; a hit delivers `½ m v_rel²` joules, so the damage gate GN6 is `½ · 0.26 · v² / 6 370` hit points |
-| `dispersion_mrad` | 1.5 | *target*; every round leaves inside a cone of this half-angle, uniformly |
+| `dispersion_mrad` | 0.5 | *target*; the standard deviation σ of a Gaussian spread about the gun axis, on each of two axes (GDD 15.4.1); tuned in v0.1d (see the log) |
 | `drag_cd` | 0.25 to Mach 0.8, 0.38 at 1.2, 0.31 at 2, 0.26 at 3 | *target* |
 | `ammo_types` | `hei`, a tracer every 4th round | *target* |
 | `max_age_s`, `min_speed_mps` | 3 s, 300 m/s | *target*: a round is removed after either |
@@ -48,7 +48,7 @@ v0.1d gates (ADR-45, MS2) are written against.
 | `seeker` | rear-aspect IR; 4 deg caged field of view; 30 deg gimbal; locks a target of intensity 1 at 6 000 m (range scales with the square root of the intensity); sees the target only within 35 deg of its tail; 0.1 deg noise; 0.5 s of tone to lock | *target* |
 | `fuze` | proximity; arms after 300 m; triggers within 8 m | *target* |
 | `warhead` | fragmentation; lethal radius 8 m; 2 548 000 J at zero distance (400 hit points: a burst within 4 m kills) | *target* |
-| `launch` | at least 80 m/s, at most 7.5 g and 25 deg angle of attack, 0.5 s before the motor lights, no launch inside 450 m | *target* |
+| `launch` | at least 80 m/s, at most 7.5 g and 25 deg angle of attack, no launch inside 450 m; the fuze cannot arm in the first 0.5 s (`safe_sep_s`; the motor lights at launch) | *target* |
 | `limits` | self-destructs at 25 s, below 150 m/s after burnout, or 2 s after its target is destroyed | *target* |
 | `visual` | 3 m while the motor burns, 0.5 m coasting (the eye sees it at about 3.3 km and 0.6 km) | *target* |
 
@@ -64,4 +64,4 @@ last change; a change after that needs the owner.
 
 | Date | Change | Why |
 |---|---|---|
-| | | |
+| 2026-11-09 | GS-27 `dispersion_mrad` 1.5 → 0.5, read as the Gaussian σ of GDD 15.4.1 (the WP1 text had called it a uniform cone's half-angle) | GN3 (`AC-54.2`: ≥ 90 of 100 rounds from the pipper hit at 300 to 1 000 m). At 1 000 m, over 10 runs of 100 rounds per aspect: σ 1.5 gave 63 to 73 % on average; a uniform 1.5 mrad cone 86 to 97 % (worst run 81); σ 0.5 gives 96 to 100 % (worst run 94). The owner chose σ 0.5 (WP2). Before the one re-bless, so no extra re-bless |

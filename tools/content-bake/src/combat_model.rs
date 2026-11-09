@@ -138,7 +138,8 @@ pub struct GunFile {
     /// Time from the trigger to the full rate.
     #[schemars(extend("x-unit" = "s"), range(min = 0.0, max = 5.0))]
     pub spinup_s: f64,
-    /// Dispersion: the half-angle of the cone that holds every round.
+    /// Dispersion: the standard deviation of the Gaussian spread about the gun axis, on each of
+    /// two axes (GDD 15.4.1).
     #[schemars(extend("x-unit" = "mrad"), range(min = 0.0, max = 20.0))]
     pub dispersion_mrad: f64,
     /// Mass of one round.
@@ -337,7 +338,7 @@ pub struct LaunchFile {
     /// Largest angle of attack of the launch aircraft.
     #[schemars(extend("x-unit" = "deg"), range(min = 1.0, max = 90.0))]
     pub max_alpha_deg: f64,
-    /// Time before the motor lights and the guidance starts.
+    /// Time after launch before the fuze may arm (the motor lights at launch).
     #[schemars(extend("x-unit" = "s"), range(min = 0.0, max = 5.0))]
     pub safe_sep_s: f64,
     /// Shortest range at which a launch is allowed.

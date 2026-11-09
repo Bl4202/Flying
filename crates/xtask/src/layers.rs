@@ -13,6 +13,7 @@ const RULES: &[(&str, &[&str])] = &[
     ("simmath", &["libm"]),
     ("flight", &["simmath", "content"]),
     ("fcs", &["content", "flight", "simmath"]),
+    ("weapons", &["content", "flight", "simmath"]),
     (
         "flight-test",
         &["content", "flight", "serde_json", "simmath"],
@@ -140,6 +141,7 @@ mod tests {
             ("simmath", &["libm"]),
             ("flight", &["content", "simmath"]),
             ("fcs", &["content", "flight", "simmath"]),
+            ("weapons", &["content", "flight", "simmath"]),
             (
                 "flight-test",
                 &["content", "flight", "serde_json", "simmath"],
@@ -158,6 +160,20 @@ mod tests {
     #[test]
     fn accepts_the_intended_graph() {
         assert!(violations(&good()).is_ok());
+    }
+
+    #[test]
+    fn the_weapons_stay_below_the_core() {
+        // ADR-46: the weapons crate never sees the world, the control system or the baker.
+        for dep in ["sim-core", "fcs", "content-bake"] {
+            let mut g = good();
+            g.get_mut("weapons").unwrap().push(dep.into());
+            let err = violations(&g).unwrap_err();
+            assert!(
+                err.contains(&format!("`weapons` depends on `{dep}`")),
+                "{err}"
+            );
+        }
     }
 
     #[test]

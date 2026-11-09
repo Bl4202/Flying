@@ -405,6 +405,7 @@ dependencies = [
  "flight",
  "sim-core",
  "simmath",
+ "weapons",
 ]
 
 [[package]]
@@ -448,6 +449,16 @@ dependencies = [
  "indexmap",
  "semver",
  "serde",
+]
+
+[[package]]
+name = "weapons"
+version = "0.1.0"
+dependencies = [
+ "content",
+ "content-bake",
+ "flight",
+ "simmath",
 ]
 
 [[package]]
