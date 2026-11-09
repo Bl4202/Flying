@@ -84,6 +84,7 @@ const facts: RunFacts = {
   perf: null,
   benchmark: null,
   consoleErrors,
+  flightWanted: opts.fly > 0,
   latencyWanted: opts.latency,
   latency: null,
 };
@@ -289,15 +290,16 @@ try {
     .waitFor({ timeout: (opts.seconds + 120) * 1000 });
   const report = JSON.parse((await byId(page, 'perf-report').textContent()) ?? '{}') as {
     verdict: 'pass' | 'fail';
-    metrics: { simHz: number; renderFps: number };
-    gates: { id: string; pass: boolean }[];
+    metrics: { simHz: number; renderFps: number; deviceLosses?: number };
+    gates: { id: string; pass: boolean; informational?: boolean }[];
   };
   save(reportFile(opts), JSON.stringify(report, null, 2));
   facts.perf = {
     verdict: report.verdict,
     simHz: report.metrics.simHz,
     renderFps: report.metrics.renderFps,
-    failedGates: report.gates.filter((g) => !g.pass).map((g) => g.id),
+    failedGates: report.gates.filter((g) => !g.pass && g.informational !== true).map((g) => g.id),
+    deviceLosses: report.metrics.deviceLosses ?? 0,
   };
 } catch (e) {
   const message = e instanceof Error ? e.message : String(e);

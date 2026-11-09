@@ -1,0 +1,9 @@
+{
+  "seconds": 60,
+  "fpsAvg": 0,
+  "fpsMin": 0,
+  "frameP99Ms": 0,
+  "frameMaxMs": 0,
+  "simHzAvg": 0,
+  "toasts": []
+}

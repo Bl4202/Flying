@@ -220,9 +220,13 @@ export interface RunFacts {
     simHz: number;
     renderFps: number;
     failedGates: string[];
+    /** Times the graphics device was lost in the measured window (the report's own count). */
+    deviceLosses: number;
   } | null;
   benchmark: { profile: string; preset: string } | null;
   consoleErrors: string[];
+  /** Whether the scripted minute was asked for (`--fly` above 0). */
+  flightWanted: boolean;
   /** Samples the run was asked for (0: no latency measurement was asked for). */
   latencyWanted: number;
   latency: LatencySummary | null;
@@ -257,7 +261,11 @@ export function judgeRun(facts: RunFacts, cls: MachineClass): { checks: Check[];
   add(
     'clean',
     'frames render without errors or device loss',
-    facts.consoleErrors.length === 0 && lost.length === 0 && facts.flight !== null,
+    facts.consoleErrors.length === 0 &&
+      lost.length === 0 &&
+      (facts.perf?.deviceLosses ?? 0) === 0 &&
+      // The scripted minute happened if it was asked for (an arena run has none by default).
+      (!facts.flightWanted || facts.flight !== null),
   );
   if (facts.latencyWanted > 0) {
     const l = facts.latency;

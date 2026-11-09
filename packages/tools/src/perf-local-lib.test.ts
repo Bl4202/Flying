@@ -31,9 +31,10 @@ function facts(over: Partial<RunFacts> = {}): RunFacts {
     renderer: 'webgpu apple metal-3',
     displayHz: 120,
     flight,
-    perf: { verdict: 'pass', simHz: 60, renderFps: 119.9, failedGates: [] },
+    perf: { verdict: 'pass', simHz: 60, renderFps: 119.9, failedGates: [], deviceLosses: 0 },
     benchmark: { profile: 'high', preset: 'ultra' },
     consoleErrors: [],
+    flightWanted: true,
     latencyWanted: 0,
     latency: null,
     ...over,
@@ -181,7 +182,15 @@ describe('judgeRun', () => {
 
   it('fails when a PS-0 gate fails, and names it', () => {
     const j = judgeRun(
-      facts({ perf: { verdict: 'fail', simHz: 59.5, renderFps: 119, failedGates: ['sim-rate'] } }),
+      facts({
+        perf: {
+          verdict: 'fail',
+          simHz: 59.5,
+          renderFps: 119,
+          failedGates: ['sim-rate'],
+          deviceLosses: 0,
+        },
+      }),
       'high',
     );
     expect(j.pass).toBe(false);
@@ -223,20 +232,20 @@ describe('judgeRun', () => {
   it('asks 30 FPS of a Minimum-class run and the display rate of the others', () => {
     const slow = facts({
       displayHz: 60,
-      perf: { verdict: 'pass', simHz: 60, renderFps: 34, failedGates: [] },
+      perf: { verdict: 'pass', simHz: 60, renderFps: 34, failedGates: [], deviceLosses: 0 },
     });
     expect(judgeRun(slow, 'minimum').pass).toBe(true);
     expect(judgeRun(slow, 'recommended').pass).toBe(false);
     const at = facts({
       displayHz: 60,
-      perf: { verdict: 'pass', simHz: 60, renderFps: 57, failedGates: [] },
+      perf: { verdict: 'pass', simHz: 60, renderFps: 57, failedGates: [], deviceLosses: 0 },
     });
     expect(judgeRun(at, 'high').pass).toBe(true);
     expect(
       judgeRun(
         facts({
           displayHz: 60,
-          perf: { verdict: 'pass', simHz: 60, renderFps: 29, failedGates: [] },
+          perf: { verdict: 'pass', simHz: 60, renderFps: 29, failedGates: [], deviceLosses: 0 },
         }),
         'minimum',
       ).pass,
@@ -272,11 +281,13 @@ describe('renderSummary', () => {
     const f = facts({
       scenario: 'ARENA',
       flight: null,
+      flightWanted: false,
       perf: {
         verdict: 'fail',
         simHz: 60,
         renderFps: 52.4,
         failedGates: ['frame-avg', 'frame-p99'],
+        deviceLosses: 0,
       },
     });
     const text = renderSummary(arena, f, judgeRun(f, 'recommended'), '2026-11-09');
@@ -285,6 +296,23 @@ describe('renderSummary', () => {
     );
     expect(text).toContain('ARENA strict gates hold (failed: frame-avg, frame-p99)');
     expect(text).toContain('`perf-arena.json`');
+  });
+
+  it('counts an arena run with no scripted minute as clean, and a lost device as not', () => {
+    const arena = facts({ scenario: 'ARENA', flight: null, flightWanted: false });
+    const j = judgeRun(arena, 'recommended');
+    expect(j.checks.find((c) => c.id === 'clean')?.pass).toBe(true);
+    const lost = facts({
+      scenario: 'ARENA',
+      flight: null,
+      flightWanted: false,
+      perf: { verdict: 'pass', simHz: 60, renderFps: 119, failedGates: [], deviceLosses: 1 },
+    });
+    expect(judgeRun(lost, 'recommended').checks.find((c) => c.id === 'clean')?.pass).toBe(false);
+    // A scripted minute that was asked for and did not happen is not clean.
+    expect(
+      judgeRun(facts({ flight: null }), 'recommended').checks.find((c) => c.id === 'clean')?.pass,
+    ).toBe(false);
   });
 
   it('lists failures, errors and notices', () => {
