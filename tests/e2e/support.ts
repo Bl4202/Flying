@@ -354,6 +354,23 @@ export async function sampleAfter(page: Page, ms: number): Promise<Sample> {
   return latest;
 }
 
+/**
+ * The least the picture must advance, frames per second, for "the frames go on". CI draws with a
+ * software rasteriser whose speed depends on the load of a shared runner (it managed 7 to 20 here),
+ * and these specs hold the sim to its 60 Hz, not the renderer to a speed: the renderer has to keep
+ * drawing while the other threads stall, and a stall of the thread under test would leave a gap of a
+ * second or a third of one, far longer than the intervals this allows.
+ */
+export const MIN_RENDER_FPS = 10;
+
+/** The longest frame interval that is no stall of the renderer, ms: well under 300 and 1 000, the stalls the specs inject. */
+export const MAX_FRAME_GAP_MS = 200;
+
+/** Frames per second between two samples, by the reports' own timestamps. */
+export function renderRate(a: Sample, b: Sample): number {
+  return (b.render.frames - a.render.frames) / ((b.render.atMs - a.render.atMs) / 1000);
+}
+
 /** Ticks per second between two samples, by the reports' own timestamps. */
 export function simRate(a: Sample, b: Sample): number {
   return (b.sim.tick - a.sim.tick) / ((b.sim.atMs - a.sim.atMs) / 1000);

@@ -3,9 +3,11 @@ import {
   byId,
   CHEAP,
   HEADERS_BASE,
+  MIN_RENDER_FPS,
   openGame,
   overlayNumber,
   PAGES_BASE,
+  renderRate,
   sampleAfter,
   simRate,
 } from './support.ts';
@@ -32,7 +34,7 @@ test.describe('no isolation: no headers and no Service Worker', () => {
     const rate = simRate(a, b);
     expect(rate).toBeGreaterThan(58);
     expect(rate).toBeLessThan(62);
-    expect(b.render.frames - a.render.frames).toBeGreaterThan(60);
+    expect(renderRate(a, b)).toBeGreaterThan(MIN_RENDER_FPS);
 
     // Input still reaches the core, through the 30 Hz message path: the spawn is near level, and
     // pushing the stick lowers the nose.
@@ -66,7 +68,7 @@ test.describe('isolated, with the degraded paths forced on', () => {
     const rate = simRate(a, b);
     expect(rate).toBeGreaterThan(58);
     expect(rate).toBeLessThan(62);
-    expect(b.render.frames - a.render.frames).toBeGreaterThan(60);
+    expect(renderRate(a, b)).toBeGreaterThan(MIN_RENDER_FPS);
   });
 
   test('the main-thread renderer draws, and the sim keeps its rate', async ({ page }) => {
@@ -76,7 +78,7 @@ test.describe('isolated, with the degraded paths forced on', () => {
     const rate = simRate(a, b);
     expect(rate).toBeGreaterThan(59);
     expect(rate).toBeLessThan(61);
-    expect(b.render.frames - a.render.frames).toBeGreaterThan(60);
+    expect(renderRate(a, b)).toBeGreaterThan(MIN_RENDER_FPS);
     const pixels = await page.evaluate(() => window.__flying?.readPixels());
     expect(pixels?.distinctColours ?? 0).toBeGreaterThanOrEqual(8);
   });
