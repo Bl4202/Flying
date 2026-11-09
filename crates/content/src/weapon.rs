@@ -30,7 +30,8 @@ pub struct GunBlock {
     pub rpm: f32,
     /// Time from the trigger to the full rate, s.
     pub spinup_s: f32,
-    /// Dispersion (half-angle of the cone that holds every round), mrad.
+    /// Dispersion: the standard deviation of the Gaussian spread about the gun axis, on each of
+    /// two axes, mrad (GDD 15.4.1).
     pub dispersion_mrad: f32,
     /// Mass of one round, kg.
     pub round_mass_kg: f32,
@@ -146,7 +147,7 @@ pub struct Launch {
     pub max_g: f32,
     /// Largest angle of attack of the launch aircraft, degrees.
     pub max_alpha_deg: f32,
-    /// Time before the motor lights and the guidance starts, s.
+    /// Time after launch before the fuze may arm, s (the motor lights at launch).
     pub safe_sep_s: f32,
     /// Shortest range at which a launch is allowed, m.
     pub min_range_m: f32,

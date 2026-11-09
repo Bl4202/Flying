@@ -177,7 +177,7 @@
           "x-unit": "mm"
         },
         "dispersion_mrad": {
-          "description": "Dispersion: the half-angle of the cone that holds every round.",
+          "description": "Dispersion: the standard deviation of the Gaussian spread about the gun axis, on each of\ntwo axes (GDD 15.4.1).",
           "format": "double",
           "maximum": 20.0,
           "minimum": 0.0,
@@ -296,7 +296,7 @@
           "x-unit": "m/s"
         },
         "safe_sep_s": {
-          "description": "Time before the motor lights and the guidance starts.",
+          "description": "Time after launch before the fuze may arm (the motor lights at launch).",
           "format": "double",
           "maximum": 5.0,
           "minimum": 0.0,

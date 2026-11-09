@@ -146,7 +146,7 @@ fn the_sim_pack_hash_is_pinned() {
     let header = &b.cpack[content::cpack::header::CONTENT_HASH..][..32];
     assert_eq!(
         hex(header),
-        "7b74216a9eb3166f35ab747c75a93bdac8a04a09f804c0d8535953f3d27d3b89"
+        "986d0ce78a1e051763cc1247b00dfe9ee80a69ab08550e30a1c8f567a81c9ebe"
     );
     assert_eq!(b.cpack.len(), 7432);
 }
