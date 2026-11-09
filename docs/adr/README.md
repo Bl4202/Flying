@@ -49,6 +49,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-42](0042-flight-audio.md) | Flight audio: synthesis in an AudioWorklet | Accepted |
 | [ADR-43](0043-arenas-abi-v4-and-the-presentation-bundle.md) | Test arenas, session reset (ABI v4), snapshot v4 and the presentation bundle | Accepted |
 | [ADR-44](0044-app-flow-settings-pwa.md) | Application flow, first run, the main menu, settings v2, the PWA and offline | Accepted |
+| [ADR-45](0045-v0-1d-gates.md) | v0.1d gates: weapons, the bandit, the bot playtester, the soak, the debrief and G1 for a solo project | Proposed |
 
 ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist before any tuning
 (AC-66.4).
@@ -60,3 +61,5 @@ as Proposed and became Accepted when the milestone closed.
 
 ADR-39 (the v0.1c gates) and ADR-40 (the renderer stays custom, superseding ADR-18) were written
 first in v0.1c, before any render, HUD or audio code (AC-66.4).
+
+ADR-45 (the v0.1d gates) was written first in v0.1d, before any weapon, AI or combat code (AC-66.4).
