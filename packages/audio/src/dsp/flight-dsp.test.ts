@@ -1,8 +1,9 @@
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { WARNING } from '@flying/sim-bridge';
 import { levelDb, peakFrequency, render } from '../test-support/analysis.ts';
 import { kestrelProfile } from '../test-support/fixtures.ts';
-import { bytesPerCall } from '../test-support/garbage.ts';
 import { FlightDsp, MAX_BLOCK, P, rpmFor, softLimit, TONE } from './flight-dsp.ts';
 
 /** The profile as shipped, with its loudness calibration (A5 tunes it; the soft limiter is near at full power). */
@@ -65,6 +66,8 @@ describe('rpmFor', () => {
 });
 
 describe('A1: the blade-pass tone is at rpm / 60 x blades (within 1 %)', () => {
+  /** The Kestrel's blade count, from GDD C.13 and not from the profile under test: a wrong profile misses. */
+  const BLADES = 24;
   const cases: [string, number, number][] = [
     ['idle', 0.06, 0],
     ['military', 1, 0],
@@ -73,7 +76,7 @@ describe('A1: the blade-pass tone is at rpm / 60 x blades (within 1 %)', () => {
   for (const [name, core, ab] of cases) {
     it(`at ${name}`, () => {
       const { dsp, out } = held(engineOn(core, ab));
-      const expected = (dsp.rpm / 60) * profile.engine.bladeCount;
+      const expected = (dsp.rpm / 60) * BLADES;
       const found = peakFrequency(out, 48_000, 0.5 * expected, 1.2 * expected);
       expect(Math.abs(found - expected) / expected).toBeLessThan(0.01);
     });
@@ -528,41 +531,20 @@ describe('A6: the cost of a render quantum', () => {
 });
 
 describe('A7: no allocation in process()', () => {
-  it('makes no garbage, in a state that exercises every voice', async () => {
-    const dsp = new FlightDsp(profile);
-    const l = new Float32Array(128);
-    const r = new Float32Array(128);
-    const states = [
-      (p: Float64Array) => {
-        engineOn(1, 1)(p);
-        p[P.QBAR] = 8000;
-        p[P.WARNINGS] = WARNING.STALL;
-        p[P.ON_GROUND] = 1;
-        p[P.GROUND_SPEED] = 40;
-      },
-      (p: Float64Array) => {
-        engineOn(0.3)(p);
-        p[P.WARNINGS] = WARNING.PULLUP;
-        p[P.ALPHA] = 0.5;
-        p[P.ALPHA_WARN] = 0.45;
-      },
-      (p: Float64Array) => {
-        engineOn(0.06)(p);
-        p[P.WARNINGS] = WARNING.GEAR;
-        p[P.COCKPIT] = 0;
-      },
-    ];
-    const bytes = await bytesPerCall(
-      (i) => {
-        const set = states[(i >> 8) % states.length] as (p: Float64Array) => void;
-        set(dsp.params);
-        dsp.process(l, r, 128);
-      },
-      { warmup: 20_000, chunkSize: 600 },
-    );
-    // V8 boxes a double now and then across non-inlined calls, so the bound is small, not zero.
-    expect(bytes).toBeLessThan(64);
-  });
+  it('makes no garbage but a boxed number or two a block, in states that exercise every voice', () => {
+    // Measured in plain Node, by the sampling heap profiler (see the script): the test runner's module
+    // transform stops V8 inlining across modules, and the numbers returned from the calls it does not
+    // inline are boxed on the heap, which the shipped worklet (one bundle) does not do.
+    const script = fileURLToPath(new URL('../test-support/process-garbage.ts', import.meta.url));
+    const out = execFileSync(process.execPath, [script], { encoding: 'utf8', timeout: 110_000 });
+    const result = JSON.parse(out.trim().split('\n').pop() ?? '{}') as {
+      bytesPerCall: number;
+      sites: { site: string; bytesPerCall: number }[];
+    };
+    // Two boxed doubles a block (32 bytes) are what the block-rate arithmetic leaves; an array, an
+    // object or a closure made per block adds a multiple of that.
+    expect(result.bytesPerCall, JSON.stringify(result.sites)).toBeLessThan(64);
+  }, 120_000);
 });
 
 describe('block sizes', () => {
