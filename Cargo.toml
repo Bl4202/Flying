@@ -5,6 +5,7 @@ members = [
     "crates/flight",
     "crates/fcs",
     "crates/weapons",
+    "crates/ai-pilot",
     "crates/flight-test",
     "crates/sim-core",
     "crates/sim-wasm",
@@ -19,6 +20,7 @@ default-members = [
     "crates/simmath",
     "crates/flight",
     "crates/fcs",
+    "crates/ai-pilot",
     "crates/weapons",
     "crates/flight-test",
     "crates/sim-core",
@@ -46,6 +48,7 @@ simmath = { path = "crates/simmath" }
 flight = { path = "crates/flight" }
 fcs = { path = "crates/fcs" }
 weapons = { path = "crates/weapons" }
+ai-pilot = { path = "crates/ai-pilot" }
 flight-test = { path = "crates/flight-test" }
 sim-core = { path = "crates/sim-core" }
 protocol = { path = "crates/protocol" }

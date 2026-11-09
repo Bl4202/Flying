@@ -3,6 +3,17 @@
 version = 4
 
 [[package]]
+name = "ai-pilot"
+version = "0.1.0"
+dependencies = [
+ "content",
+ "content-bake",
+ "fcs",
+ "flight",
+ "simmath",
+]
+
+[[package]]
 name = "alloc-no-stdlib"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

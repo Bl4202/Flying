@@ -14,6 +14,7 @@ const RULES: &[(&str, &[&str])] = &[
     ("flight", &["simmath", "content"]),
     ("fcs", &["content", "flight", "simmath"]),
     ("weapons", &["content", "flight", "simmath"]),
+    ("ai-pilot", &["content", "fcs", "flight", "simmath"]),
     (
         "flight-test",
         &["content", "flight", "serde_json", "simmath"],
@@ -142,6 +143,7 @@ mod tests {
             ("flight", &["content", "simmath"]),
             ("fcs", &["content", "flight", "simmath"]),
             ("weapons", &["content", "flight", "simmath"]),
+            ("ai-pilot", &["content", "fcs", "flight", "simmath"]),
             (
                 "flight-test",
                 &["content", "flight", "serde_json", "simmath"],
@@ -171,6 +173,20 @@ mod tests {
             let err = violations(&g).unwrap_err();
             assert!(
                 err.contains(&format!("`weapons` depends on `{dep}`")),
+                "{err}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_pilot_ai_stays_below_the_core_and_apart_from_the_weapons() {
+        // ADR-47: the AI flies through the control system; it never sees the world or the weapons.
+        for dep in ["sim-core", "weapons", "content-bake"] {
+            let mut g = good();
+            g.get_mut("ai-pilot").unwrap().push(dep.into());
+            let err = violations(&g).unwrap_err();
+            assert!(
+                err.contains(&format!("`ai-pilot` depends on `{dep}`")),
                 "{err}"
             );
         }

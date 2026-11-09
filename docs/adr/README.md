@@ -51,6 +51,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-44](0044-app-flow-settings-pwa.md) | Application flow, first run, the main menu, settings v2, the PWA and offline | Accepted |
 | [ADR-45](0045-v0-1d-gates.md) | v0.1d gates: weapons, the bandit, the bot playtester, the soak, the debrief and G1 for a solo project | Proposed |
 | [ADR-46](0046-weapons.md) | Weapons: the gun, the director gunsight, the IR seeker, the PN missile and the fuze | Proposed |
+| [ADR-47](0047-combat-ai-and-the-bot.md) | Combat AI: the bandit's state machine, the manoeuvre controller and the bot playtester | Proposed |
 
 ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist before any tuning
 (AC-66.4).
