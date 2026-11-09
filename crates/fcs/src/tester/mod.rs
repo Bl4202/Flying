@@ -306,6 +306,27 @@ impl Tester {
         self.lift_off_s
     }
 
+    /// The runway it flies to.
+    #[must_use]
+    pub fn runway(&self) -> Runway {
+        self.runway
+    }
+
+    /// Takes the aircraft over in the air, on the downwind leg (the v0.1d bot playtester hands it
+    /// back here after a sortie, ADR-47): the circuit continues from the downwind leg with the gear
+    /// already up, and the loops start afresh.
+    pub fn join_downwind(&mut self, t_s: f64) {
+        self.leg = 2;
+        self.speed_i = 0.0;
+        self.pitch_i = 0.0;
+        self.press_gap = 0;
+        self.gear_up_pressed = true;
+        if self.lift_off_s.is_none() {
+            self.lift_off_s = Some(t_s);
+        }
+        self.enter(Phase::Downwind, t_s);
+    }
+
     /// The tester's numbers as words, for the state hash.
     #[must_use]
     pub fn words(&self) -> [u64; 6] {
