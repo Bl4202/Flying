@@ -30,8 +30,8 @@ use crate::util::{run, workspace_root};
 
 /// Same value as `sim_core::DEFAULT_SEED`, as hex.
 const SEED_HEX: &str = "1f1e5eed00000001";
-const FIELDS: [&str; 7] = [
-    "combined", "tick_h", "rng", "bodies", "ownship", "input", "content",
+const FIELDS: [&str; 8] = [
+    "combined", "tick_h", "rng", "bodies", "ownship", "input", "content", "combat",
 ];
 /// The baked pack every run loads, relative to the repository root.
 const CONTENT: &str = "content-out/core.cpack";
@@ -225,18 +225,98 @@ fn capture(cmd: &mut Command) -> Result<Vec<u8>, String> {
     Ok(out.stdout)
 }
 
+/// Bakes the content and builds the release `fg`; returns the path of the baked pack.
+pub(crate) fn bake_and_build_release(root: &std::path::Path) -> Result<String, String> {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    println!("== bake content");
+    super::content::run_command(&[])?;
+    let content = root.join(CONTENT);
+    let content = content
+        .to_str()
+        .ok_or("non-UTF-8 repository path")?
+        .to_owned();
+    run(Command::new(&cargo)
+        .current_dir(root)
+        .args(["build", "-q", "-p", "cli", "--release"]))?;
+    Ok(content)
+}
+
+/// The native release hashes of the suite whose golden is `golden` (a path relative to the
+/// repository root), as the golden file would hold them: the same keys, with the checkpoints of a
+/// fresh run. `ticks` is the length of the `erratic` suite. Used by `golden-diff --fresh`.
+pub(crate) fn fresh_golden(
+    root: &std::path::Path,
+    golden: &str,
+    content: &str,
+    ticks: u64,
+) -> Result<Value, String> {
+    let all = suites(ticks);
+    let suite = all
+        .iter()
+        .find(|s| s.golden == golden)
+        .ok_or_else(|| format!("no suite has the golden {golden}"))?;
+    let native = native_checkpoints(root, suite, content)?;
+    let last = *suite.at.last().expect("a suite has checkpoints");
+    Ok(current_golden(suite, &native, last))
+}
+
+/// What a golden file for `suite` and `native` holds.
+fn current_golden(suite: &Suite, native: &[Value], ticks: u64) -> Value {
+    json!({
+        "seed": SEED_HEX,
+        "script": suite.script,
+        "session": suite.session.join(" "),
+        "ticks": ticks,
+        "checkpoints": native,
+    })
+}
+
+/// The `fg hash` arguments that set a suite up.
+fn setup_args<'a>(suite: &'a Suite, content: &'a str) -> Vec<&'a str> {
+    let mut setup = vec![
+        "--seed",
+        SEED_HEX,
+        "--script",
+        suite.script,
+        "--content",
+        content,
+    ];
+    setup.extend_from_slice(suite.session);
+    setup
+}
+
+/// Runs the suite in the release `fg` and returns its checkpoints.
+fn native_checkpoints(
+    root: &std::path::Path,
+    suite: &Suite,
+    content: &str,
+) -> Result<Vec<Value>, String> {
+    let setup = setup_args(suite, content);
+    let at = list(&suite.at);
+    let last = *suite.at.last().expect("a suite has checkpoints");
+    println!(
+        "== {}: native release, {last} ticks, {} checkpoints",
+        suite.name,
+        suite.at.len()
+    );
+    parse_lines(
+        "native",
+        &capture(
+            Command::new(root.join("target/release/fg"))
+                .arg("hash")
+                .args(&setup)
+                .args(["--at", &at]),
+        )?,
+    )
+}
+
 pub fn run_command(args: &[String]) -> Result<(), String> {
     let opts = parse(args)?;
     let root = workspace_root();
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
 
-    println!("== bake content");
-    super::content::run_command(&[])?;
-    let content = root.join(CONTENT);
-    let content = content.to_str().ok_or("non-UTF-8 repository path")?;
-    run(Command::new(&cargo)
-        .current_dir(&root)
-        .args(["build", "-q", "-p", "cli", "--release"]))?;
+    let content = bake_and_build_release(&root)?;
+    let content = content.as_str();
     run(Command::new(&cargo)
         .current_dir(&root)
         .args(["build", "-q", "-p", "cli"]))?;
@@ -275,31 +355,10 @@ fn run_suite(
     content: &str,
     opts: &Options,
 ) -> Result<(), String> {
-    let mut setup = vec![
-        "--seed",
-        SEED_HEX,
-        "--script",
-        suite.script,
-        "--content",
-        content,
-    ];
-    setup.extend_from_slice(suite.session);
+    let setup = setup_args(suite, content);
     let at = list(&suite.at);
     let last = *suite.at.last().expect("a suite has checkpoints");
-    println!(
-        "== {}: native release, {last} ticks, {} checkpoints",
-        suite.name,
-        suite.at.len()
-    );
-    let native = parse_lines(
-        "native",
-        &capture(
-            Command::new(root.join("target/release/fg"))
-                .arg("hash")
-                .args(&setup)
-                .args(["--at", &at]),
-        )?,
-    )?;
+    let native = native_checkpoints(root, suite, content)?;
 
     // Release must equal debug (overflow checks, opt level).
     let probe = suite.debug_probe;
@@ -356,14 +415,7 @@ fn check_golden(
     bless: bool,
 ) -> Result<(), String> {
     let path = root.join(suite.golden);
-    let session = suite.session.join(" ");
-    let current = json!({
-        "seed": SEED_HEX,
-        "script": suite.script,
-        "session": session,
-        "ticks": ticks,
-        "checkpoints": native,
-    });
+    let current = current_golden(suite, native, ticks);
     if bless {
         fs::create_dir_all(path.parent().expect("has parent")).map_err(|e| e.to_string())?;
         let text = serde_json::to_string_pretty(&current).map_err(|e| e.to_string())?;
@@ -422,7 +474,7 @@ mod tests {
     fn cp(tick: u64, combined: &str) -> Value {
         json!({
             "tick": tick, "combined": combined, "tick_h": "t", "rng": "r", "bodies": "b",
-            "ownship": "o", "input": "i", "content": "c",
+            "ownship": "o", "input": "i", "content": "c", "combat": "k",
         })
     }
 

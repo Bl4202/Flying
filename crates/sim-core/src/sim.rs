@@ -9,7 +9,7 @@ use flight::aircraft::AircraftModel;
 use flight::body::RigidState;
 use flight::engine::EngineCommand;
 
-use crate::hash::{StateHasher, SubsystemHashes};
+use crate::hash::{StateHasher, SubsystemHashes, no_combat_hash};
 use crate::input::{ErraticPilot, FRAME_BYTES, InputFrame, Script};
 use crate::layout::{core_state, input_script, profile};
 use crate::math::{DQuat, DVec3};
@@ -514,6 +514,8 @@ impl SimCore {
             o.finish(),
             i.finish(),
             c.finish(),
+            // The combat state, once there is any (WP4); until then every session has none.
+            no_combat_hash(),
         )
     }
 
@@ -799,16 +801,20 @@ mod tests {
                 before.rng,
                 before.bodies,
                 before.ownship,
-                before.input
+                before.input,
+                before.combat
             ),
             (
                 after.tick,
                 after.rng,
                 after.bodies,
                 after.ownship,
-                after.input
+                after.input,
+                after.combat
             )
         );
+        // Until there is combat, every session holds the constant (ADR-45, DT1).
+        assert_eq!(after.combat, crate::hash::no_combat_hash());
         // Different content, different identity; the same content, the same.
         let mut d = SimCore::new(5);
         d.load_content(&pack(8401)).unwrap();

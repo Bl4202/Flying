@@ -248,7 +248,7 @@ fn run_hash(args: &[String]) -> Result<(), String> {
         let h = core.subsystem_hashes();
         writeln!(
             out,
-            "{{\"tick\":{},\"combined\":\"{:016x}\",\"tick_h\":\"{:016x}\",\"rng\":\"{:016x}\",\"bodies\":\"{:016x}\",\"ownship\":\"{:016x}\",\"input\":\"{:016x}\",\"content\":\"{:016x}\"}}",
+            "{{\"tick\":{},\"combined\":\"{:016x}\",\"tick_h\":\"{:016x}\",\"rng\":\"{:016x}\",\"bodies\":\"{:016x}\",\"ownship\":\"{:016x}\",\"input\":\"{:016x}\",\"content\":\"{:016x}\",\"combat\":\"{:016x}\"}}",
             core.tick(),
             h.combined,
             h.tick,
@@ -256,7 +256,8 @@ fn run_hash(args: &[String]) -> Result<(), String> {
             h.bodies,
             h.ownship,
             h.input,
-            h.content
+            h.content,
+            h.combat
         )
         .map_err(|e| e.to_string())?;
     }
