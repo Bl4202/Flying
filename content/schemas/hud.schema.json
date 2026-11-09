@@ -649,6 +649,224 @@
             "max_lines"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The gun's pipper and range ring (GDD 54.4, ADR-49).",
+          "properties": {
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "pipper_mrad": {
+              "description": "Diameter of the pipper.",
+              "format": "double",
+              "maximum": 10.0,
+              "minimum": 1.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "ring_max_m": {
+              "description": "Range at which the ring is a full turn; it shrinks to nothing at zero.",
+              "format": "double",
+              "maximum": 4000.0,
+              "minimum": 500.0,
+              "type": "number",
+              "x-unit": "m"
+            },
+            "ring_mrad": {
+              "description": "Diameter of the range ring.",
+              "format": "double",
+              "maximum": 60.0,
+              "minimum": 10.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "shoot_m": {
+              "description": "Range inside which the `SHOOT` cue shows.",
+              "format": "double",
+              "maximum": 2000.0,
+              "minimum": 200.0,
+              "type": "number",
+              "x-unit": "m"
+            },
+            "type": {
+              "const": "gun_reticle",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "pipper_mrad",
+            "ring_mrad",
+            "ring_max_m",
+            "shoot_m"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A box round the target, or an arrow towards it when it is out of the field.",
+          "properties": {
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "locator_radius_mrad": {
+              "description": "Radius of the circle the arrow sits on when the target is outside the field.",
+              "format": "double",
+              "maximum": 200.0,
+              "minimum": 50.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "show_within_m": {
+              "description": "Targets further than this are not marked.",
+              "format": "double",
+              "maximum": 50000.0,
+              "minimum": 1000.0,
+              "type": "number",
+              "x-unit": "m"
+            },
+            "size_mrad": {
+              "description": "Side of the box.",
+              "format": "double",
+              "maximum": 100.0,
+              "minimum": 10.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "type": {
+              "const": "target_box",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "size_mrad",
+            "locator_radius_mrad",
+            "show_within_m"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The missile seeker's circle and, once locked, its diamond.",
+          "properties": {
+            "circle_mrad": {
+              "description": "Diameter of the circle.",
+              "format": "double",
+              "maximum": 100.0,
+              "minimum": 10.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "diamond_mrad": {
+              "description": "Side of the diamond.",
+              "format": "double",
+              "maximum": 40.0,
+              "minimum": 4.0,
+              "type": "number",
+              "x-unit": "mrad"
+            },
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "type": {
+              "const": "seeker",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "circle_mrad",
+            "diamond_mrad"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Rounds, missiles, arm state, seeker tone and the shot cue.",
+          "properties": {
+            "at_mrad": {
+              "description": "Where the block starts.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "mrad"
+            },
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "type": {
+              "const": "weapon_status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "at_mrad"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The short `HIT` and `SPLASH` messages.",
+          "properties": {
+            "at_mrad": {
+              "description": "Where the message is centred.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "mrad"
+            },
+            "hit_s": {
+              "description": "How long `HIT` shows.",
+              "format": "double",
+              "maximum": 2.0,
+              "minimum": 0.1,
+              "type": "number",
+              "x-unit": "s"
+            },
+            "id": {
+              "description": "Layer name, unique in the HUD.",
+              "type": "string"
+            },
+            "splash_s": {
+              "description": "How long `SPLASH` shows.",
+              "format": "double",
+              "maximum": 5.0,
+              "minimum": 0.5,
+              "type": "number",
+              "x-unit": "s"
+            },
+            "type": {
+              "const": "kill_cue",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "at_mrad",
+            "hit_s",
+            "splash_s"
+          ],
+          "type": "object"
         }
       ]
     }

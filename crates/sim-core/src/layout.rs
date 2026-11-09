@@ -440,7 +440,7 @@ layouts! {
     /// records, ADR-43). Equal to `content::cpack::header`, checked when the crate compiles.
     cpack_header {
         MAGIC = 0x5043_4746,
-        VERSION = 3,
+        VERSION = 4,
         H_MAGIC = 0,
         H_VERSION = 4,
         H_CONTENT_HASH = 48,
@@ -480,6 +480,8 @@ layouts! {
         OWNSHIP = 4,
         INPUT = 5,
         CONTENT = 6,
+        // The combat state (v0.1d, ADR-45); a constant when the session has none.
+        COMBAT = 7,
     }
 
     /// `kind` argument of `fg_set_input_script`.

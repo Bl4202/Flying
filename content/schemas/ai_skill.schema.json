@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One AI skill level (GDD 19.6, ADR-47).",
+  "properties": {
+    "break_timing_sigma_s": {
+      "description": "Standard deviation of the timing of a defensive break.",
+      "format": "double",
+      "maximum": 10.0,
+      "minimum": 0.0,
+      "type": "number",
+      "x-unit": "s"
+    },
+    "commitment_s": {
+      "description": "Shortest time the pilot keeps a decision before changing it.",
+      "format": "double",
+      "maximum": 30.0,
+      "minimum": 0.0,
+      "type": "number",
+      "x-unit": "s"
+    },
+    "defend_delay_s": {
+      "description": "Delay before the pilot reacts to being fired at.",
+      "format": "double",
+      "maximum": 10.0,
+      "minimum": 0.0,
+      "type": "number",
+      "x-unit": "s"
+    },
+    "extend_below_cas_mps": {
+      "description": "Calibrated airspeed below which the pilot extends (0 for never).",
+      "format": "double",
+      "maximum": 500.0,
+      "minimum": 0.0,
+      "type": "number",
+      "x-unit": "m/s"
+    },
+    "extend_until_cas_mps": {
+      "description": "Calibrated airspeed at which the pilot stops extending.",
+      "format": "double",
+      "maximum": 500.0,
+      "minimum": 0.0,
+      "type": "number",
+      "x-unit": "m/s"
+    },
+    "fires_gun": {
+      "description": "True if the pilot fires its gun.",
+      "type": "boolean"
+    },
+    "g_frac": {
+      "description": "Fraction of the aircraft's load-factor limit the pilot will pull.",
+      "format": "double",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "gun_aim_sigma_mrad": {
+      "description": "Standard deviation of the pilot's gun aim error.",
+      "format": "double",
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "type": "number",
+      "x-unit": "mrad"
+    },
+    "id": {
+      "description": "`namespace:type/name`, with namespace the pack id and type `skl`.",
+      "type": "string"
+    },
+    "name_key": {
+      "description": "Key of the display name in the locale table.",
+      "type": "string"
+    },
+    "notice_prob": {
+      "description": "Probability per decision that the pilot notices an incoming missile it can see.",
+      "format": "double",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "perception_delay_s": {
+      "description": "Delay between something becoming visible and the pilot acting on it.",
+      "format": "double",
+      "maximum": 10.0,
+      "minimum": 0.0,
+      "type": "number",
+      "x-unit": "s"
+    },
+    "rank": {
+      "description": "Position in the ladder, 1 for the lowest. Ranks in a pack are 1 to n, each once.",
+      "format": "uint8",
+      "maximum": 16,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "schema": {
+      "const": "ai_skill/1",
+      "description": "Format tag, always `ai_skill/1`.",
+      "type": "string"
+    },
+    "tactics": {
+      "description": "The tactics the pilot knows.",
+      "items": {
+        "enum": [
+          "pure_pursuit",
+          "lead_pursuit",
+          "lag_pursuit",
+          "break_turn",
+          "jink",
+          "extend"
+        ],
+        "type": "string"
+      },
+      "maxItems": 6,
+      "minItems": 1,
+      "type": "array"
+    },
+    "terrain_min_agl_m": {
+      "description": "Lowest height above the ground the pilot will fly at.",
+      "format": "double",
+      "maximum": 5000.0,
+      "minimum": 0.0,
+      "type": "number",
+      "x-unit": "m"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "name_key",
+    "rank",
+    "fires_gun",
+    "perception_delay_s",
+    "notice_prob",
+    "g_frac",
+    "gun_aim_sigma_mrad",
+    "defend_delay_s",
+    "break_timing_sigma_s",
+    "terrain_min_agl_m",
+    "commitment_s",
+    "extend_below_cas_mps",
+    "extend_until_cas_mps",
+    "tactics"
+  ],
+  "title": "SkillFile",
+  "type": "object"
+}

@@ -1,5 +1,10 @@
 {
   "ac.kestrel.name": "Kestrel",
   "eng.f129.name": "F129",
-  "fcs.kestrel.name": "Kestrel flight control"
+  "fcs.kestrel.name": "Kestrel flight control",
+  "skl.recruit.name": "Recruit",
+  "skl.regular.name": "Regular",
+  "skl.veteran.name": "Veteran",
+  "wpn.dart1.name": "Dart-1 infrared missile",
+  "wpn.gs27.name": "GS-27 27 mm cannon"
 }

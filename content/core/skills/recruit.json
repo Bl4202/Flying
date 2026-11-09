@@ -1,0 +1,18 @@
+{
+  "schema": "ai_skill/1",
+  "id": "core:skl/recruit",
+  "name_key": "skl.recruit.name",
+  "rank": 1,
+  "fires_gun": false,
+  "perception_delay_s": 1.5,
+  "notice_prob": 0.5,
+  "g_frac": 0.65,
+  "gun_aim_sigma_mrad": 12,
+  "defend_delay_s": 3,
+  "break_timing_sigma_s": 1.5,
+  "terrain_min_agl_m": 300,
+  "commitment_s": 3,
+  "extend_below_cas_mps": 0,
+  "extend_until_cas_mps": 0,
+  "tactics": ["pure_pursuit", "break_turn"]
+}

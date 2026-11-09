@@ -787,7 +787,8 @@ mod tests {
         let before = c.subsystem_hashes();
         assert!(c.services().registry.is_empty());
         c.load_content(&pack(8400)).unwrap();
-        assert_eq!(c.services().registry.len(), 4);
+        // The aircraft, its engine, aero tables and control gains, two weapons and three skills.
+        assert_eq!(c.services().registry.len(), 9);
         let after = c.subsystem_hashes();
         assert_ne!(before.content, after.content);
         assert_ne!(before.combined, after.combined);
@@ -842,7 +843,7 @@ mod tests {
 
         c.start();
         assert_eq!(c.load_content(&pack(8500)), Err(LoadContentError::NotIdle));
-        assert_eq!(c.services().registry.len(), 4);
+        assert_eq!(c.services().registry.len(), 9);
     }
 
     #[test]

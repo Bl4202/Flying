@@ -11,9 +11,13 @@ use crate::check::{
     LoadedAero, LoadedEngine, LoadedFcs, baker_bug, load_aero, load_aircraft, load_engine,
     load_fcs, load_locale, load_pack, reference_kg,
 };
+use crate::combat_check::{
+    LoadedSkill, LoadedWeapon, check_skill_ladder, check_weapon_references, load_skill, load_weapon,
+};
+use crate::combat_model::{SkillFile, WeaponFile};
 use crate::diag::{Diagnostic, pointer};
 use crate::model::{AeroFile, AircraftFile, EngineFile, FcsGainsFile, PackFile};
-use content::{ContentId, Entry};
+use content::{ContentId, Entry, WeaponClass};
 
 /// Standard gravity, m/s² (thrust-to-weight).
 const G: f64 = 9.806_65;
@@ -34,6 +38,10 @@ pub struct Sources {
     pub aero: Vec<(String, String)>,
     /// `(name, text)` of each `fcs/*.json`.
     pub fcs: Vec<(String, String)>,
+    /// `(name, text)` of each `weapons/*.json`.
+    pub weapons: Vec<(String, String)>,
+    /// `(name, text)` of each `skills/*.json`.
+    pub skills: Vec<(String, String)>,
 }
 
 /// A successful bake.
@@ -51,6 +59,10 @@ pub struct Baked {
     pub aero: Vec<AeroFile>,
     /// The control-law gains, sorted by id.
     pub fcs: Vec<FcsGainsFile>,
+    /// The weapons, sorted by id.
+    pub weapons: Vec<WeaponFile>,
+    /// The AI skills, sorted by id.
+    pub skills: Vec<SkillFile>,
 }
 
 /// One loaded entity, before ids are turned into handles.
@@ -63,6 +75,8 @@ enum Loaded {
     Engine(LoadedEngine),
     Aero(LoadedAero),
     Fcs(LoadedFcs),
+    Weapon(LoadedWeapon),
+    Skill(LoadedSkill),
 }
 
 /// Validates and packs `src`. Collects every diagnostic it can before giving up.
@@ -78,39 +92,7 @@ pub fn bake_sources(src: &Sources) -> Result<Baked, Vec<Diagnostic>> {
     };
 
     // Every entity, by id; the order of this map is the order of the pack's handles.
-    let mut by_id: BTreeMap<String, (String, Loaded)> = BTreeMap::new();
-    let mut add = |name: &str, id: String, item: Loaded, problems: &mut Vec<Diagnostic>| {
-        if let Some((first, _)) = by_id.get(&id) {
-            problems.push(Diagnostic::new(
-                name,
-                "/id",
-                format!("`{id}` is already defined in {first}"),
-                "ids are unique within a pack; rename one of them",
-            ));
-        } else {
-            by_id.insert(id, (name.to_owned(), item));
-        }
-    };
-    for (name, text) in &src.aircraft {
-        if let Some(a) = keep(load_aircraft(name, text, &pack.id, &locale), &mut problems) {
-            add(name, a.id.clone(), Loaded::Aircraft(a), &mut problems);
-        }
-    }
-    for (name, text) in &src.engines {
-        if let Some(e) = keep(load_engine(name, text, &pack.id, &locale), &mut problems) {
-            add(name, e.file.id.clone(), Loaded::Engine(e), &mut problems);
-        }
-    }
-    for (name, text) in &src.aero {
-        if let Some(a) = keep(load_aero(name, text, &pack.id), &mut problems) {
-            add(name, a.file.id.clone(), Loaded::Aero(a), &mut problems);
-        }
-    }
-    for (name, text) in &src.fcs {
-        if let Some(f) = keep(load_fcs(name, text, &pack.id, &locale), &mut problems) {
-            add(name, f.file.id.clone(), Loaded::Fcs(f), &mut problems);
-        }
-    }
+    let by_id = load_entities(src, &pack.id, &locale, &mut problems);
     if !problems.is_empty() {
         return Err(problems);
     }
@@ -128,29 +110,46 @@ pub fn bake_sources(src: &Sources) -> Result<Baked, Vec<Diagnostic>> {
         .collect();
     let resolve = |id: &str| handles.get(id).copied();
     let mut entries = Vec::with_capacity(by_id.len());
-    let mut baked_files = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let mut baked = Baked {
+        pack,
+        cpack: Vec::new(),
+        aircraft: Vec::new(),
+        engines: Vec::new(),
+        aero: Vec::new(),
+        fcs: Vec::new(),
+        weapons: Vec::new(),
+        skills: Vec::new(),
+    };
     for (id, (name, item)) in &by_id {
         let entry = match item {
             Loaded::Aircraft(a) => {
-                baked_files.0.push(a.clone());
+                baked.aircraft.push(a.clone());
                 Entry::Aircraft(a.to_def(&resolve).ok_or_else(|| baker_bug(name))?)
             }
             Loaded::Engine(e) => {
-                baked_files.1.push(e.file.clone());
+                baked.engines.push(e.file.clone());
                 Entry::Engine(e.def.clone())
             }
             Loaded::Aero(a) => {
-                baked_files.2.push(a.file.clone());
+                baked.aero.push(a.file.clone());
                 Entry::Aero(a.def.clone())
             }
             Loaded::Fcs(f) => {
-                baked_files.3.push(f.file.clone());
+                baked.fcs.push(f.file.clone());
                 Entry::Fcs(f.def.clone())
+            }
+            Loaded::Weapon(w) => {
+                baked.weapons.push(w.file.clone());
+                Entry::Weapon(w.def.clone())
+            }
+            Loaded::Skill(s) => {
+                baked.skills.push(s.file.clone());
+                Entry::Skill(s.def.clone())
             }
         };
         entries.push((id.clone(), entry));
     }
-    let cpack = content::cpack::write(&entries, sha256).map_err(|e| {
+    baked.cpack = content::cpack::write(&entries, sha256).map_err(|e| {
         vec![Diagnostic::new(
             &src.pack.0,
             "",
@@ -158,14 +157,61 @@ pub fn bake_sources(src: &Sources) -> Result<Baked, Vec<Diagnostic>> {
             "this is a baker bug or a size limit; report it",
         )]
     })?;
-    Ok(Baked {
-        pack,
-        cpack,
-        aircraft: baked_files.0,
-        engines: baked_files.1,
-        aero: baked_files.2,
-        fcs: baked_files.3,
-    })
+    Ok(baked)
+}
+
+/// Loads every entity file of `src`, by id. A file with problems adds them to `problems` and is
+/// left out; two files with one id are reported against the second.
+fn load_entities(
+    src: &Sources,
+    pack_id: &str,
+    locale: &BTreeMap<String, String>,
+    problems: &mut Vec<Diagnostic>,
+) -> BTreeMap<String, (String, Loaded)> {
+    let mut by_id: BTreeMap<String, (String, Loaded)> = BTreeMap::new();
+    let mut add = |name: &str, id: String, item: Loaded, problems: &mut Vec<Diagnostic>| {
+        if let Some((first, _)) = by_id.get(&id) {
+            problems.push(Diagnostic::new(
+                name,
+                "/id",
+                format!("`{id}` is already defined in {first}"),
+                "ids are unique within a pack; rename one of them",
+            ));
+        } else {
+            by_id.insert(id, (name.to_owned(), item));
+        }
+    };
+    for (name, text) in &src.aircraft {
+        if let Some(a) = keep(load_aircraft(name, text, pack_id, locale), problems) {
+            add(name, a.id.clone(), Loaded::Aircraft(a), problems);
+        }
+    }
+    for (name, text) in &src.engines {
+        if let Some(e) = keep(load_engine(name, text, pack_id, locale), problems) {
+            add(name, e.file.id.clone(), Loaded::Engine(e), problems);
+        }
+    }
+    for (name, text) in &src.aero {
+        if let Some(a) = keep(load_aero(name, text, pack_id), problems) {
+            add(name, a.file.id.clone(), Loaded::Aero(a), problems);
+        }
+    }
+    for (name, text) in &src.fcs {
+        if let Some(f) = keep(load_fcs(name, text, pack_id, locale), problems) {
+            add(name, f.file.id.clone(), Loaded::Fcs(f), problems);
+        }
+    }
+    for (name, text) in &src.weapons {
+        if let Some(w) = keep(load_weapon(name, text, pack_id, locale), problems) {
+            add(name, w.file.id.clone(), Loaded::Weapon(w), problems);
+        }
+    }
+    for (name, text) in &src.skills {
+        if let Some(s) = keep(load_skill(name, text, pack_id, locale), problems) {
+            add(name, s.file.id.clone(), Loaded::Skill(s), problems);
+        }
+    }
+    by_id
 }
 
 /// References resolve to entities of the right kind, and the checks that need two files.
@@ -182,8 +228,25 @@ fn check_cross_references(
         _ => None,
     };
     let has_fcs = |id: &str| matches!(by_id.get(id), Some((_, Loaded::Fcs(_))));
+    let weapon_class = |id: &str| match by_id.get(id) {
+        Some((_, Loaded::Weapon(w))) => WeaponClass::from_name(&w.file.class),
+        _ => None,
+    };
+    let skills: Vec<(&str, &SkillFile)> = by_id
+        .values()
+        .filter_map(|(name, item)| match item {
+            Loaded::Skill(s) => Some((name.as_str(), &s.file)),
+            _ => None,
+        })
+        .collect();
+    for d in check_skill_ladder(&skills) {
+        problems.push(d);
+    }
     for (name, item) in by_id.values() {
         let Loaded::Aircraft(a) = item else { continue };
+        for (ptr, message, hint) in check_weapon_references(a, &weapon_class) {
+            problems.push(Diagnostic::new(name, ptr, message, hint));
+        }
         let mut thrust_ok = true;
         let mut ab_thrust_n = 0.0;
         for (i, e) in a.engines.iter().enumerate() {
@@ -285,6 +348,8 @@ fn check_unused_locale_keys(
             Loaded::Engine(e) => Some(e.file.name_key.as_str()),
             Loaded::Aero(_) => None,
             Loaded::Fcs(f) => Some(f.file.name_key.as_str()),
+            Loaded::Weapon(w) => Some(w.file.name_key.as_str()),
+            Loaded::Skill(s) => Some(s.file.name_key.as_str()),
         })
         .collect();
     for key in locale.keys().filter(|k| !used.contains(&k.as_str())) {
@@ -370,7 +435,7 @@ fn read_file(dir: &Path, rel: &str) -> Result<(String, String), Vec<Diagnostic>>
 }
 
 /// Reads a pack directory (`pack.json`, `locales/en.json`, `aircraft/`, and optionally
-/// `engines/`, `aero/` and `fcs/`) and bakes it.
+/// `engines/`, `aero/`, `fcs/`, `weapons/` and `skills/`) and bakes it.
 ///
 /// # Errors
 /// Read failures and every diagnostic from [`bake_sources`].
@@ -384,6 +449,8 @@ pub fn bake_dir(dir: &Path) -> Result<Baked, Vec<Diagnostic>> {
         engines: read_dir_json(dir, "engines", false)?,
         aero: read_dir_json(dir, "aero", false)?,
         fcs: read_dir_json(dir, "fcs", false)?,
+        weapons: read_dir_json(dir, "weapons", false)?,
+        skills: read_dir_json(dir, "skills", false)?,
     })
 }
 
@@ -405,6 +472,8 @@ pub fn manifest(baked: &Baked, cpack_file: &str) -> Value {
                 "engines": baked.engines.len(),
                 "aero": baked.aero.len(),
                 "fcs": baked.fcs.len(),
+                "weapons": baked.weapons.len(),
+                "skills": baked.skills.len(),
             },
         }],
     })

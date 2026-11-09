@@ -1,7 +1,7 @@
-//! The `.cpack` v3 container (GDD 62.2, ADR-30, ADR-34).
+//! The `.cpack` v4 container (GDD 62.2, ADR-30, ADR-34, ADR-46).
 //!
 //! ```text
-//! 0    80 B   header   magic "FGCP", version 3, flags, entry count, section offsets, total length,
+//! 0    80 B   header   magic "FGCP", version 4, flags, entry count, section offsets, total length,
 //!                      checksum (FNV-1a 64 of the whole file with the checksum field zeroed),
 //!                      content hash (SHA-256 of every byte after the header)
 //! 80   24 B   x n      table of contents, sorted by id; the index is the handle
@@ -13,7 +13,7 @@
 //! ```
 //!
 //! Records are variable-length and their layout depends on the kind (aircraft 1, engine 2,
-//! aero 3, fcs 4); tables are stored inline with their sizes. References between entries are handles,
+//! aero 3, fcs 4, weapon 5, AI skill 6); tables are stored inline with their sizes. References between entries are handles,
 //! and the reader checks that each points at an entry of the right kind.
 //!
 //! The encoding is canonical: one set of entries has exactly one byte string, and the reader
@@ -34,11 +34,13 @@ use crate::codec::{Reader, Strings, Writer};
 use crate::engine::EngineDef;
 use crate::fcs::FcsDef;
 use crate::registry::ContentId;
+use crate::skill::SkillDef;
+use crate::weapon::WeaponDef;
 
 /// File magic.
 pub const MAGIC: [u8; 4] = *b"FGCP";
 /// The format version this crate reads and writes.
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 /// Header size, bytes.
 pub const HEADER_BYTES: usize = 80;
 /// Table-of-contents entry size, bytes.
@@ -51,6 +53,10 @@ pub const KIND_ENGINE: u32 = 2;
 pub const KIND_AERO: u32 = 3;
 /// `kind` of a flight-control gains entry.
 pub const KIND_FCS: u32 = 4;
+/// `kind` of a weapon entry.
+pub const KIND_WEAPON: u32 = 5;
+/// `kind` of an AI skill entry.
+pub const KIND_SKILL: u32 = 6;
 
 /// Header field offsets.
 pub mod header {
@@ -58,7 +64,7 @@ pub mod header {
     pub const MAGIC: usize = 0;
     /// `u32` format version.
     pub const VERSION: usize = 4;
-    /// `u32` flags, zero in version 3.
+    /// `u32` flags, zero in version 4.
     pub const FLAGS: usize = 8;
     /// `u32` number of entries.
     pub const ENTRY_COUNT: usize = 12;
@@ -160,6 +166,10 @@ pub enum Entry {
     Aero(AeroDef),
     /// An airframe's flight-control gains.
     Fcs(FcsDef),
+    /// A gun or a missile.
+    Weapon(WeaponDef),
+    /// An AI skill level.
+    Skill(SkillDef),
 }
 
 impl Entry {
@@ -171,6 +181,8 @@ impl Entry {
             Self::Engine(_) => KIND_ENGINE,
             Self::Aero(_) => KIND_AERO,
             Self::Fcs(_) => KIND_FCS,
+            Self::Weapon(_) => KIND_WEAPON,
+            Self::Skill(_) => KIND_SKILL,
         }
     }
 
@@ -180,6 +192,8 @@ impl Entry {
             Self::Engine(d) => d.encode(w),
             Self::Aero(d) => d.encode(w),
             Self::Fcs(d) => d.encode(w),
+            Self::Weapon(d) => d.encode(w),
+            Self::Skill(d) => d.encode(w),
         }
     }
 
@@ -189,6 +203,8 @@ impl Entry {
             KIND_ENGINE => Ok(Self::Engine(EngineDef::decode(r)?)),
             KIND_AERO => Ok(Self::Aero(AeroDef::decode(r)?)),
             KIND_FCS => Ok(Self::Fcs(FcsDef::decode(r)?)),
+            KIND_WEAPON => Ok(Self::Weapon(WeaponDef::decode(r)?)),
+            KIND_SKILL => Ok(Self::Skill(SkillDef::decode(r)?)),
             other => Err(CpackError::UnknownKind(other)),
         }
     }
@@ -218,6 +234,20 @@ fn check_references(entries: &[Entry]) -> Result<(), CpackError> {
                 return Err(CpackError::Reference(
                     "an aircraft's control gains are not an fcs entry",
                 ));
+            }
+            if let Some(g) = &a.gun
+                && kind_of(g.weapon) != Some(KIND_WEAPON)
+            {
+                return Err(CpackError::Reference(
+                    "an aircraft's gun is not a weapon entry",
+                ));
+            }
+            for rail in &a.rails {
+                if kind_of(rail.store) != Some(KIND_WEAPON) {
+                    return Err(CpackError::Reference(
+                        "an aircraft's rail store is not a weapon entry",
+                    ));
+                }
             }
         }
     }
@@ -367,7 +397,10 @@ pub(crate) fn parse(data: &[u8]) -> Result<Parsed, CpackError> {
                 "a reserved table-of-contents field is not zero",
             ));
         }
-        if !matches!(kind, KIND_AIRCRAFT | KIND_ENGINE | KIND_AERO | KIND_FCS) {
+        if !matches!(
+            kind,
+            KIND_AIRCRAFT | KIND_ENGINE | KIND_AERO | KIND_FCS | KIND_WEAPON | KIND_SKILL
+        ) {
             return Err(CpackError::UnknownKind(kind));
         }
         if record_off != next_record || !record_len.is_multiple_of(8) || record_len == 0 {
@@ -631,6 +664,121 @@ pub(crate) mod tests {
         ));
     }
 
+    /// An armed aircraft with its weapons and two skills, in id order: 0 `core:ac/armed`,
+    /// 1 `core:aero/one`, 2 `core:eng/one`, 3 `core:fcs/one`, 4 `core:skl/high`, 5 `core:skl/low`,
+    /// 6 `core:wpn/gun`, 7 `core:wpn/srm`.
+    fn armed_entries() -> Vec<(String, Entry)> {
+        let (engine, aero, gains) = (ContentId(2), ContentId(1), ContentId(3));
+        vec![
+            (
+                "core:ac/armed".into(),
+                Entry::Aircraft(crate::aircraft::tests::sample_armed(
+                    engine,
+                    aero,
+                    gains,
+                    ContentId(6),
+                    ContentId(7),
+                )),
+            ),
+            (
+                "core:aero/one".into(),
+                Entry::Aero(crate::aero::tests::sample()),
+            ),
+            (
+                "core:eng/one".into(),
+                Entry::Engine(crate::engine::tests::sample()),
+            ),
+            (
+                "core:fcs/one".into(),
+                Entry::Fcs(crate::fcs::tests::sample()),
+            ),
+            (
+                "core:skl/high".into(),
+                Entry::Skill(crate::skill::tests::sample(2)),
+            ),
+            (
+                "core:skl/low".into(),
+                Entry::Skill(crate::skill::tests::sample(1)),
+            ),
+            (
+                "core:wpn/gun".into(),
+                Entry::Weapon(crate::weapon::tests::gun()),
+            ),
+            (
+                "core:wpn/srm".into(),
+                Entry::Weapon(crate::weapon::tests::missile()),
+            ),
+        ]
+    }
+
+    #[test]
+    fn weapons_and_skills_round_trip_and_their_references_are_checked() {
+        let bytes = write(&armed_entries(), fake_sha).unwrap();
+        let p = parse(&bytes).unwrap();
+        let originals: Vec<Entry> = armed_entries().into_iter().map(|e| e.1).collect();
+        assert_eq!(p.entries, originals);
+        assert_eq!(p.entries[6].kind(), KIND_WEAPON);
+        assert_eq!(p.entries[4].kind(), KIND_SKILL);
+
+        // The gun must be a weapon entry, and so must each rail's store.
+        let mut bad = armed_entries();
+        if let Entry::Aircraft(a) = &mut bad[0].1 {
+            a.gun.as_mut().unwrap().weapon = ContentId(2); // the engine
+        }
+        assert!(matches!(
+            write(&bad, fake_sha),
+            Err(CpackError::Reference(_))
+        ));
+        let mut bad = armed_entries();
+        if let Entry::Aircraft(a) = &mut bad[0].1 {
+            a.rails[1].store = ContentId(4); // a skill
+        }
+        assert!(matches!(
+            write(&bad, fake_sha),
+            Err(CpackError::Reference(_))
+        ));
+        let mut bad = armed_entries();
+        if let Entry::Aircraft(a) = &mut bad[0].1 {
+            a.rails[0].store = ContentId(99);
+        }
+        assert!(matches!(
+            write(&bad, fake_sha),
+            Err(CpackError::Reference(_))
+        ));
+    }
+
+    #[test]
+    fn an_armed_pack_survives_the_single_byte_and_truncation_checks() {
+        let good = write(&armed_entries(), fake_sha).unwrap();
+        for i in 0..good.len() {
+            let mut bad = good.clone();
+            bad[i] ^= 0x01;
+            assert!(parse(&bad).is_err(), "a flipped bit at byte {i}");
+        }
+        for len in 0..good.len() {
+            assert!(parse(&good[..len]).is_err(), "length {len}");
+        }
+    }
+
+    #[test]
+    fn a_version_3_pack_is_refused_with_the_rebuild_hint() {
+        let mut b = pack();
+        b[header::VERSION] = 3;
+        let err = parse(&reseal(b)).unwrap_err();
+        assert_eq!(err, CpackError::UnsupportedVersion(3));
+        assert!(err.to_string().contains("rebuild"));
+    }
+
+    #[test]
+    fn a_weapon_record_read_as_a_skill_does_not_decode() {
+        let good = write(&armed_entries(), fake_sha).unwrap();
+        // The weapon `core:wpn/gun` is table entry 6; its kind field is the third word.
+        let toc = HEADER_BYTES + 6 * TOC_ENTRY_BYTES;
+        let mut b = good;
+        b[toc + 8..toc + 12].copy_from_slice(&KIND_SKILL.to_le_bytes());
+        assert!(parse(&reseal(b)).is_err());
+    }
+
     #[test]
     fn identical_strings_are_stored_once() {
         let b = pack();
@@ -650,7 +798,7 @@ pub(crate) mod tests {
     fn the_layout_is_what_the_comment_says() {
         let b = pack();
         assert_eq!(&b[..4], b"FGCP");
-        assert_eq!(u32_at(&b, header::VERSION), 3);
+        assert_eq!(u32_at(&b, header::VERSION), 4);
         assert_eq!(u32_at(&b, header::ENTRY_COUNT), 5);
         assert_eq!(u32_at(&b, header::TOC_OFF), 80);
         assert_eq!(u32_at(&b, header::STRINGS_OFF), 80 + 5 * 24);

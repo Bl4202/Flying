@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 use schemars::schema_for;
 use serde_json::Value;
 
+use crate::combat_model::{SkillFile, WeaponFile};
 use crate::model::{AeroFile, AircraftFile, EngineFile, FcsGainsFile, PackFile};
 use crate::present_model::{AudioFile, CockpitFile, FontFile, HudFile, ModelFile};
 
@@ -42,6 +43,9 @@ pub const UNIT_SUFFIXES: &[&str] = &[
     "_px",
     "_pa",
     "_per_unit",
+    // Combat data (ADR-46) and the weapon voices (ADR-49).
+    "_j",
+    "_ms",
 ];
 
 /// Numeric keys that have no unit. Table grids (`x`, `y`) name their units in `axes`; an envelope
@@ -94,6 +98,30 @@ pub const DIMENSIONLESS: &[&str] = &[
     "mach_from",
     "max_lines",
     "blade_count",
+    // Combat data (ADR-46, ADR-47). `rpm` and `joules_per_hp` are their own units; `g_max` and
+    // `max_g` are load factors; `rank`, `station` and `rounds` are counts; the rest are ratios,
+    // probabilities or relative intensities (the Kestrel's afterburner is 1).
+    "rpm",
+    "rounds",
+    "tracer_every",
+    "cn_max",
+    "k_induced",
+    "g_max",
+    "max_g",
+    "n_prime",
+    "ref_intensity",
+    "rank",
+    "notice_prob",
+    "g_frac",
+    "station",
+    "engine_idle",
+    "engine_mil",
+    "engine_ab",
+    "aspect_side",
+    "aspect_front",
+    "skin_per_mach2",
+    "hp",
+    "joules_per_hp",
 ];
 
 fn render_schema<T: schemars::JsonSchema>() -> Value {
@@ -190,6 +218,26 @@ pub fn audio_schema() -> Value {
     CACHE.get_or_init(render_schema::<AudioFile>).clone()
 }
 
+/// The schema of `weapons/*.json`.
+///
+/// # Panics
+/// Never in practice.
+#[must_use]
+pub fn weapon_schema() -> Value {
+    static CACHE: OnceLock<Value> = OnceLock::new();
+    CACHE.get_or_init(render_schema::<WeaponFile>).clone()
+}
+
+/// The schema of `skills/*.json`.
+///
+/// # Panics
+/// Never in practice.
+#[must_use]
+pub fn skill_schema() -> Value {
+    static CACHE: OnceLock<Value> = OnceLock::new();
+    CACHE.get_or_init(render_schema::<SkillFile>).clone()
+}
+
 /// The schema of `pack.json`.
 ///
 /// # Panics
@@ -205,6 +253,7 @@ pub fn all() -> Vec<(&'static str, Value)> {
     vec![
         ("aero.schema.json", aero_schema()),
         ("aircraft.schema.json", aircraft_schema()),
+        ("ai_skill.schema.json", skill_schema()),
         ("audio.schema.json", audio_schema()),
         ("cockpit.schema.json", cockpit_schema()),
         ("engine.schema.json", engine_schema()),
@@ -213,6 +262,7 @@ pub fn all() -> Vec<(&'static str, Value)> {
         ("hud.schema.json", hud_schema()),
         ("model.schema.json", model_schema()),
         ("pack.schema.json", pack_schema()),
+        ("weapon.schema.json", weapon_schema()),
     ]
 }
 

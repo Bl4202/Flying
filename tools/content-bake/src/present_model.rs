@@ -116,6 +116,16 @@ pub enum HudLayer {
     ModeLine(ModeLine),
     /// The most urgent warnings (at most `max_lines`).
     Warnings(WarningsLayer),
+    /// The gun's pipper and range ring (GDD 54.4, ADR-49).
+    GunReticle(GunReticle),
+    /// A box round the target, or an arrow towards it when it is out of the field.
+    TargetBox(TargetBox),
+    /// The missile seeker's circle and, once locked, its diamond.
+    Seeker(SeekerLayer),
+    /// Rounds, missiles, arm state, seeker tone and the shot cue.
+    WeaponStatus(WeaponStatus),
+    /// The short `HIT` and `SPLASH` messages.
+    KillCue(KillCue),
 }
 
 /// The aircraft datum.
@@ -348,6 +358,85 @@ pub struct WarningsLayer {
     pub max_lines: u32,
 }
 
+/// The gun reticle: a pipper at the sight's solution and a ring that fills with the range.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GunReticle {
+    /// Layer name, unique in the HUD.
+    pub id: String,
+    /// Diameter of the pipper.
+    #[schemars(extend("x-unit" = "mrad"), range(min = 1.0, max = 10.0))]
+    pub pipper_mrad: f64,
+    /// Diameter of the range ring.
+    #[schemars(extend("x-unit" = "mrad"), range(min = 10.0, max = 60.0))]
+    pub ring_mrad: f64,
+    /// Range at which the ring is a full turn; it shrinks to nothing at zero.
+    #[schemars(extend("x-unit" = "m"), range(min = 500.0, max = 4000.0))]
+    pub ring_max_m: f64,
+    /// Range inside which the `SHOOT` cue shows.
+    #[schemars(extend("x-unit" = "m"), range(min = 200.0, max = 2000.0))]
+    pub shoot_m: f64,
+}
+
+/// The target box and its locator arrow.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TargetBox {
+    /// Layer name, unique in the HUD.
+    pub id: String,
+    /// Side of the box.
+    #[schemars(extend("x-unit" = "mrad"), range(min = 10.0, max = 100.0))]
+    pub size_mrad: f64,
+    /// Radius of the circle the arrow sits on when the target is outside the field.
+    #[schemars(extend("x-unit" = "mrad"), range(min = 50.0, max = 200.0))]
+    pub locator_radius_mrad: f64,
+    /// Targets further than this are not marked.
+    #[schemars(extend("x-unit" = "m"), range(min = 1000.0, max = 50000.0))]
+    pub show_within_m: f64,
+}
+
+/// The seeker's circle (the field the seeker looks through) and the lock diamond.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SeekerLayer {
+    /// Layer name, unique in the HUD.
+    pub id: String,
+    /// Diameter of the circle.
+    #[schemars(extend("x-unit" = "mrad"), range(min = 10.0, max = 100.0))]
+    pub circle_mrad: f64,
+    /// Side of the diamond.
+    #[schemars(extend("x-unit" = "mrad"), range(min = 4.0, max = 40.0))]
+    pub diamond_mrad: f64,
+}
+
+/// The weapon status block.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WeaponStatus {
+    /// Layer name, unique in the HUD.
+    pub id: String,
+    /// Where the block starts.
+    #[schemars(extend("x-unit" = "mrad"))]
+    pub at_mrad: [f64; 2],
+}
+
+/// The `HIT` and `SPLASH` messages.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct KillCue {
+    /// Layer name, unique in the HUD.
+    pub id: String,
+    /// Where the message is centred.
+    #[schemars(extend("x-unit" = "mrad"))]
+    pub at_mrad: [f64; 2],
+    /// How long `HIT` shows.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.1, max = 2.0))]
+    pub hit_s: f64,
+    /// How long `SPLASH` shows.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.5, max = 5.0))]
+    pub splash_s: f64,
+}
+
 impl HudLayer {
     /// The element type as written in `type`.
     #[must_use]
@@ -366,6 +455,11 @@ impl HudLayer {
             Self::EngineFuelBlock(_) => "engine_fuel_block",
             Self::ModeLine(_) => "mode_line",
             Self::Warnings(_) => "warnings",
+            Self::GunReticle(_) => "gun_reticle",
+            Self::TargetBox(_) => "target_box",
+            Self::Seeker(_) => "seeker",
+            Self::WeaponStatus(_) => "weapon_status",
+            Self::KillCue(_) => "kill_cue",
         }
     }
 
@@ -386,6 +480,11 @@ impl HudLayer {
             Self::EngineFuelBlock(e) => &e.id,
             Self::ModeLine(e) => &e.id,
             Self::Warnings(e) => &e.id,
+            Self::GunReticle(e) => &e.id,
+            Self::TargetBox(e) => &e.id,
+            Self::Seeker(e) => &e.id,
+            Self::WeaponStatus(e) => &e.id,
+            Self::KillCue(e) => &e.id,
         }
     }
 
@@ -402,10 +501,15 @@ impl HudLayer {
             Self::EngineFuelBlock(e) => Some(e.at_mrad),
             Self::ModeLine(e) => Some(e.at_mrad),
             Self::Warnings(e) => Some(e.at_mrad),
+            Self::WeaponStatus(e) => Some(e.at_mrad),
+            Self::KillCue(e) => Some(e.at_mrad),
             Self::Boresight(_)
             | Self::FlightPathMarker(_)
             | Self::PitchLadder(_)
-            | Self::BankScale(_) => None,
+            | Self::BankScale(_)
+            | Self::GunReticle(_)
+            | Self::TargetBox(_)
+            | Self::Seeker(_) => None,
         }
     }
 }
@@ -764,6 +868,135 @@ pub struct AudioFile {
     pub warnings: WarningTones,
     /// The mix.
     pub mix: MixAudio,
+    /// The weapon voices (ADR-49). Optional: an aircraft with no weapons has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weapons: Option<WeaponAudio>,
+}
+
+/// The weapon voices: the gun, an enemy's gun, a launch, the seeker's growl and lock tone, a hit
+/// taken and an explosion. Levels are dB relative to the master bus.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WeaponAudio {
+    /// The player's gun.
+    pub gun: GunVoice,
+    /// An enemy's gun, heard from a distance.
+    pub enemy_gun: EnemyGunVoice,
+    /// A missile launch.
+    pub launch: LaunchVoice,
+    /// The seeker's growl, whose pitch rises with the signal.
+    pub growl: GrowlVoice,
+    /// The tone that says the seeker has locked.
+    pub lock_tone: SteadyTone,
+    /// A round hitting the aircraft.
+    pub hit: HitVoice,
+    /// An explosion.
+    pub explosion: ExplosionVoice,
+}
+
+/// The gun's voice: one pulse per round, each a low body and a high crack.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GunVoice {
+    /// Pulses per second. The baker checks it equals the gun's `rpm / 60`.
+    #[schemars(extend("x-unit" = "Hz"), range(min = 5.0, max = 100.0))]
+    pub rate_hz: f64,
+    /// Level.
+    #[schemars(extend("x-unit" = "dB"), range(min = -40.0, max = 0.0))]
+    pub level_db: f64,
+    /// Pitch of the body of a pulse.
+    #[schemars(extend("x-unit" = "Hz"), range(min = 30.0, max = 400.0))]
+    pub body_hz: f64,
+    /// Centre of the crack's band.
+    #[schemars(extend("x-unit" = "Hz"), range(min = 500.0, max = 6000.0))]
+    pub crack_hz: f64,
+    /// Length of one pulse.
+    #[schemars(extend("x-unit" = "ms"), range(min = 2.0, max = 60.0))]
+    pub pulse_ms: f64,
+}
+
+/// An enemy gun heard from a distance.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EnemyGunVoice {
+    /// Level at the reference distance.
+    #[schemars(extend("x-unit" = "dB"), range(min = -40.0, max = 0.0))]
+    pub level_db: f64,
+    /// Low-pass corner of the distant gun.
+    #[schemars(extend("x-unit" = "Hz"), range(min = 200.0, max = 8000.0))]
+    pub lowpass_hz: f64,
+    /// Distance at which the level is `level_db`.
+    #[schemars(extend("x-unit" = "m"), range(min = 20.0, max = 2000.0))]
+    pub ref_distance_m: f64,
+}
+
+/// A missile launch: a whoosh that sweeps from a high band to a low one.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LaunchVoice {
+    /// Level.
+    #[schemars(extend("x-unit" = "dB"), range(min = -40.0, max = 0.0))]
+    pub level_db: f64,
+    /// Where the whoosh ends.
+    #[schemars(extend("x-unit" = "Hz"), range(min = 200.0, max = 2000.0))]
+    pub low_hz: f64,
+    /// Where the whoosh starts.
+    #[schemars(extend("x-unit" = "Hz"), range(min = 1000.0, max = 8000.0))]
+    pub high_hz: f64,
+    /// Time for the level to fall to a thousandth.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.1, max = 3.0))]
+    pub decay_s: f64,
+}
+
+/// The seeker's growl.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GrowlVoice {
+    /// Pitch at the weakest signal.
+    #[schemars(extend("x-unit" = "Hz"), range(min = 100.0, max = 2000.0))]
+    pub base_hz: f64,
+    /// How far the pitch rises at the strongest signal.
+    #[schemars(extend("x-unit" = "Hz"), range(min = 50.0, max = 2000.0))]
+    pub span_hz: f64,
+    /// Rate of the amplitude flutter.
+    #[schemars(extend("x-unit" = "Hz"), range(min = 2.0, max = 60.0))]
+    pub am_hz: f64,
+    /// Level.
+    #[schemars(extend("x-unit" = "dB"), range(min = -40.0, max = 0.0))]
+    pub level_db: f64,
+}
+
+/// A round hitting the aircraft: a short click.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HitVoice {
+    /// Level.
+    #[schemars(extend("x-unit" = "dB"), range(min = -40.0, max = 0.0))]
+    pub level_db: f64,
+    /// Centre of the click's band.
+    #[schemars(extend("x-unit" = "Hz"), range(min = 500.0, max = 6000.0))]
+    pub band_hz: f64,
+    /// Length of the click.
+    #[schemars(extend("x-unit" = "ms"), range(min = 10.0, max = 300.0))]
+    pub length_ms: f64,
+}
+
+/// An explosion: a low thump and a decaying noise.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExplosionVoice {
+    /// Level at the reference distance.
+    #[schemars(extend("x-unit" = "dB"), range(min = -40.0, max = 0.0))]
+    pub level_db: f64,
+    /// Pitch of the thump.
+    #[schemars(extend("x-unit" = "Hz"), range(min = 20.0, max = 200.0))]
+    pub thump_hz: f64,
+    /// Time for the level to fall to a thousandth.
+    #[schemars(extend("x-unit" = "s"), range(min = 0.1, max = 3.0))]
+    pub decay_s: f64,
+    /// Distance at which the level is `level_db`.
+    #[schemars(extend("x-unit" = "m"), range(min = 50.0, max = 5000.0))]
+    pub ref_distance_m: f64,
 }
 
 /// The engine voice: rotor tones, a hiss and a jet roar, and the afterburner.

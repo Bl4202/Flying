@@ -275,6 +275,64 @@ fn check_layer(c: &mut Ctx<'_>, layer: &HudLayer, at: &str, field: (f64, f64)) {
         HudLayer::EngineFuelBlock(e) => within(c, at, e.at_mrad, (0.0, 0.0), field),
         HudLayer::ModeLine(e) => within(c, at, e.at_mrad, (0.0, 0.0), field),
         HudLayer::Warnings(e) => within(c, at, e.at_mrad, (0.0, 0.0), field),
+        HudLayer::GunReticle(e) => {
+            ensure_inside(c, at, "ring_mrad", e.ring_mrad, field.0.min(field.1));
+            if e.pipper_mrad >= e.ring_mrad {
+                c.err(
+                    &format!("{at}/pipper_mrad"),
+                    format!(
+                        "the pipper ({} mrad) is not smaller than the ring ({} mrad)",
+                        e.pipper_mrad, e.ring_mrad
+                    ),
+                    "make the pipper smaller than the ring, or the ring larger",
+                );
+            }
+            if e.shoot_m > e.ring_max_m {
+                c.err(
+                    &format!("{at}/shoot_m"),
+                    format!(
+                        "the shoot range ({} m) is beyond the range the ring is full at ({} m)",
+                        e.shoot_m, e.ring_max_m
+                    ),
+                    "lower shoot_m, or raise ring_max_m",
+                );
+            }
+        }
+        HudLayer::TargetBox(e) => {
+            ensure_inside(
+                c,
+                at,
+                "locator_radius_mrad",
+                e.locator_radius_mrad,
+                field.0.min(field.1),
+            );
+            if e.size_mrad >= 2.0 * e.locator_radius_mrad {
+                c.err(
+                    &format!("{at}/size_mrad"),
+                    format!(
+                        "the box ({} mrad) is as wide as the locator circle ({} mrad)",
+                        e.size_mrad,
+                        2.0 * e.locator_radius_mrad
+                    ),
+                    "make the box smaller, or the locator circle larger",
+                );
+            }
+        }
+        HudLayer::Seeker(e) => {
+            ensure_inside(c, at, "circle_mrad", e.circle_mrad, field.0.min(field.1));
+            if e.diamond_mrad >= e.circle_mrad {
+                c.err(
+                    &format!("{at}/diamond_mrad"),
+                    format!(
+                        "the diamond ({} mrad) is not smaller than the circle ({} mrad)",
+                        e.diamond_mrad, e.circle_mrad
+                    ),
+                    "make the diamond smaller than the seeker circle",
+                );
+            }
+        }
+        HudLayer::WeaponStatus(e) => within(c, at, e.at_mrad, (0.0, 0.0), field),
+        HudLayer::KillCue(e) => within(c, at, e.at_mrad, (0.0, 0.0), field),
     }
 }
 
@@ -916,6 +974,15 @@ pub(crate) fn check_audio(c: &mut Ctx<'_>, a: &AudioFile, pack_id: &str) {
         c.err(
             "/warnings/pull_up/high_hz",
             "the warble's two pitches are not low and high",
+            "make high_hz larger than low_hz",
+        );
+    }
+    if let Some(w) = &a.weapons
+        && w.launch.low_hz >= w.launch.high_hz
+    {
+        c.err(
+            "/weapons/launch/high_hz",
+            "the launch whoosh does not sweep down",
             "make high_hz larger than low_hz",
         );
     }

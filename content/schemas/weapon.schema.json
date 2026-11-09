@@ -1,0 +1,725 @@
+{
+  "$defs": {
+    "AmmoFile": {
+      "additionalProperties": false,
+      "description": "One round type.",
+      "properties": {
+        "id": {
+          "description": "Name within the weapon.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "tracer_every": {
+          "description": "Every n-th round is a tracer (0 for none).",
+          "format": "uint8",
+          "maximum": 100,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "tracer_every"
+      ],
+      "type": "object"
+    },
+    "AutopilotFile": {
+      "additionalProperties": false,
+      "description": "A missile's autopilot: a first-order lag with a lateral-acceleration limit.",
+      "properties": {
+        "g_max": {
+          "description": "Largest lateral acceleration.",
+          "format": "double",
+          "maximum": 100.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "g"
+        },
+        "g_min_speed_mps": {
+          "description": "Speed below which the missile cannot manoeuvre.",
+          "format": "double",
+          "maximum": 500.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m/s"
+        },
+        "tau_s": {
+          "description": "Time constant.",
+          "format": "double",
+          "maximum": 5.0,
+          "minimum": 0.01,
+          "type": "number",
+          "x-unit": "s"
+        }
+      },
+      "required": [
+        "tau_s",
+        "g_max",
+        "g_min_speed_mps"
+      ],
+      "type": "object"
+    },
+    "CurveFile": {
+      "additionalProperties": false,
+      "description": "`y(x)` as `(x, y)` pairs with a strictly increasing `x` (Appendix A `Table1D`).",
+      "properties": {
+        "axis": {
+          "description": "Name and unit of `x`.",
+          "enum": [
+            "mach",
+            "alpha_deg",
+            "deflection_deg",
+            "qbar_kpa",
+            "nz_g"
+          ],
+          "type": "string"
+        },
+        "points": {
+          "description": "`(x, y)` pairs.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "axis",
+        "points"
+      ],
+      "type": "object"
+    },
+    "FuzeFile": {
+      "additionalProperties": false,
+      "description": "A missile's fuze.",
+      "properties": {
+        "arm_dist_m": {
+          "description": "Distance flown before the fuze arms.",
+          "format": "double",
+          "maximum": 5000.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "trigger_radius_m": {
+          "description": "Distance at which it triggers.",
+          "format": "double",
+          "maximum": 50.0,
+          "minimum": 0.5,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "type": {
+          "description": "The fuze type.",
+          "enum": [
+            "proximity"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "arm_dist_m",
+        "trigger_radius_m"
+      ],
+      "type": "object"
+    },
+    "GuidanceFile": {
+      "additionalProperties": false,
+      "description": "A missile's guidance.",
+      "properties": {
+        "law": {
+          "description": "The law.",
+          "enum": [
+            "pn"
+          ],
+          "type": "string"
+        },
+        "n_prime": {
+          "description": "Navigation constant N'.",
+          "format": "double",
+          "maximum": 6.0,
+          "minimum": 2.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "law",
+        "n_prime"
+      ],
+      "type": "object"
+    },
+    "GunFile": {
+      "additionalProperties": false,
+      "description": "A gun (GDD 15.2).",
+      "properties": {
+        "ammo_types": {
+          "description": "The round types it can load.",
+          "items": {
+            "$ref": "#/$defs/AmmoFile"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "type": "array"
+        },
+        "caliber_mm": {
+          "description": "Calibre.",
+          "format": "double",
+          "maximum": 120.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "mm"
+        },
+        "dispersion_mrad": {
+          "description": "Dispersion: the half-angle of the cone that holds every round.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "mrad"
+        },
+        "drag_cd": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Drag coefficient of a round against Mach number."
+        },
+        "max_age_s": {
+          "description": "Age after which a round is removed.",
+          "format": "double",
+          "maximum": 30.0,
+          "minimum": 0.1,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "min_speed_mps": {
+          "description": "Speed below which a round is removed.",
+          "format": "double",
+          "maximum": 1000.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m/s"
+        },
+        "muzzle_mps": {
+          "description": "Muzzle velocity.",
+          "format": "double",
+          "maximum": 2000.0,
+          "minimum": 100.0,
+          "type": "number",
+          "x-unit": "m/s"
+        },
+        "round_mass_kg": {
+          "description": "Mass of one round.",
+          "format": "double",
+          "maximum": 5.0,
+          "minimum": 0.001,
+          "type": "number",
+          "x-unit": "kg"
+        },
+        "rounds": {
+          "description": "Rounds the weapon holds when full.",
+          "format": "uint16",
+          "maximum": 5000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "rpm": {
+          "description": "Rate of fire, rounds per minute.",
+          "format": "double",
+          "maximum": 10000.0,
+          "minimum": 100.0,
+          "type": "number",
+          "x-unit": "rounds/min"
+        },
+        "spinup_s": {
+          "description": "Time from the trigger to the full rate.",
+          "format": "double",
+          "maximum": 5.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        }
+      },
+      "required": [
+        "caliber_mm",
+        "muzzle_mps",
+        "rpm",
+        "spinup_s",
+        "dispersion_mrad",
+        "round_mass_kg",
+        "drag_cd",
+        "rounds",
+        "ammo_types",
+        "max_age_s",
+        "min_speed_mps"
+      ],
+      "type": "object"
+    },
+    "LaunchFile": {
+      "additionalProperties": false,
+      "description": "What a launch needs.",
+      "properties": {
+        "max_alpha_deg": {
+          "description": "Largest angle of attack of the launch aircraft.",
+          "format": "double",
+          "maximum": 90.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "max_g": {
+          "description": "Largest load factor of the launch aircraft.",
+          "format": "double",
+          "maximum": 20.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "g"
+        },
+        "min_range_m": {
+          "description": "Shortest range at which a launch is allowed.",
+          "format": "double",
+          "maximum": 5000.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "min_speed_mps": {
+          "description": "Lowest speed of the launch aircraft.",
+          "format": "double",
+          "maximum": 500.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m/s"
+        },
+        "safe_sep_s": {
+          "description": "Time before the motor lights and the guidance starts.",
+          "format": "double",
+          "maximum": 5.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        }
+      },
+      "required": [
+        "min_speed_mps",
+        "max_g",
+        "max_alpha_deg",
+        "safe_sep_s",
+        "min_range_m"
+      ],
+      "type": "object"
+    },
+    "MissileAeroFile": {
+      "additionalProperties": false,
+      "description": "A missile's aerodynamics.",
+      "properties": {
+        "cd0_boost": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Zero-lift drag coefficient against Mach number while the motor burns."
+        },
+        "cd0_coast": {
+          "$ref": "#/$defs/CurveFile",
+          "description": "Zero-lift drag coefficient against Mach number after burnout."
+        },
+        "cn_max": {
+          "description": "Largest normal-force coefficient.",
+          "format": "double",
+          "maximum": 50.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "k_induced": {
+          "description": "Induced-drag factor.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "s_ref_m2": {
+          "description": "Reference area.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.0005,
+          "type": "number",
+          "x-unit": "m2"
+        }
+      },
+      "required": [
+        "s_ref_m2",
+        "cd0_boost",
+        "cd0_coast",
+        "cn_max",
+        "k_induced"
+      ],
+      "type": "object"
+    },
+    "MissileFile": {
+      "additionalProperties": false,
+      "description": "A short-range missile (GDD 15.5 to 15.9).",
+      "properties": {
+        "aero": {
+          "$ref": "#/$defs/MissileAeroFile",
+          "description": "Aerodynamics."
+        },
+        "autopilot": {
+          "$ref": "#/$defs/AutopilotFile",
+          "description": "Autopilot."
+        },
+        "fuze": {
+          "$ref": "#/$defs/FuzeFile",
+          "description": "Fuze."
+        },
+        "guidance": {
+          "$ref": "#/$defs/GuidanceFile",
+          "description": "Guidance."
+        },
+        "launch": {
+          "$ref": "#/$defs/LaunchFile",
+          "description": "Launch constraints."
+        },
+        "limits": {
+          "$ref": "#/$defs/MissileLimitsFile",
+          "description": "When the missile gives up."
+        },
+        "motor": {
+          "$ref": "#/$defs/MotorFile",
+          "description": "The rocket motor."
+        },
+        "seeker": {
+          "$ref": "#/$defs/SeekerFile",
+          "description": "Seeker."
+        },
+        "visual": {
+          "$ref": "#/$defs/MissileVisualFile",
+          "description": "Visibility to the eye."
+        },
+        "warhead": {
+          "$ref": "#/$defs/WarheadFile",
+          "description": "Warhead."
+        }
+      },
+      "required": [
+        "motor",
+        "aero",
+        "autopilot",
+        "guidance",
+        "seeker",
+        "fuze",
+        "warhead",
+        "launch",
+        "limits",
+        "visual"
+      ],
+      "type": "object"
+    },
+    "MissileLimitsFile": {
+      "additionalProperties": false,
+      "description": "When a missile gives up.",
+      "properties": {
+        "max_time_s": {
+          "description": "Longest flight.",
+          "format": "double",
+          "maximum": 300.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "min_speed_mps": {
+          "description": "Speed below which a coasting missile self-destructs.",
+          "format": "double",
+          "maximum": 500.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m/s"
+        },
+        "target_lost_s": {
+          "description": "Time after its target is destroyed before it self-destructs.",
+          "format": "double",
+          "maximum": 30.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        }
+      },
+      "required": [
+        "max_time_s",
+        "min_speed_mps",
+        "target_lost_s"
+      ],
+      "type": "object"
+    },
+    "MissileVisualFile": {
+      "additionalProperties": false,
+      "description": "How visible a missile is to the eye.",
+      "properties": {
+        "l_eff_burning_m": {
+          "description": "Effective size while the motor burns.",
+          "format": "double",
+          "maximum": 50.0,
+          "minimum": 0.01,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "l_eff_m": {
+          "description": "Effective size while coasting.",
+          "format": "double",
+          "maximum": 50.0,
+          "minimum": 0.01,
+          "type": "number",
+          "x-unit": "m"
+        }
+      },
+      "required": [
+        "l_eff_burning_m",
+        "l_eff_m"
+      ],
+      "type": "object"
+    },
+    "MotorFile": {
+      "additionalProperties": false,
+      "description": "A single-stage constant-thrust motor.",
+      "properties": {
+        "burn_s": {
+          "description": "Burn time.",
+          "format": "double",
+          "maximum": 60.0,
+          "minimum": 0.1,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "propellant_kg": {
+          "description": "Propellant mass.",
+          "format": "double",
+          "maximum": 1000.0,
+          "minimum": 0.1,
+          "type": "number",
+          "x-unit": "kg"
+        },
+        "thrust_n": {
+          "description": "Thrust while the motor burns.",
+          "format": "double",
+          "maximum": 200000.0,
+          "minimum": 100.0,
+          "type": "number",
+          "x-unit": "N"
+        }
+      },
+      "required": [
+        "thrust_n",
+        "burn_s",
+        "propellant_kg"
+      ],
+      "type": "object"
+    },
+    "SeekerFile": {
+      "additionalProperties": false,
+      "description": "A missile's seeker (GDD 15.7).",
+      "properties": {
+        "fov_deg": {
+          "description": "Field of view while caged at the boresight (full angle).",
+          "format": "double",
+          "maximum": 60.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "gimbal_deg": {
+          "description": "Gimbal limit once locked (half angle).",
+          "format": "double",
+          "maximum": 90.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "lock_ref_range_m": {
+          "description": "Range at which a target of intensity `ref_intensity` is detected.",
+          "format": "double",
+          "maximum": 50000.0,
+          "minimum": 100.0,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "lock_time_s": {
+          "description": "Time of continuous tone before the seeker locks.",
+          "format": "double",
+          "maximum": 3.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "max_aspect_deg": {
+          "description": "Largest aspect angle, from dead astern, at which the seeker sees a target.",
+          "format": "double",
+          "maximum": 180.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "noise_deg": {
+          "description": "Standard deviation of the line-of-sight noise.",
+          "format": "double",
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "ref_intensity": {
+          "description": "The intensity (relative to the Kestrel's afterburner) that `lock_ref_range_m` is quoted at.",
+          "format": "double",
+          "maximum": 100.0,
+          "minimum": 0.01,
+          "type": "number"
+        },
+        "type": {
+          "description": "The seeker type.",
+          "enum": [
+            "ir_rear"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "fov_deg",
+        "gimbal_deg",
+        "lock_ref_range_m",
+        "ref_intensity",
+        "max_aspect_deg",
+        "noise_deg",
+        "lock_time_s"
+      ],
+      "type": "object"
+    },
+    "WarheadFile": {
+      "additionalProperties": false,
+      "description": "A missile's warhead.",
+      "properties": {
+        "damage_j": {
+          "description": "Energy it delivers at zero distance.",
+          "format": "double",
+          "maximum": 1000000000.0,
+          "minimum": 1000.0,
+          "type": "number",
+          "x-unit": "J"
+        },
+        "he_kg": {
+          "description": "Explosive mass.",
+          "format": "double",
+          "maximum": 500.0,
+          "minimum": 0.1,
+          "type": "number",
+          "x-unit": "kg"
+        },
+        "kind": {
+          "description": "The warhead type.",
+          "enum": [
+            "frag"
+          ],
+          "type": "string"
+        },
+        "lethal_radius_m": {
+          "description": "Distance beyond which it does no damage.",
+          "format": "double",
+          "maximum": 100.0,
+          "minimum": 0.5,
+          "type": "number",
+          "x-unit": "m"
+        }
+      },
+      "required": [
+        "kind",
+        "he_kg",
+        "lethal_radius_m",
+        "damage_j"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One weapon: a gun or a short-range missile (GDD 15, C.1, C.10).",
+  "properties": {
+    "class": {
+      "description": "Gun or short-range missile.",
+      "enum": [
+        "gun",
+        "srm"
+      ],
+      "type": "string"
+    },
+    "diameter_m": {
+      "default": 0.0,
+      "description": "Diameter (leave out for a gun).",
+      "format": "double",
+      "maximum": 2.0,
+      "minimum": 0.0,
+      "type": "number",
+      "x-unit": "m"
+    },
+    "gun": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GunFile"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The gun's data; required for a gun, refused for a missile."
+    },
+    "id": {
+      "description": "`namespace:type/name`, with namespace the pack id and type `wpn`.",
+      "type": "string"
+    },
+    "length_m": {
+      "default": 0.0,
+      "description": "Length (leave out for a gun).",
+      "format": "double",
+      "maximum": 20.0,
+      "minimum": 0.0,
+      "type": "number",
+      "x-unit": "m"
+    },
+    "mass_kg": {
+      "description": "Mass of the store.",
+      "format": "double",
+      "maximum": 10000.0,
+      "minimum": 0.01,
+      "type": "number",
+      "x-unit": "kg"
+    },
+    "missile": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MissileFile"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The missile's data; required for a missile, refused for a gun."
+    },
+    "name_key": {
+      "description": "Key of the display name in the locale table.",
+      "type": "string"
+    },
+    "schema": {
+      "const": "weapon/1",
+      "description": "Format tag, always `weapon/1`.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "name_key",
+    "class",
+    "mass_kg"
+  ],
+  "title": "WeaponFile",
+  "type": "object"
+}

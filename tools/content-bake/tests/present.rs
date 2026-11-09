@@ -136,18 +136,19 @@ fn the_bundle_records_the_sim_pack_it_was_baked_with() {
 }
 
 /// The sim pack's SHA-256 is part of the state hash, so a presentation file that reached it would
-/// move all three determinism goldens (ADR-43). This is the pack of v0.1b, byte for byte: the
-/// presentation files must not change it. Update it only with a deliberate change to the sim
-/// content (and then the goldens move too, which needs the owner).
+/// move every determinism golden (ADR-43). This pins the pack: the presentation files must not
+/// change it. v0.1d (ADR-45, D2) added the weapons, the skills and the Kestrel's combat data, which
+/// moved it once; update it again only with a deliberate change to the sim content, and the
+/// goldens move with it (the one re-bless at the end of WP4; after that, the owner).
 #[test]
-fn the_sim_pack_is_byte_identical_to_v0_1b() {
+fn the_sim_pack_hash_is_pinned() {
     let b = baked();
     let header = &b.cpack[content::cpack::header::CONTENT_HASH..][..32];
     assert_eq!(
         hex(header),
-        "7d0e9d20ee9e2a443f9c82cda5f6a7d5ea6b9eba010f7b81345463e758029087"
+        "7b74216a9eb3166f35ab747c75a93bdac8a04a09f804c0d8535953f3d27d3b89"
     );
-    assert_eq!(b.cpack.len(), 6376);
+    assert_eq!(b.cpack.len(), 7432);
 }
 
 #[test]
@@ -161,6 +162,11 @@ fn a_pack_with_no_presentation_files_bakes_none() {
         "engines/f129.json",
         "aero/kestrel.json",
         "fcs/kestrel.json",
+        "weapons/dart1.json",
+        "weapons/gs27.json",
+        "skills/recruit.json",
+        "skills/regular.json",
+        "skills/veteran.json",
     ] {
         let to = dir.join(rel);
         fs::create_dir_all(to.parent().unwrap()).unwrap();
@@ -172,7 +178,8 @@ fn a_pack_with_no_presentation_files_bakes_none() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// ADR-39 U2: the shipped HUD passes and 40 invalid layouts fail, each with file, pointer and hint.
+// ADR-39 U2, ADR-45 HU3: the shipped HUD passes and 50 invalid layouts fail (40 from v0.1c and 10
+// for the weapon elements), each with file, pointer and hint.
 
 fn layer(v: &Value, kind: &str) -> usize {
     v["layers"]
@@ -197,11 +204,50 @@ fn remove(v: &mut Value, parent: &str, key: &str) {
         .unwrap_or_else(|| panic!("no {key} in {parent}"));
 }
 
+/// Appends `layer` to the layout and returns its index.
+fn push_layer(v: &mut Value, layer: Value) -> usize {
+    let layers = v["layers"].as_array_mut().unwrap();
+    layers.push(layer);
+    layers.len() - 1
+}
+
+// The weapon elements of ADR-49, as the shipped layout will carry them (WP6).
+fn gun_reticle() -> Value {
+    json!({ "type": "gun_reticle", "id": "gun", "pipper_mrad": 3, "ring_mrad": 25,
+            "ring_max_m": 1800, "shoot_m": 1000 })
+}
+
+fn target_box() -> Value {
+    json!({ "type": "target_box", "id": "target", "size_mrad": 40, "locator_radius_mrad": 130,
+            "show_within_m": 20000 })
+}
+
+fn seeker() -> Value {
+    json!({ "type": "seeker", "id": "seeker", "circle_mrad": 35, "diamond_mrad": 12 })
+}
+
+fn weapon_status() -> Value {
+    json!({ "type": "weapon_status", "id": "weapons", "at_mrad": [-120, -160] })
+}
+
+fn kill_cue() -> Value {
+    json!({ "type": "kill_cue", "id": "cues", "at_mrad": [0, 60], "hit_s": 0.3, "splash_s": 2.0 })
+}
+
+/// The shipped layout with one weapon element appended, edited by `edit`, and the pointer of
+/// the value `key` of that element.
+fn weapon_case(layer: Value, edit: fn(&mut Value), key: &str, v: &mut Value) -> String {
+    let mut layer = layer;
+    edit(&mut layer);
+    let i = push_layer(v, layer);
+    format!("/layers/{i}/{key}")
+}
+
 type Case = (&'static str, fn(&mut Value) -> String);
 
 #[allow(
     clippy::too_many_lines,
-    reason = "a table of 42 cases reads best as one list"
+    reason = "a table of 52 cases reads best as one list"
 )]
 fn invalid_huds() -> Vec<Case> {
     vec![
@@ -409,6 +455,60 @@ fn invalid_huds() -> Vec<Case> {
             v["glow_px"] = json!(0.123_456_789_1);
             "/glow_px".into()
         }),
+        // The weapon elements (ADR-49): an unknown field and a value out of range for each.
+        ("a gun reticle with an unknown key", |v| {
+            weapon_case(gun_reticle(), |l| l["colour"] = json!("#fff"), "colour", v)
+        }),
+        ("a gun reticle whose ring is never full", |v| {
+            weapon_case(
+                gun_reticle(),
+                |l| l["ring_max_m"] = json!(5000),
+                "ring_max_m",
+                v,
+            )
+        }),
+        ("a target box with an unknown key", |v| {
+            weapon_case(target_box(), |l| l["label"] = json!("x"), "label", v)
+        }),
+        (
+            "a target box with a locator circle outside the field",
+            |v| {
+                weapon_case(
+                    target_box(),
+                    |l| l["locator_radius_mrad"] = json!(300),
+                    "locator_radius_mrad",
+                    v,
+                )
+            },
+        ),
+        ("a seeker with an unknown key", |v| {
+            weapon_case(seeker(), |l| l["tone"] = json!(1), "tone", v)
+        }),
+        ("a seeker diamond that is far too large", |v| {
+            weapon_case(
+                seeker(),
+                |l| l["diamond_mrad"] = json!(50),
+                "diamond_mrad",
+                v,
+            )
+        }),
+        ("a weapon status with an unknown key", |v| {
+            weapon_case(weapon_status(), |l| l["rows"] = json!(3), "rows", v)
+        }),
+        ("a weapon status outside the field of view", |v| {
+            weapon_case(
+                weapon_status(),
+                |l| l["at_mrad"] = json!([900, 0]),
+                "at_mrad",
+                v,
+            )
+        }),
+        ("a kill cue with an unknown key", |v| {
+            weapon_case(kill_cue(), |l| l["sound"] = json!(true), "sound", v)
+        }),
+        ("a kill cue that shows HIT for far too long", |v| {
+            weapon_case(kill_cue(), |l| l["hit_s"] = json!(5), "hit_s", v)
+        }),
     ]
 }
 
@@ -418,15 +518,96 @@ fn the_shipped_hud_passes() {
 }
 
 #[test]
-fn forty_invalid_hud_layouts_fail_each_with_file_pointer_and_hint() {
+fn fifty_invalid_hud_layouts_fail_each_with_file_pointer_and_hint() {
     let cases = invalid_huds();
-    assert!(cases.len() >= 40, "the corpus has {} cases", cases.len());
+    assert!(cases.len() >= 50, "the corpus has {} cases", cases.len());
     for (name, mutate) in cases {
         let mut v = value(HUD);
         let pointer = mutate(&mut v);
         let result = load_hud(HUD, &serde_json::to_string(&v).unwrap(), "core").map(|_| ());
         assert_fails_at(result, HUD, &pointer, name);
     }
+}
+
+#[test]
+fn the_weapon_elements_pass_in_a_valid_layout() {
+    let mut v = value(HUD);
+    for layer in [
+        gun_reticle(),
+        target_box(),
+        seeker(),
+        weapon_status(),
+        kill_cue(),
+    ] {
+        push_layer(&mut v, layer);
+    }
+    let text = serde_json::to_string(&v).unwrap();
+    assert!(load_hud(HUD, &text, "core").is_ok());
+}
+
+#[test]
+fn the_weapon_elements_obey_their_placement_rules() {
+    /// What is wrong, the element, the key the report points at, and how to break the element.
+    type PlacementCase = (&'static str, Value, &'static str, Box<dyn Fn(&mut Value)>);
+    let cases: Vec<PlacementCase> = vec![
+        (
+            "a pipper as large as its ring",
+            gun_reticle(),
+            "pipper_mrad",
+            Box::new(|l| {
+                l["pipper_mrad"] = json!(10);
+                l["ring_mrad"] = json!(10);
+            }),
+        ),
+        (
+            "a shoot range beyond the ring's full range",
+            gun_reticle(),
+            "shoot_m",
+            Box::new(|l| {
+                l["shoot_m"] = json!(2000);
+                l["ring_max_m"] = json!(1500);
+            }),
+        ),
+        (
+            "a box as wide as its locator circle",
+            target_box(),
+            "size_mrad",
+            Box::new(|l| {
+                l["size_mrad"] = json!(100);
+                l["locator_radius_mrad"] = json!(50);
+            }),
+        ),
+        (
+            "a diamond as large as the seeker circle",
+            seeker(),
+            "diamond_mrad",
+            Box::new(|l| {
+                l["diamond_mrad"] = json!(40);
+                l["circle_mrad"] = json!(40);
+            }),
+        ),
+    ];
+    for (what, layer, key, edit) in cases {
+        let mut v = value(HUD);
+        let mut layer = layer;
+        edit(&mut layer);
+        let i = push_layer(&mut v, layer);
+        let result = load_hud(HUD, &serde_json::to_string(&v).unwrap(), "core").map(|_| ());
+        assert_fails_at(result, HUD, &format!("/layers/{i}/{key}"), what);
+    }
+    // Two layers of one type are refused, as for every element.
+    let mut v = value(HUD);
+    push_layer(&mut v, gun_reticle());
+    let mut again = gun_reticle();
+    again["id"] = json!("gun2");
+    let i = push_layer(&mut v, again);
+    let result = load_hud(HUD, &serde_json::to_string(&v).unwrap(), "core").map(|_| ());
+    assert_fails_at(
+        result,
+        HUD,
+        &format!("/layers/{i}/type"),
+        "two gun reticles",
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -902,4 +1083,119 @@ fn every_problem_is_reported_not_just_the_first() {
             .iter()
             .any(|d| d.file == audio && d.pointer == "/engine/military_rpm")
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The weapon voices (ADR-49).
+
+/// The audio profile's weapon block, as the shipped profile will carry it (WP7).
+fn weapon_voices() -> Value {
+    json!({
+        "gun": { "rate_hz": 28.33333, "level_db": -8, "body_hz": 90, "crack_hz": 2400, "pulse_ms": 14 },
+        "enemy_gun": { "level_db": -14, "lowpass_hz": 1200, "ref_distance_m": 150 },
+        "launch": { "level_db": -10, "low_hz": 900, "high_hz": 4200, "decay_s": 0.8 },
+        "growl": { "base_hz": 420, "span_hz": 520, "am_hz": 22, "level_db": -18 },
+        "lock_tone": { "freq_hz": 1320, "level_db": -16 },
+        "hit": { "level_db": -12, "band_hz": 2000, "length_ms": 60 },
+        "explosion": { "level_db": -6, "thump_hz": 55, "decay_s": 0.7, "ref_distance_m": 500 }
+    })
+}
+
+#[test]
+fn a_weapon_voice_block_bakes_when_the_gun_rate_matches() {
+    bake_with(AUDIO, |v| v["weapons"] = weapon_voices()).expect("the voices of the plan bake");
+}
+
+#[test]
+fn a_gun_voice_inside_the_tolerance_bakes() {
+    bake_with(AUDIO, |v| {
+        v["weapons"] = weapon_voices();
+        v["weapons"]["gun"]["rate_hz"] = json!(28.34);
+    })
+    .expect("0.0067 Hz out is inside the 0.01 Hz tolerance");
+}
+
+#[test]
+fn weapon_voice_faults_are_caught() {
+    let fail = |edit: fn(&mut Value), pointer: &str, what: &str| {
+        let (name, text) = edited(AUDIO, |v| {
+            v["weapons"] = weapon_voices();
+            edit(v);
+        });
+        let result = bake_present(&sources(&[(&name, text)]), &baked()).map(|_| ());
+        assert_fails_at(result, &name, pointer, what);
+    };
+    fail(
+        |v| v["weapons"]["gun"]["rate_hz"] = json!(25),
+        "/weapons/gun/rate_hz",
+        "a gun voice at the wrong rate",
+    );
+    fail(
+        |v| v["weapons"]["gun"]["rate_hz"] = json!(28.35),
+        "/weapons/gun/rate_hz",
+        "a gun voice just outside the 0.01 Hz tolerance",
+    );
+    fail(
+        |v| v["weapons"]["gun"]["level_db"] = json!(5),
+        "/weapons/gun/level_db",
+        "a gun louder than the master bus",
+    );
+    fail(
+        |v| v["weapons"]["hit"]["surprise"] = json!(1),
+        "/weapons/hit/surprise",
+        "an unknown key in a voice",
+    );
+    fail(
+        |v| {
+            v["weapons"].as_object_mut().unwrap().remove("explosion");
+        },
+        "/weapons/explosion",
+        "a missing voice",
+    );
+    fail(
+        |v| {
+            v["weapons"]["launch"]["low_hz"] = json!(1500);
+            v["weapons"]["launch"]["high_hz"] = json!(1200);
+        },
+        "/weapons/launch/high_hz",
+        "a launch whoosh that does not sweep down",
+    );
+    fail(
+        |v| v["weapons"]["growl"]["am_hz"] = json!(0.5),
+        "/weapons/growl/am_hz",
+        "a flutter too slow to hear",
+    );
+    fail(
+        |v| v["weapons"]["hit"]["length_ms"] = json!(5),
+        "/weapons/hit/length_ms",
+        "a click that is too short",
+    );
+}
+
+#[test]
+fn a_gun_voice_for_an_aircraft_with_no_gun_is_refused() {
+    use content_bake::bake::{Sources, bake_sources};
+    // The Kestrel without its internal gun (the rails and the weapons stay).
+    let mut kestrel = value("aircraft/kestrel.json");
+    kestrel["internal_weapons"] = json!({});
+    let names = |dir: &str, files: &[&str]| -> Vec<(String, String)> {
+        files
+            .iter()
+            .map(|f| (format!("{dir}/{f}.json"), read(&format!("{dir}/{f}.json"))))
+            .collect()
+    };
+    let b = bake_sources(&Sources {
+        pack: ("pack.json".into(), read("pack.json")),
+        locale: ("locales/en.json".into(), read("locales/en.json")),
+        aircraft: vec![("aircraft/kestrel.json".into(), kestrel.to_string())],
+        engines: names("engines", &["f129"]),
+        aero: names("aero", &["kestrel"]),
+        fcs: names("fcs", &["kestrel"]),
+        weapons: names("weapons", &["dart1", "gs27"]),
+        skills: names("skills", &["recruit", "regular", "veteran"]),
+    })
+    .expect("an aircraft with rails and no gun is valid");
+    let (name, text) = edited(AUDIO, |v| v["weapons"] = weapon_voices());
+    let result = bake_present(&sources(&[(&name, text)]), &b).map(|_| ());
+    assert_fails_at(result, &name, "/weapons/gun", "a gun voice with no gun");
 }

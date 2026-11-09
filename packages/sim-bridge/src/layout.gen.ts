@@ -312,7 +312,7 @@ export const TERRAIN = {
 
 export const CPACK_HEADER = {
   MAGIC: 0x50434746,
-  VERSION: 3,
+  VERSION: 4,
   H_MAGIC: 0,
   H_VERSION: 4,
   H_CONTENT_HASH: 48,
@@ -344,6 +344,7 @@ export const HASH_KIND = {
   OWNSHIP: 4,
   INPUT: 5,
   CONTENT: 6,
+  COMBAT: 7,
 } as const;
 
 export const INPUT_SCRIPT = {

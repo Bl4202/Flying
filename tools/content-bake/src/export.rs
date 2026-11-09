@@ -3,6 +3,7 @@
 use serde_json::{Value, json};
 
 use crate::bake::hex;
+use crate::combat_model::{SkillFile, WeaponFile};
 use crate::model::{AeroFile, AircraftFile, EngineFile, FcsGainsFile};
 use content::{CpackError, Entry, Registry};
 
@@ -19,6 +20,10 @@ pub struct Exported {
     pub aero: Vec<AeroFile>,
     /// The control-law gains, in handle order.
     pub fcs: Vec<FcsGainsFile>,
+    /// The weapons, in handle order.
+    pub weapons: Vec<WeaponFile>,
+    /// The AI skills, in handle order.
+    pub skills: Vec<SkillFile>,
 }
 
 /// Decodes a pack.
@@ -34,6 +39,8 @@ pub fn export(bytes: &[u8]) -> Result<Exported, CpackError> {
         engines: Vec::new(),
         aero: Vec::new(),
         fcs: Vec::new(),
+        weapons: Vec::new(),
+        skills: Vec::new(),
     };
     for (_, id, entry) in reg.iter() {
         match entry {
@@ -41,6 +48,8 @@ pub fn export(bytes: &[u8]) -> Result<Exported, CpackError> {
             Entry::Engine(d) => out.engines.push(EngineFile::from_def(id, d)),
             Entry::Aero(d) => out.aero.push(AeroFile::from_def(id, d)),
             Entry::Fcs(d) => out.fcs.push(FcsGainsFile::from_def(id, d)),
+            Entry::Weapon(d) => out.weapons.push(WeaponFile::from_def(id, d)),
+            Entry::Skill(d) => out.skills.push(SkillFile::from_def(id, d)),
         }
     }
     Ok(out)
@@ -51,12 +60,14 @@ impl Exported {
     #[must_use]
     pub fn to_json(&self) -> Value {
         json!({
-            "schema": "cpack-export/3",
+            "schema": "cpack-export/4",
             "content_hash": self.content_hash,
             "aircraft": self.aircraft,
             "engines": self.engines,
             "aero": self.aero,
             "fcs": self.fcs,
+            "weapons": self.weapons,
+            "skills": self.skills,
         })
     }
 }

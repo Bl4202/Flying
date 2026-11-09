@@ -10,6 +10,10 @@
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 
+use crate::combat_model::{
+    DamageFile, InternalWeaponsFile, LoadoutFile, SignaturesFile, armament_from_def,
+    armament_to_def,
+};
 use content::aero::{ConfigDeltas, Drag, Lateral, Lift, Pitch, PostStall};
 use content::aircraft::{
     Actuator, AeroLimits, Airbrake, ContactPoint, EngineInstall, EnvelopePoint, Fcs, GearActuator,
@@ -108,14 +112,14 @@ fn axis_schema(_: &mut SchemaGenerator) -> Schema {
 }
 
 impl CurveFile {
-    fn to_curve(&self) -> Curve {
+    pub(crate) fn to_curve(&self) -> Curve {
         Curve {
             xs: self.points.iter().map(|p| p[0] as f32).collect(),
             ys: self.points.iter().map(|p| p[1] as f32).collect(),
         }
     }
 
-    fn from_curve(axis: &str, c: &Curve) -> Self {
+    pub(crate) fn from_curve(axis: &str, c: &Curve) -> Self {
         Self {
             axis: axis.to_owned(),
             points: c
@@ -150,15 +154,15 @@ impl GridFile {
 }
 
 /// The shortest decimal that reads back as the same `f32`: what the baker required of the input.
-fn f(v: f32) -> f64 {
+pub(crate) fn f(v: f32) -> f64 {
     v.to_string().parse::<f64>().unwrap_or(f64::from(v))
 }
 
-fn f3(v: [f32; 3]) -> [f64; 3] {
+pub(crate) fn f3(v: [f32; 3]) -> [f64; 3] {
     [f(v[0]), f(v[1]), f(v[2])]
 }
 
-fn s3(v: [f64; 3]) -> [f32; 3] {
+pub(crate) fn s3(v: [f64; 3]) -> [f32; 3] {
     [v[0] as f32, v[1] as f32, v[2] as f32]
 }
 
@@ -201,6 +205,18 @@ pub struct AircraftFile {
     pub fcs: FcsFile,
     /// Authored performance targets (GDD 11.19).
     pub envelope: EnvelopeFile,
+    /// The internal gun (GDD 15.2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub internal_weapons: Option<InternalWeaponsFile>,
+    /// What hangs on the aircraft: the launch rails.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loadout: Option<LoadoutFile>,
+    /// Signatures other aircraft can sense: infrared and visual (GDD 15.7, 16.6.2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signatures: Option<SignaturesFile>,
+    /// Damage points and hit volumes (GDD 18, aggregate model).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub damage: Option<DamageFile>,
 }
 
 /// Mass properties (GDD 11.9).
@@ -687,6 +703,7 @@ impl AircraftFile {
             .iter()
             .map(EnvelopePointFile::to_point)
             .collect::<Option<Vec<_>>>()?;
+        let (gun, rails, ir, visual_l_eff_m, damage) = armament_to_def(self, resolve)?;
         Some(AircraftDef {
             name_key: self.name_key.clone(),
             category: Category::from_name(&self.category)?,
@@ -751,16 +768,26 @@ impl AircraftFile {
                 gains: resolve(&c.gains_ref)?,
             },
             envelope,
+            gun,
+            rails,
+            ir,
+            visual_l_eff_m,
+            damage,
         })
     }
 
     /// The authoring form of a baked definition. `name_of` maps a handle back to its id.
     #[must_use]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one literal that mirrors the file format field for field"
+    )]
     pub fn from_def(id: &str, d: &AircraftDef, name_of: &dyn Fn(ContentId) -> String) -> Self {
         let m = &d.mass;
         let g = &d.geometry;
         let a = &d.aero;
         let c = &d.fcs;
+        let (internal_weapons, loadout, signatures, damage) = armament_from_def(d, name_of);
         Self {
             schema: AIRCRAFT_SCHEMA.to_owned(),
             id: id.to_owned(),
@@ -855,6 +882,10 @@ impl AircraftFile {
                     })
                     .collect(),
             },
+            internal_weapons,
+            loadout,
+            signatures,
+            damage,
         }
     }
 }

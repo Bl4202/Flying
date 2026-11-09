@@ -1,0 +1,58 @@
+{
+  "schema": "weapon/1",
+  "id": "core:wpn/dart1",
+  "name_key": "wpn.dart1.name",
+  "class": "srm",
+  "mass_kg": 85,
+  "length_m": 2.9,
+  "diameter_m": 0.125,
+  "missile": {
+    "motor": { "thrust_n": 11000, "burn_s": 2.5, "propellant_kg": 11.5 },
+    "aero": {
+      "s_ref_m2": 0.01227,
+      "cd0_boost": {
+        "axis": "mach",
+        "points": [
+          [0, 0.31],
+          [1.2, 0.44],
+          [2.5, 0.34],
+          [4, 0.28]
+        ]
+      },
+      "cd0_coast": {
+        "axis": "mach",
+        "points": [
+          [0, 0.41],
+          [1.2, 0.56],
+          [2.5, 0.44],
+          [4, 0.38]
+        ]
+      },
+      "cn_max": 12,
+      "k_induced": 0.047
+    },
+    "autopilot": { "tau_s": 0.25, "g_max": 30, "g_min_speed_mps": 150 },
+    "guidance": { "law": "pn", "n_prime": 4 },
+    "seeker": {
+      "type": "ir_rear",
+      "fov_deg": 4,
+      "gimbal_deg": 30,
+      "lock_ref_range_m": 6000,
+      "ref_intensity": 1,
+      "max_aspect_deg": 35,
+      "noise_deg": 0.1,
+      "lock_time_s": 0.5
+    },
+    "fuze": { "type": "proximity", "arm_dist_m": 300, "trigger_radius_m": 8 },
+    "warhead": { "kind": "frag", "he_kg": 9, "lethal_radius_m": 8, "damage_j": 2548000 },
+    "launch": {
+      "min_speed_mps": 80,
+      "max_g": 7.5,
+      "max_alpha_deg": 25,
+      "safe_sep_s": 0.5,
+      "min_range_m": 450
+    },
+    "limits": { "max_time_s": 25, "min_speed_mps": 150, "target_lost_s": 2 },
+    "visual": { "l_eff_burning_m": 3, "l_eff_m": 0.5 }
+  }
+}
