@@ -1,6 +1,6 @@
 # ADR-40: The renderer stays custom; sky, terrain levels and quality presets
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-11-03
 - **Affects:** ADR-18 (superseded), ADR-24, OQ-01, GDD 0.4, 44, 54, 60.3, 61.5; `packages/render`,

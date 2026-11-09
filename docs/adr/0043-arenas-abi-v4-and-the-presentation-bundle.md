@@ -1,6 +1,6 @@
 # ADR-43: Test arenas, session reset (ABI v4), snapshot v4 and the presentation bundle
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-11-05
 - **Affects:** ADR-10, ADR-23, ADR-36, ADR-38; GDD 7.4, 44, 62, A.2, A.11, A.12; `crates/sim-core`,

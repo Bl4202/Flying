@@ -1,6 +1,6 @@
 # ADR-42: Flight audio: synthesis in an AudioWorklet
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-11-03
 - **Affects:** GDD 56.2, 56.3, 56.6, 56.7, 56.9, A.12; ADR-39 (A1 to A8); `packages/audio`,
@@ -97,3 +97,18 @@ load, the backend still plays cues and says why (`workletError`).
   to the tone starting in the render thread); the owner's listening check covers the rest.
 - Chrome, Firefox and Safari run the worklet; `webAudioSupported()` lets the game fall back to the null
   backend where `AudioWorkletNode` is missing.
+
+## Amendment 1 (2026-11-08): the kernel makes its block in passes; how A7 is measured
+
+Measured with V8's sampling heap profiler, the synthesis made about 23 KB of garbage a 128-frame block: V8
+boxes a number returned from a call it does not inline, and in a function as long as `FlightDsp.process` it
+stops inlining early, so the per-sample calls (the five noise draws, ten biquads, the soft limiter) each
+allocated. The earlier A7 measured heap growth and could not see it (ADR-39, amendment 2).
+
+The decision stands (synthesis in a TypeScript worklet) and the kernel's shape changes: the noise is drawn into
+five planes in one call (`fillNoise5`), each filter runs over the block in one call with its registers in locals
+(`Biquad.processBlock`), the limiter is written out in the loop, and the outside mix and the canopy are passes
+over the block. The arithmetic per sample is the same, and the output is bit-identical to the per-sample
+kernel's. A block now makes 33 bytes (two boxed numbers at block rate). A7 measures this in plain Node by the
+sampling heap profiler, in a child process, at most 64 bytes a block. Rule for the next voice: no call per sample
+that returns a number; write a block function that keeps its state in locals.

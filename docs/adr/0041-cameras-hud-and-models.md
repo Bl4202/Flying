@@ -1,6 +1,6 @@
 # ADR-41: Cameras, view input, the HUD and the procedural aircraft
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-11-03
 - **Affects:** ADR-20 (amended), ADR-37; GDD 44.8, 54.2, 54.3, 54.10, 54.11, 57.3, 58.5;
