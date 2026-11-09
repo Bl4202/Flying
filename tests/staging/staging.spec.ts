@@ -8,6 +8,8 @@ interface Hooks {
 
 const url = process.env['STAGING_URL'];
 const expectedSha = process.env['EXPECTED_SHA'];
+/** Frames the page must draw in two seconds: proof of drawing, not of speed (software rasteriser in CI). */
+const MIN_FRAMES_IN_TWO_SECONDS = 4;
 
 interface Golden {
   checkpoints: { tick: number; combined: string }[];
@@ -98,9 +100,11 @@ test('the live game runs: the sim ticks, frames are drawn, and the picture is no
   const a = await readings();
   await page.waitForTimeout(2000);
   const b = await readings();
-  // About 120 ticks and 120 frames in two seconds; the bounds only ask that both are moving.
+  // About 120 ticks in two seconds; the bounds only ask that both are moving. The frame bound is a
+  // floor for "drawing" and not a speed: the CI runner draws on a software rasteriser (about 8 FPS
+  // for the arena scene), and the frame rate is gated by the perf scenarios on the reference machine.
   expect(b.tick - a.tick).toBeGreaterThan(60);
-  expect(b.frames - a.frames).toBeGreaterThan(30);
+  expect(b.frames - a.frames).toBeGreaterThan(MIN_FRAMES_IN_TWO_SECONDS);
 
   const pixels = await page.evaluate(() =>
     (window as unknown as { __flying?: Hooks }).__flying?.readPixels(),
@@ -155,5 +159,5 @@ test('the live game starts again with the network off, from what the first visit
   await page.waitForTimeout(2000);
   const b = await readings();
   expect(b.tick - a.tick).toBeGreaterThan(60);
-  expect(b.frames - a.frames).toBeGreaterThan(30);
+  expect(b.frames - a.frames).toBeGreaterThan(MIN_FRAMES_IN_TWO_SECONDS);
 });
