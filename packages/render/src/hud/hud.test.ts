@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { quatRotate } from '@flying/sim-bridge/frame-math';
 import { WORLD } from '@flying/sim-bridge/layout';
@@ -260,6 +261,15 @@ describe('the HUD agrees with the world (S4 twin, AC-54.1)', () => {
 });
 
 describe('collimation (S4 twin, AC-54.4)', () => {
+  it('is what the shader does: a symbol is projected as a direction (w = 0), never as a point', () => {
+    // The twin below models the vertex shader. This ties it to the shader's source, so that a
+    // shader that put the symbols at a finite distance (w = 1) would fail here, and not only in the
+    // model of it.
+    const source = readFileSync(new URL('../../shaders/hud.wgsl', import.meta.url), 'utf8');
+    expect(source).toContain('frame.view_proj * vec4<f32>(dir, 0.0)');
+    expect(source).not.toMatch(/view_proj \* vec4<f32>\(dir, 1\.0\)/);
+  });
+
   /** The NDC of a plane point as the shader finds it: view-projection of a direction (w = 0), or of a point at `distance` metres from the aircraft (the fault). */
   function ndc(
     viewProj: ArrayLike<number>,
