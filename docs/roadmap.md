@@ -103,6 +103,8 @@ Total to the Campaign Build is about 33 months (M0–M6), plus about 6 months fo
 
 **Exit:** G1 passes; ≥ 80 % of external playtesters take off, fly, shoot a bandit and land within 10 minutes (`AC-4.5` precursor).
 
+**Note (2026-11-09):** the gates are fixed first in [ADR-45](adr/0045-v0-1d-gates.md), before any weapon, AI or combat code. Owner decisions (2026-11-08): **D1** the automated gates decide the tag (the conformance suite, an audit of the flight-control system, and a bot playtester that takes off, kills a bandit and lands under every assist level), the owner's own ratings are recorded and do not block, and the 12-tester blind study is dropped from this milestone and kept open as OQ-11; **D2** the weapon and AI data go into the sim pack and the four existing goldens are re-blessed once, proven by a checker that only the `content` and `combined` columns changed; **D3** the bandit fires its gun by skill (the Recruit never does) and has no missiles. The scope is larger than the 3-week slot (about 13.6 engineer-weeks): expect the slot to slip. Work is on branch `v0.1d`. The exit checklist is [docs/exit/v0.1d.md](exit/v0.1d.md).
+
 ---
 
 ## v0.2: Geographic Sandbox (M2, about 5 months)
