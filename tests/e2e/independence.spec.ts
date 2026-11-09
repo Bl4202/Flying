@@ -1,5 +1,15 @@
 import { expect, test } from '@playwright/test';
-import { byId, CHEAP, HEADERS_BASE, openGame, sampleAfter, simRate } from './support.ts';
+import {
+  byId,
+  CHEAP,
+  HEADERS_BASE,
+  MAX_FRAME_GAP_MS,
+  MIN_RENDER_FPS,
+  openGame,
+  renderRate,
+  sampleAfter,
+  simRate,
+} from './support.ts';
 
 const URL = `${HEADERS_BASE}?debug=1&flags=stall&${CHEAP}`;
 
@@ -30,8 +40,8 @@ test('a second of busy main thread leaves the sim at 60 Hz and the picture movin
   expect(rate).toBeLessThan(61);
   expect(after.sim.droppedMs - before.sim.droppedMs).toBe(0);
   // The renderer is in its own worker: no frame was held up anywhere near the length of the stall.
-  expect(after.render.frameRunMaxMs).toBeLessThan(100);
-  expect(after.render.frames - before.render.frames).toBeGreaterThan(60);
+  expect(after.render.frameRunMaxMs).toBeLessThan(MAX_FRAME_GAP_MS);
+  expect(renderRate(before, after)).toBeGreaterThan(MIN_RENDER_FPS);
 });
 
 test('a 300 ms render stall does not touch the sim', async ({ page }) => {
@@ -71,7 +81,7 @@ test('a 300 ms sim stall: five catch-up ticks, the rest dropped, and the frames 
   expect(lost).toBeGreaterThan(8);
   expect(lost).toBeLessThan(20);
   // The renderer did not wait for it: its longest frame interval is nowhere near 300 ms.
-  expect(after.render.frameRunMaxMs).toBeLessThan(100);
+  expect(after.render.frameRunMaxMs).toBeLessThan(MAX_FRAME_GAP_MS);
 });
 
 test('pause freezes the tick, the frames continue, and resuming does not burst', async ({
@@ -83,7 +93,7 @@ test('pause freezes the tick, the frames continue, and resuming does not burst',
   const paused1 = await sampleAfter(page, 600);
   const paused2 = await sampleAfter(page, 1200);
   expect(paused2.sim.tick).toBe(paused1.sim.tick);
-  expect(paused2.render.frames - paused1.render.frames).toBeGreaterThan(30);
+  expect(renderRate(paused1, paused2)).toBeGreaterThan(MIN_RENDER_FPS);
 
   await byId(page, 'ov-pause').click();
   await expect(byId(page, 'ov-core')).toHaveAttribute('data-value', 'running');

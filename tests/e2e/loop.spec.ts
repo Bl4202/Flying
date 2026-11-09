@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test';
-import { byId, CHEAP, HEADERS_BASE, openGame, simSample, watchErrors } from './support.ts';
+import {
+  byId,
+  CHEAP,
+  HEADERS_BASE,
+  MIN_RENDER_FPS,
+  openGame,
+  simSample,
+  watchErrors,
+} from './support.ts';
 
 test('the loop runs: 60 Hz ticks, frames advance, and the picture has more than a clear colour', async ({
   page,
@@ -21,7 +29,8 @@ test('the loop runs: 60 Hz ticks, frames advance, and the picture has more than 
   expect(seconds).toBeGreaterThan(1.5);
   expect((after.tick - before.tick) / seconds).toBeGreaterThan(59);
   expect((after.tick - before.tick) / seconds).toBeLessThan(61);
-  expect(framesAfter - framesBefore).toBeGreaterThan(30);
+  // The picture advances (CI's software rasteriser is slow and shared: see `MIN_RENDER_FPS`).
+  expect((framesAfter - framesBefore) / seconds).toBeGreaterThan(MIN_RENDER_FPS);
 
   const pixels = await page.evaluate(() => window.__flying?.readPixels());
   expect(pixels?.distinctColours ?? 0).toBeGreaterThanOrEqual(8);
