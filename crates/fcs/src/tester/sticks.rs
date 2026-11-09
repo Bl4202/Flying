@@ -33,6 +33,16 @@ pub struct AirDemand {
     pub bank: f64,
 }
 
+/// A demand in load factor and bank (the v0.1d AI's manoeuvre controller, ADR-47), for turns
+/// harder than [`load_for_path`] would ask for.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LoadDemand {
+    /// The load factor, g.
+    pub n: f64,
+    /// The bank angle, rad.
+    pub bank: f64,
+}
+
 /// Stick, roll stick and pedals, each -1 to 1.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Sticks {
@@ -78,6 +88,56 @@ pub fn air(
     d: &AirDemand,
 ) -> Sticks {
     let n_des = load_for_path(s, d.gamma_dot);
+    let demand = Demand {
+        n: n_des,
+        bank: d.bank,
+        gamma_dot: d.gamma_dot,
+    };
+    sticks_for(assist, model, fcs, ac, sense, s, &demand)
+}
+
+/// The sticks that give the load factor and bank of `d` under `assist`: [`air`] with the load
+/// factor given instead of found from a flight-path rate. Full reads the stick as a flight-path
+/// rate, so it gets the one the load factor gives at the bank the aircraft is at,
+/// `(n cos φ − cos γ) g / V`, within its limit.
+#[must_use]
+pub fn air_n(
+    assist: Assist,
+    model: &AircraftModel,
+    fcs: &FcsModel,
+    ac: &AircraftState,
+    sense: &Sense,
+    s: &Sensed,
+    d: &LoadDemand,
+) -> Sticks {
+    let gamma_dot = ((d.n * dmath::cos(s.phi) - dmath::cos(s.gamma)) * G0 / s.v.max(1.0))
+        .clamp(-fcs.full.gamma_rate_max, fcs.full.gamma_rate_max);
+    let demand = Demand {
+        n: d.n,
+        bank: d.bank,
+        gamma_dot,
+    };
+    sticks_for(assist, model, fcs, ac, sense, s, &demand)
+}
+
+/// A demand in every form a law reads it.
+struct Demand {
+    n: f64,
+    bank: f64,
+    gamma_dot: f64,
+}
+
+/// The sticks for a demand under `assist`.
+fn sticks_for(
+    assist: Assist,
+    model: &AircraftModel,
+    fcs: &FcsModel,
+    ac: &AircraftState,
+    sense: &Sense,
+    s: &Sensed,
+    d: &Demand,
+) -> Sticks {
+    let n_des = d.n;
     let q_des = s.g_over_v() * (n_des - s.turn_load);
     let p_des = (K_BANK * (d.bank - s.phi)).clamp(-MAX_ROLL_RATE_RPS, MAX_ROLL_RATE_RPS);
     match assist {
