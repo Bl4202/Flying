@@ -1,0 +1,83 @@
+{
+  "schema": "benchmark_report/1",
+  "mode": "full",
+  "startedAt": "2026-11-09T00:41:04.472Z",
+  "durationS": 21.572840000033377,
+  "build": {
+    "id": "390e285ceef8888961e2fe41b3c06abd8e69d415",
+    "abi": 4,
+    "contentHash": ""
+  },
+  "machine": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "platform": "MacIntel",
+    "hardwareConcurrency": 10,
+    "deviceMemoryGb": 8,
+    "screen": "1600x900@1",
+    "adapter": "apple metal-3",
+    "renderer": "webgpu apple metal-3"
+  },
+  "cpu": {
+    "singleTicksPerSecond": 62645.928014828394,
+    "workers": 8,
+    "multiTicksPerSecond": 279470.0683679424,
+    "speedup": 4.461105090530248
+  },
+  "gpu": {
+    "backend": "webgpu",
+    "description": "apple metal-3",
+    "width": 1920,
+    "height": 1080,
+    "levels": [
+      {
+        "patches": 1,
+        "frames": 240,
+        "msPerFrame": 0.2596041664481163
+      },
+      {
+        "patches": 16,
+        "frames": 240,
+        "msPerFrame": 0.34718750019868216
+      },
+      {
+        "patches": 64,
+        "frames": 240,
+        "msPerFrame": 0.9178958331545194
+      }
+    ]
+  },
+  "memory": {
+    "deviceMemoryGb": 8,
+    "jsHeapLimitMb": 4096,
+    "jsHeapUsedMb": 5.707645416259766,
+    "measuredMb": 11.782307624816895
+  },
+  "storage": {
+    "available": true,
+    "writeMBps": 649.5697774085068,
+    "readMBps": 2844.7025109764822,
+    "note": ""
+  },
+  "classification": {
+    "profile": "high",
+    "preset": "ultra",
+    "parts": {
+      "cpu": "high",
+      "gpu": "high",
+      "cores": "high",
+      "memory": "high"
+    },
+    "limitedBy": "none",
+    "facts": {
+      "cpuTicksPerSecond": 62645.928014828394,
+      "speedup": 4.461105090530248,
+      "workers": 8,
+      "gpuHeavyMs": 0.9178958331545194,
+      "gpuBackend": "webgpu",
+      "cores": 10,
+      "memoryGb": 8
+    },
+    "complete": true
+  },
+  "notes": []
+}
