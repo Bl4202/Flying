@@ -223,6 +223,76 @@ pub struct EnvelopePoint {
     pub requires: Option<Requirement>,
 }
 
+/// Most rails an aircraft may carry.
+pub const MAX_RAILS: usize = 8;
+/// Most hit capsules an aircraft may have.
+pub const MAX_CAPSULES: usize = 16;
+
+/// The internal gun (GDD 15.2): which weapon, how many rounds and where it points from.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GunInstall {
+    /// The gun's weapon entry.
+    pub weapon: ContentId,
+    /// Rounds loaded at the start of a sortie.
+    pub rounds: u16,
+    /// Muzzle position, m (body axes). The barrel points along the body's x axis.
+    pub muzzle_m: [f32; 3],
+    /// Angle between the barrel and the body's x axis in the pitch plane, mrad (nose up positive).
+    pub harmonisation_mrad: f32,
+}
+
+/// A launch rail on one hardpoint.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Rail {
+    /// Hardpoint number, 1-based.
+    pub station: u8,
+    /// Position of the store's centre, m (body axes).
+    pub pos_m: [f32; 3],
+    /// The store's weapon entry.
+    pub store: ContentId,
+}
+
+/// Infrared signature of the aircraft, relative to the Kestrel's afterburner (GDD 15.7, C.11).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct IrSignature {
+    /// Engine intensity at idle.
+    pub engine_idle: f32,
+    /// Engine intensity at military power.
+    pub engine_mil: f32,
+    /// Engine intensity in full afterburner.
+    pub engine_ab: f32,
+    /// Factor on the engine intensity seen from the side.
+    pub aspect_side: f32,
+    /// Factor on the engine intensity seen from the front.
+    pub aspect_front: f32,
+    /// Skin-heating intensity per Mach number squared.
+    pub skin_per_mach2: f32,
+}
+
+/// One hit volume: a capsule (a segment with a radius) in body axes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CapsuleDef {
+    /// Name within the aircraft (`fuselage`, `wing_l`, ...).
+    pub id: String,
+    /// One end of the segment, m.
+    pub a_m: [f32; 3],
+    /// The other end, m.
+    pub b_m: [f32; 3],
+    /// Radius, m.
+    pub radius_m: f32,
+}
+
+/// How much punishment the aircraft takes (GDD 18, aggregate model) and its hit volumes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DamageDef {
+    /// Hit points when new.
+    pub hp: f32,
+    /// Energy that removes one hit point, J.
+    pub joules_per_hp: f32,
+    /// The hit volumes.
+    pub capsules: Vec<CapsuleDef>,
+}
+
 /// What the sim knows about one aircraft type.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AircraftDef {
@@ -248,6 +318,16 @@ pub struct AircraftDef {
     pub fcs: Fcs,
     /// Authored performance targets.
     pub envelope: Vec<EnvelopePoint>,
+    /// The internal gun, if any.
+    pub gun: Option<GunInstall>,
+    /// Launch rails, at most [`MAX_RAILS`].
+    pub rails: Vec<Rail>,
+    /// Infrared signature, if authored.
+    pub ir: Option<IrSignature>,
+    /// Effective size to the eye, m (0 when not authored; GDD 16.6.2).
+    pub visual_l_eff_m: f32,
+    /// Damage points and hit volumes, if authored.
+    pub damage: Option<DamageDef>,
 }
 
 impl AircraftDef {
@@ -334,6 +414,57 @@ impl AircraftDef {
             w.f32(p.tol_pct);
             w.u8(p.requires.map_or(0, Requirement::code));
         }
+        self.encode_armament(w)
+    }
+
+    /// The gun, rails, signature and damage data, written after everything else (cpack v4).
+    fn encode_armament(&self, w: &mut Writer<'_>) -> Result<(), CpackError> {
+        w.bool(self.gun.is_some());
+        if let Some(g) = &self.gun {
+            w.handle(g.weapon);
+            w.u16(g.rounds);
+            w.f32s(&g.muzzle_m);
+            w.f32(g.harmonisation_mrad);
+        }
+        check_count(
+            self.rails.len(),
+            MAX_RAILS,
+            "an aircraft has too many rails",
+        )?;
+        w.count(self.rails.len())?;
+        for rail in &self.rails {
+            w.u8(rail.station);
+            w.f32s(&rail.pos_m);
+            w.handle(rail.store);
+        }
+        w.bool(self.ir.is_some());
+        if let Some(i) = &self.ir {
+            w.f32s(&[
+                i.engine_idle,
+                i.engine_mil,
+                i.engine_ab,
+                i.aspect_side,
+                i.aspect_front,
+                i.skin_per_mach2,
+            ]);
+        }
+        w.f32(self.visual_l_eff_m);
+        w.bool(self.damage.is_some());
+        if let Some(d) = &self.damage {
+            check_count(
+                d.capsules.len(),
+                MAX_CAPSULES,
+                "an aircraft has too many hit capsules",
+            )?;
+            w.f32s(&[d.hp, d.joules_per_hp]);
+            w.count(d.capsules.len())?;
+            for c in &d.capsules {
+                w.str(&c.id)?;
+                w.f32s(&c.a_m);
+                w.f32s(&c.b_m);
+                w.f32(c.radius_m);
+            }
+        }
         Ok(())
     }
 
@@ -375,6 +506,7 @@ impl AircraftDef {
         let envelope = (0..r.u8()?)
             .map(|_| EnvelopePoint::decode(r))
             .collect::<Result<Vec<_>, CpackError>>()?;
+        let (gun, rails, ir, visual_l_eff_m, damage) = decode_armament(r)?;
         Ok(Self {
             name_key,
             category,
@@ -387,7 +519,96 @@ impl AircraftDef {
             aero,
             fcs,
             envelope,
+            gun,
+            rails,
+            ir,
+            visual_l_eff_m,
+            damage,
         })
+    }
+}
+
+/// The part of the record [`AircraftDef::encode_armament`] wrote.
+#[allow(
+    clippy::type_complexity,
+    reason = "five fields handed straight to the one struct literal that wants them"
+)]
+fn decode_armament(
+    r: &mut Reader<'_>,
+) -> Result<
+    (
+        Option<GunInstall>,
+        Vec<Rail>,
+        Option<IrSignature>,
+        f32,
+        Option<DamageDef>,
+    ),
+    CpackError,
+> {
+    let gun = if r.bool()? {
+        Some(GunInstall {
+            weapon: r.handle()?,
+            rounds: r.u16()?,
+            muzzle_m: r.vec3()?,
+            harmonisation_mrad: r.f32()?,
+        })
+    } else {
+        None
+    };
+    let n_rails = usize::from(r.u8()?);
+    check_count(n_rails, MAX_RAILS, "an aircraft has too many rails")?;
+    let rails = (0..n_rails)
+        .map(|_| {
+            Ok(Rail {
+                station: r.u8()?,
+                pos_m: r.vec3()?,
+                store: r.handle()?,
+            })
+        })
+        .collect::<Result<Vec<_>, CpackError>>()?;
+    let ir = if r.bool()? {
+        Some(IrSignature {
+            engine_idle: r.f32()?,
+            engine_mil: r.f32()?,
+            engine_ab: r.f32()?,
+            aspect_side: r.f32()?,
+            aspect_front: r.f32()?,
+            skin_per_mach2: r.f32()?,
+        })
+    } else {
+        None
+    };
+    let visual_l_eff_m = r.f32()?;
+    let damage = if r.bool()? {
+        let (hp, joules_per_hp) = (r.f32()?, r.f32()?);
+        let n = usize::from(r.u8()?);
+        check_count(n, MAX_CAPSULES, "an aircraft has too many hit capsules")?;
+        let capsules = (0..n)
+            .map(|_| {
+                Ok(CapsuleDef {
+                    id: r.str()?,
+                    a_m: r.vec3()?,
+                    b_m: r.vec3()?,
+                    radius_m: r.f32()?,
+                })
+            })
+            .collect::<Result<Vec<_>, CpackError>>()?;
+        Some(DamageDef {
+            hp,
+            joules_per_hp,
+            capsules,
+        })
+    } else {
+        None
+    };
+    Ok((gun, rails, ir, visual_l_eff_m, damage))
+}
+
+fn check_count(n: usize, max: usize, what: &'static str) -> Result<(), CpackError> {
+    if n > max {
+        Err(CpackError::Record(what))
+    } else {
+        Ok(())
     }
 }
 
@@ -708,7 +929,69 @@ pub(crate) mod tests {
                     requires: Some(Requirement::Gear),
                 },
             ],
+            gun: None,
+            rails: Vec::new(),
+            ir: None,
+            visual_l_eff_m: 0.0,
+            damage: None,
         }
+    }
+
+    /// [`sample`] with the Kestrel's gun at handle `gun`, two rails holding the weapon at handle
+    /// `srm`, an infrared signature, a visual size and five hit capsules.
+    pub(crate) fn sample_armed(
+        engine: ContentId,
+        aero: ContentId,
+        gains: ContentId,
+        gun: ContentId,
+        srm: ContentId,
+    ) -> AircraftDef {
+        let mut d = sample(engine, aero, gains);
+        d.gun = Some(GunInstall {
+            weapon: gun,
+            rounds: 150,
+            muzzle_m: [3.0, -0.6, 0.1],
+            harmonisation_mrad: 0.0,
+        });
+        d.rails = vec![
+            Rail {
+                station: 1,
+                pos_m: [-1.0, -4.95, 0.35],
+                store: srm,
+            },
+            Rail {
+                station: 9,
+                pos_m: [-1.0, 4.95, 0.35],
+                store: srm,
+            },
+        ];
+        d.ir = Some(IrSignature {
+            engine_idle: 0.1,
+            engine_mil: 0.5,
+            engine_ab: 1.0,
+            aspect_side: 0.45,
+            aspect_front: 0.15,
+            skin_per_mach2: 0.05,
+        });
+        d.visual_l_eff_m = 7.0;
+        let capsule = |id: &str, a: [f32; 3], b: [f32; 3], radius_m: f32| CapsuleDef {
+            id: id.into(),
+            a_m: a,
+            b_m: b,
+            radius_m,
+        };
+        d.damage = Some(DamageDef {
+            hp: 100.0,
+            joules_per_hp: 6370.0,
+            capsules: vec![
+                capsule("fuselage", [7.0, 0.0, 0.3], [-5.5, 0.0, 0.3], 1.1),
+                capsule("wing_l", [-0.2, -0.8, 0.45], [-1.2, -4.9, 0.4], 1.3),
+                capsule("wing_r", [-0.2, 0.8, 0.45], [-1.2, 4.9, 0.4], 1.3),
+                capsule("tail", [-4.8, -2.4, 0.15], [-4.8, 2.4, 0.15], 0.8),
+                capsule("fin", [-3.6, 0.0, -0.6], [-5.0, 0.0, -2.2], 0.7),
+            ],
+        });
+        d
     }
 
     fn round_trip(def: &AircraftDef) -> Result<AircraftDef, CpackError> {
@@ -728,6 +1011,55 @@ pub(crate) mod tests {
         let def = sample(ContentId(0), ContentId(1), ContentId(2));
         assert_eq!(round_trip(&def).unwrap(), def);
         assert_eq!(def.engine_count(), 1);
+    }
+
+    #[test]
+    fn an_armed_record_round_trips() {
+        let def = sample_armed(
+            ContentId(0),
+            ContentId(1),
+            ContentId(2),
+            ContentId(3),
+            ContentId(4),
+        );
+        assert_eq!(round_trip(&def).unwrap(), def);
+    }
+
+    #[test]
+    fn too_many_rails_or_capsules_are_refused() {
+        let armed = || {
+            sample_armed(
+                ContentId(0),
+                ContentId(1),
+                ContentId(2),
+                ContentId(3),
+                ContentId(4),
+            )
+        };
+        let mut many = armed();
+        many.rails = (0..=MAX_RAILS as u8)
+            .map(|station| Rail {
+                station,
+                pos_m: [0.0; 3],
+                store: ContentId(4),
+            })
+            .collect();
+        assert!(matches!(round_trip(&many), Err(CpackError::Record(_))));
+        let mut full = armed();
+        full.rails.truncate(1);
+        full.rails = (0..MAX_RAILS as u8)
+            .map(|station| Rail {
+                station,
+                pos_m: [0.0; 3],
+                store: ContentId(4),
+            })
+            .collect();
+        assert_eq!(round_trip(&full).unwrap(), full);
+
+        let mut capsules = armed();
+        let first = capsules.damage.as_ref().unwrap().capsules[0].clone();
+        capsules.damage.as_mut().unwrap().capsules = vec![first; MAX_CAPSULES + 1];
+        assert!(matches!(round_trip(&capsules), Err(CpackError::Record(_))));
     }
 
     #[test]

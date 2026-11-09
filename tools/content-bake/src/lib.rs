@@ -9,6 +9,8 @@
 
 pub mod bake;
 pub mod check;
+pub mod combat_check;
+pub mod combat_model;
 pub mod diag;
 pub mod export;
 pub mod gear;

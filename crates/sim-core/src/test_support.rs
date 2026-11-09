@@ -13,6 +13,19 @@ pub(crate) fn pack(empty_kg: u32) -> Vec<u8> {
         let text = std::fs::read_to_string(dir.join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
         (rel.to_owned(), text)
     };
+    let read_all = |sub: &str| -> Vec<(String, String)> {
+        let mut names: Vec<String> = std::fs::read_dir(dir.join(sub))
+            .unwrap_or_else(|e| panic!("{sub}: {e}"))
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|n| {
+                std::path::Path::new(n)
+                    .extension()
+                    .is_some_and(|e| e == "json")
+            })
+            .collect();
+        names.sort();
+        names.iter().map(|n| read(&format!("{sub}/{n}"))).collect()
+    };
     let mut kestrel = read("aircraft/kestrel.json");
     kestrel.1 = kestrel
         .1
@@ -24,6 +37,8 @@ pub(crate) fn pack(empty_kg: u32) -> Vec<u8> {
         engines: vec![read("engines/f129.json")],
         aero: vec![read("aero/kestrel.json")],
         fcs: vec![read("fcs/kestrel.json")],
+        weapons: read_all("weapons"),
+        skills: read_all("skills"),
     })
     .expect("the core pack bakes")
     .cpack

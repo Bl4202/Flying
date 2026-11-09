@@ -174,6 +174,7 @@ pub fn bake_present(src: &PresentSources, baked: &Baked) -> Result<PresentBaked,
     }
     check_unique_ids(&huds, &cockpits, &models, &audio, &fonts, &mut problems);
     check_aircraft_refs(baked, &huds, &cockpits, &models, &audio, &mut problems);
+    check_gun_voices(&audio, baked, &mut problems);
     check_cross_references(&huds, &cockpits, &models, &fonts, baked, &mut problems);
     if !problems.is_empty() {
         return Err(problems);
@@ -322,6 +323,48 @@ fn check_aircraft_refs(
     }
     for n in audio {
         each(&n.file, &n.item.aircraft, "audio profile");
+    }
+}
+
+/// How far (Hz) the audio profile's gun rate may differ from the gun's `rpm / 60`.
+const GUN_RATE_TOLERANCE_HZ: f64 = 0.01;
+
+/// A profile's gun voice pulses at the rate of the gun its aircraft carries (ADR-49): the sound is
+/// one pulse per round, so a different rate would be a gun that sounds wrong.
+fn check_gun_voices(audio: &[Named<AudioFile>], baked: &Baked, problems: &mut Vec<Diagnostic>) {
+    for n in audio {
+        let Some(w) = &n.item.weapons else { continue };
+        let Some(aircraft) = baked.aircraft.iter().find(|a| a.id == n.item.aircraft) else {
+            continue; // reported by `check_aircraft_refs`
+        };
+        let gun = aircraft
+            .internal_weapons
+            .as_ref()
+            .and_then(|i| i.gun.as_ref())
+            .and_then(|g| baked.weapons.iter().find(|x| x.id == g.weapon_ref))
+            .and_then(|x| x.gun.as_ref());
+        match gun {
+            None => problems.push(Diagnostic::new(
+                &n.file,
+                "/weapons/gun",
+                format!("`{}` has no gun for this voice to be", aircraft.id),
+                "remove the gun voice, or give the aircraft an internal gun",
+            )),
+            Some(g) => {
+                let want = g.rpm / 60.0;
+                if (w.gun.rate_hz - want).abs() > GUN_RATE_TOLERANCE_HZ {
+                    problems.push(Diagnostic::new(
+                        &n.file,
+                        "/weapons/gun/rate_hz",
+                        format!(
+                            "the gun voice pulses at {} Hz but the gun fires {} rounds a minute ({want:.5} Hz)",
+                            w.gun.rate_hz, g.rpm
+                        ),
+                        format!("set rate_hz to {want:.5}"),
+                    ));
+                }
+            }
+        }
     }
 }
 

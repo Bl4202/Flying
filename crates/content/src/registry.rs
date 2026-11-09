@@ -5,6 +5,8 @@ use crate::aircraft::AircraftDef;
 use crate::cpack::{self, CpackError, Entry};
 use crate::engine::EngineDef;
 use crate::fcs::FcsDef;
+use crate::skill::SkillDef;
+use crate::weapon::WeaponDef;
 
 /// Handle of a baked content entry: its index in the pack's table of contents, which is sorted
 /// by id. Handles are stable for a given pack and meaningless across packs.
@@ -103,6 +105,38 @@ impl Registry {
         }
     }
 
+    /// The weapon behind a handle, if it is one.
+    #[must_use]
+    pub fn weapon(&self, handle: ContentId) -> Option<&WeaponDef> {
+        match self.entry(handle)? {
+            Entry::Weapon(d) => Some(d),
+            _ => None,
+        }
+    }
+
+    /// The AI skill behind a handle, if it is one.
+    #[must_use]
+    pub fn skill(&self, handle: ContentId) -> Option<&SkillDef> {
+        match self.entry(handle)? {
+            Entry::Skill(d) => Some(d),
+            _ => None,
+        }
+    }
+
+    /// The AI skills in handle order.
+    pub fn skills(&self) -> impl Iterator<Item = (ContentId, &SkillDef)> {
+        self.iter().filter_map(|(h, _, e)| match e {
+            Entry::Skill(d) => Some((h, d)),
+            _ => None,
+        })
+    }
+
+    /// The AI skill of a rank (1 for the lowest), if the pack has one.
+    #[must_use]
+    pub fn skill_by_rank(&self, rank: u8) -> Option<&SkillDef> {
+        self.skills().map(|(_, d)| d).find(|d| d.rank == rank)
+    }
+
     /// The id behind a handle.
     #[must_use]
     pub fn id(&self, handle: ContentId) -> Option<&str> {
@@ -142,6 +176,19 @@ impl Registry {
                 Entry::Engine(_) => (a, e + 1, r, f),
                 Entry::Aero(_) => (a, e, r + 1, f),
                 Entry::Fcs(_) => (a, e, r, f + 1),
+                Entry::Weapon(_) | Entry::Skill(_) => (a, e, r, f),
+            })
+    }
+
+    /// Number of weapons and AI skills.
+    #[must_use]
+    pub fn combat_counts(&self) -> (usize, usize) {
+        self.entries
+            .iter()
+            .fold((0, 0), |(w, s), entry| match entry {
+                Entry::Weapon(_) => (w + 1, s),
+                Entry::Skill(_) => (w, s + 1),
+                _ => (w, s),
             })
     }
 

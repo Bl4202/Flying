@@ -1,0 +1,29 @@
+{
+  "schema": "weapon/1",
+  "id": "core:wpn/gs27",
+  "name_key": "wpn.gs27.name",
+  "class": "gun",
+  "mass_kg": 100,
+  "gun": {
+    "caliber_mm": 27,
+    "muzzle_mps": 1025,
+    "rpm": 1700,
+    "spinup_s": 0,
+    "dispersion_mrad": 1.5,
+    "round_mass_kg": 0.26,
+    "drag_cd": {
+      "axis": "mach",
+      "points": [
+        [0, 0.25],
+        [0.8, 0.25],
+        [1.2, 0.38],
+        [2, 0.31],
+        [3, 0.26]
+      ]
+    },
+    "rounds": 150,
+    "ammo_types": [{ "id": "hei", "tracer_every": 4 }],
+    "max_age_s": 3,
+    "min_speed_mps": 300
+  }
+}

@@ -160,6 +160,48 @@ coded_enum! {
     }
 }
 
+coded_enum! {
+    /// What a weapon entry is (GDD 15, ADR-46).
+    WeaponClass {
+        /// A cannon: it has a gun block.
+        Gun = 1, "gun";
+        /// A short-range infrared missile: it has a missile block.
+        Srm = 2, "srm";
+    }
+}
+
+coded_enum! {
+    /// A missile's guidance law (GDD 15.5).
+    GuidanceLaw {
+        /// Proportional navigation.
+        Pn = 1, "pn";
+    }
+}
+
+coded_enum! {
+    /// A missile's seeker (GDD 15.7).
+    SeekerKind {
+        /// Rear-aspect infrared.
+        IrRear = 1, "ir_rear";
+    }
+}
+
+coded_enum! {
+    /// A missile's fuze (GDD 15.9).
+    FuzeKind {
+        /// Proximity: detonates at the closest approach inside the trigger radius.
+        Proximity = 1, "proximity";
+    }
+}
+
+coded_enum! {
+    /// A missile's warhead (GDD 15.9).
+    WarheadKind {
+        /// Blast fragmentation.
+        Frag = 1, "frag";
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,6 +263,41 @@ mod tests {
             Requirement::from_code,
             Requirement::name,
             Requirement::from_name,
+        );
+        check(
+            WeaponClass::ALL,
+            WeaponClass::code,
+            WeaponClass::from_code,
+            WeaponClass::name,
+            WeaponClass::from_name,
+        );
+        check(
+            GuidanceLaw::ALL,
+            GuidanceLaw::code,
+            GuidanceLaw::from_code,
+            GuidanceLaw::name,
+            GuidanceLaw::from_name,
+        );
+        check(
+            SeekerKind::ALL,
+            SeekerKind::code,
+            SeekerKind::from_code,
+            SeekerKind::name,
+            SeekerKind::from_name,
+        );
+        check(
+            FuzeKind::ALL,
+            FuzeKind::code,
+            FuzeKind::from_code,
+            FuzeKind::name,
+            FuzeKind::from_name,
+        );
+        check(
+            WarheadKind::ALL,
+            WarheadKind::code,
+            WarheadKind::from_code,
+            WarheadKind::name,
+            WarheadKind::from_name,
         );
         assert_eq!(Era::G4_5.name(), "G4.5");
     }

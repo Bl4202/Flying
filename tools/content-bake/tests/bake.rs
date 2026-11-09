@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use content::{CpackError, EngineKind, Metric, Registry, Requirement};
 use content_bake::bake::{self, Baked, Sources, bake_dir, bake_sources, sha256};
+use content_bake::combat_model::{SkillFile, WeaponFile};
 use content_bake::diag::Diagnostic;
 use content_bake::export::export;
 use content_bake::model::{AeroFile, AircraftFile, EngineFile, FcsGainsFile};
@@ -31,6 +32,28 @@ const KESTREL: &str = "aircraft/kestrel.json";
 const F129: &str = "engines/f129.json";
 const AERO: &str = "aero/kestrel.json";
 const FCS: &str = "fcs/kestrel.json";
+const WEAPONS: [&str; 2] = ["weapons/dart1.json", "weapons/gs27.json"];
+const SKILLS: [&str; 3] = [
+    "skills/recruit.json",
+    "skills/regular.json",
+    "skills/veteran.json",
+];
+
+/// `(name, text)` of each file of one kind.
+type Files = Vec<(String, String)>;
+
+/// The real weapon and skill files, which the Kestrel's gun and rails refer to.
+fn combat_files() -> (Files, Files) {
+    let own = |v: &[&str]| v.iter().map(|n| ((*n).to_owned(), read(n))).collect();
+    (own(&WEAPONS), own(&SKILLS))
+}
+
+/// The real locale table with one more key.
+fn locale_with(key: &str, text: &str) -> String {
+    let mut l = json_of("locales/en.json");
+    l[key] = json!(text);
+    l.to_string()
+}
 
 /// Bakes the real pack with the given files in place of its entity files.
 fn bake_files(
@@ -44,6 +67,7 @@ fn bake_files(
             .map(|(n, t)| ((*n).to_owned(), t.clone()))
             .collect()
     };
+    let (weapons, skills) = combat_files();
     bake_sources(&Sources {
         pack: ("pack.json".into(), read("pack.json")),
         locale: ("locales/en.json".into(), read("locales/en.json")),
@@ -51,6 +75,8 @@ fn bake_files(
         engines: own(engines),
         aero: own(aero),
         fcs: own(fcs),
+        weapons,
+        skills,
     })
 }
 
@@ -181,6 +207,67 @@ fn the_core_pack_bakes_and_holds_the_kestrel() {
 }
 
 #[test]
+fn the_core_pack_holds_the_kestrels_combat_data() {
+    let baked = bake_dir(&core()).expect("the core pack is valid");
+    let reg = Registry::from_cpack(&baked.cpack).unwrap();
+    assert_eq!(reg.combat_counts(), (2, 3));
+    let k = reg
+        .aircraft(reg.find("core:ac/kestrel").expect("kestrel is in the pack"))
+        .unwrap();
+    // C.1, C.10, C.11, GDD 18: the gun, the two rails, the signatures and the hit volumes.
+    let gun = k.gun.as_ref().expect("the Kestrel has a gun");
+    assert_eq!(reg.id(gun.weapon), Some("core:wpn/gs27"));
+    assert_eq!((gun.rounds, gun.muzzle_m), (150, [3.0, -0.6, 0.1]));
+    let gs27 = reg.weapon(gun.weapon).unwrap();
+    let g = gs27.gun.as_ref().unwrap();
+    assert_eq!(
+        (g.muzzle_mps, g.rpm, g.round_mass_kg),
+        (1025.0, 1700.0, 0.26)
+    );
+    assert_eq!(k.rails.len(), 2);
+    assert_eq!(
+        k.rails.iter().map(|r| r.station).collect::<Vec<_>>(),
+        [1, 9]
+    );
+    for rail in &k.rails {
+        assert_eq!(reg.id(rail.store), Some("core:wpn/dart1"));
+    }
+    let dart = reg
+        .weapon(k.rails[0].store)
+        .unwrap()
+        .missile
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        (
+            dart.guidance.n_prime,
+            dart.autopilot.g_max,
+            dart.warhead.damage_j
+        ),
+        (4.0, 30.0, 2_548_000.0)
+    );
+    let ir = k.ir.expect("the Kestrel has an IR signature");
+    assert_eq!(
+        (ir.engine_mil, ir.engine_ab, ir.aspect_side),
+        (0.5, 1.0, 0.45)
+    );
+    assert_eq!(k.visual_l_eff_m, 7.0);
+    let damage = k.damage.as_ref().expect("the Kestrel has hit volumes");
+    assert_eq!((damage.hp, damage.joules_per_hp), (100.0, 6370.0));
+    let names: Vec<&str> = damage.capsules.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(names, ["fuselage", "wing_l", "wing_r", "tail", "fin"]);
+    // The three skills are found by rank, and only the lowest holds its fire (D3).
+    let by_rank: Vec<(u8, bool)> = (1..=3)
+        .map(|r| {
+            let s = reg.skill_by_rank(r).expect("a skill of every rank");
+            (s.rank, s.fires_gun)
+        })
+        .collect();
+    assert_eq!(by_rank, [(1, false), (2, true), (3, true)]);
+    assert!(reg.skill_by_rank(4).is_none());
+}
+
+#[test]
 fn export_gives_back_the_normalised_input() {
     let baked = bake_dir(&core()).unwrap();
     let exported = export(&baked.cpack).unwrap();
@@ -193,6 +280,18 @@ fn export_gives_back_the_normalised_input() {
     assert_eq!(exported.engines, vec![engine]);
     assert_eq!(exported.aero, vec![aero]);
     assert_eq!(exported.fcs, vec![fcs]);
+    // Sorted by id: `core:wpn/dart1` before `core:wpn/gs27`, `core:skl/recruit`, `regular`,
+    // `veteran`.
+    let weapons: Vec<WeaponFile> = WEAPONS
+        .iter()
+        .map(|n| serde_json::from_str(&read(n)).unwrap())
+        .collect();
+    let skills: Vec<SkillFile> = SKILLS
+        .iter()
+        .map(|n| serde_json::from_str(&read(n)).unwrap())
+        .collect();
+    assert_eq!(exported.weapons, weapons);
+    assert_eq!(exported.skills, skills);
     assert_eq!(exported.aircraft, baked.aircraft);
     assert!(exported.content_hash.starts_with("sha256:"));
 }
@@ -253,7 +352,7 @@ fn the_baked_pack_is_what_the_manifest_says() {
     assert_eq!(m["packs"][0]["id"], "core");
     assert_eq!(
         m["packs"][0]["entities"],
-        json!({ "aircraft": 1, "engines": 1, "aero": 1, "fcs": 1 })
+        json!({ "aircraft": 1, "engines": 1, "aero": 1, "fcs": 1, "weapons": 2, "skills": 3 })
     );
 }
 
@@ -981,17 +1080,19 @@ fn duplicate_ids_across_files_are_refused() {
 
 #[test]
 fn unused_locale_keys_are_refused() {
+    let (weapons, skills) = combat_files();
     let problems = bake_sources(&Sources {
         pack: ("pack.json".into(), read("pack.json")),
         locale: (
             "locales/en.json".into(),
-            r#"{ "ac.kestrel.name": "Kestrel", "eng.f129.name": "F129", "fcs.kestrel.name": "FCS", "ac.ghost.name": "Ghost" }"#
-                .into(),
+            locale_with("ac.ghost.name", "Ghost"),
         ),
         aircraft: vec![(KESTREL.into(), read(KESTREL))],
         engines: vec![(F129.into(), read(F129))],
         aero: vec![(AERO.into(), read(AERO))],
         fcs: vec![(FCS.into(), read(FCS))],
+        weapons,
+        skills,
     })
     .unwrap_err();
     assert_eq!(problems.len(), 1);
@@ -1008,6 +1109,8 @@ fn a_pack_with_no_entities_and_no_locale_keys_is_valid_and_empty() {
         engines: vec![],
         aero: vec![],
         fcs: vec![],
+        weapons: vec![],
+        skills: vec![],
     })
     .unwrap();
     assert!(Registry::from_cpack(&baked.cpack).unwrap().is_empty());
@@ -1016,6 +1119,7 @@ fn a_pack_with_no_entities_and_no_locale_keys_is_valid_and_empty() {
 #[test]
 fn bad_pack_manifests_and_locales_are_refused() {
     let try_pack = |pack: &str| {
+        let (weapons, skills) = combat_files();
         bake_sources(&Sources {
             pack: ("pack.json".into(), pack.into()),
             locale: ("locales/en.json".into(), read("locales/en.json")),
@@ -1023,6 +1127,8 @@ fn bad_pack_manifests_and_locales_are_refused() {
             engines: vec![(F129.into(), read(F129))],
             aero: vec![(AERO.into(), read(AERO))],
             fcs: vec![(FCS.into(), read(FCS))],
+            weapons,
+            skills,
         })
         .unwrap_err()
     };
@@ -1051,17 +1157,19 @@ fn bad_pack_manifests_and_locales_are_refused() {
             .any(|d| d.pointer == "/surprise")
     );
 
+    let (weapons, skills) = combat_files();
     let problems = bake_sources(&Sources {
         pack: ("pack.json".into(), read("pack.json")),
         locale: (
             "locales/en.json".into(),
-            r#"{ "ac.kestrel.name": "  ", "eng.f129.name": "F129", "fcs.kestrel.name": "FCS" }"#
-                .into(),
+            locale_with("ac.kestrel.name", "  "),
         ),
         aircraft: vec![(KESTREL.into(), read(KESTREL))],
         engines: vec![(F129.into(), read(F129))],
         aero: vec![(AERO.into(), read(AERO))],
         fcs: vec![(FCS.into(), read(FCS))],
+        weapons,
+        skills,
     })
     .unwrap_err();
     assert_eq!(problems[0].pointer, "/ac.kestrel.name");

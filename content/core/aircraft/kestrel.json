@@ -215,5 +215,41 @@
         "requires": "gear"
       }
     ]
+  },
+  "internal_weapons": {
+    "gun": {
+      "ref": "core:wpn/gs27",
+      "rounds": 150,
+      "muzzle_m": [3, -0.6, 0.1],
+      "harmonisation_mrad": 0
+    }
+  },
+  "loadout": {
+    "rails": [
+      { "station": 1, "pos_m": [-1, -4.95, 0.35], "store": "core:wpn/dart1" },
+      { "station": 9, "pos_m": [-1, 4.95, 0.35], "store": "core:wpn/dart1" }
+    ]
+  },
+  "signatures": {
+    "ir": {
+      "engine_idle": 0.1,
+      "engine_mil": 0.5,
+      "engine_ab": 1,
+      "aspect_side": 0.45,
+      "aspect_front": 0.15,
+      "skin_per_mach2": 0.05
+    },
+    "visual_l_eff_m": 7
+  },
+  "damage": {
+    "hp": 100,
+    "joules_per_hp": 6370,
+    "capsules": [
+      { "id": "fuselage", "a_m": [7, 0, 0.3], "b_m": [-5.5, 0, 0.3], "radius_m": 1.1 },
+      { "id": "wing_l", "a_m": [-0.2, -0.8, 0.45], "b_m": [-1.2, -4.9, 0.4], "radius_m": 1.3 },
+      { "id": "wing_r", "a_m": [-0.2, 0.8, 0.45], "b_m": [-1.2, 4.9, 0.4], "radius_m": 1.3 },
+      { "id": "tail", "a_m": [-4.8, -2.4, 0.15], "b_m": [-4.8, 2.4, 0.15], "radius_m": 0.8 },
+      { "id": "fin", "a_m": [-3.6, 0, -0.6], "b_m": [-5, 0, -2.2], "radius_m": 0.7 }
+    ]
   }
 }

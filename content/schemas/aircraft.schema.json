@@ -208,6 +208,54 @@
       ],
       "type": "object"
     },
+    "CapsuleFile": {
+      "additionalProperties": false,
+      "description": "One hit volume: a capsule, a segment with a radius.",
+      "properties": {
+        "a_m": {
+          "description": "One end of the segment in body axes.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        },
+        "b_m": {
+          "description": "The other end.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        },
+        "id": {
+          "description": "Name within the aircraft (`fuselage`, `wing_l`, ...).",
+          "minLength": 1,
+          "type": "string"
+        },
+        "radius_m": {
+          "description": "Radius.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.05,
+          "type": "number",
+          "x-unit": "m"
+        }
+      },
+      "required": [
+        "id",
+        "a_m",
+        "b_m",
+        "radius_m"
+      ],
+      "type": "object"
+    },
     "ContactFile": {
       "additionalProperties": false,
       "description": "One airframe contact point.",
@@ -232,6 +280,42 @@
       "required": [
         "id",
         "pos_m"
+      ],
+      "type": "object"
+    },
+    "DamageFile": {
+      "additionalProperties": false,
+      "description": "Damage points and hit volumes.",
+      "properties": {
+        "capsules": {
+          "description": "The hit volumes.",
+          "items": {
+            "$ref": "#/$defs/CapsuleFile"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "type": "array"
+        },
+        "hp": {
+          "description": "Hit points when new.",
+          "format": "double",
+          "maximum": 10000.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "joules_per_hp": {
+          "description": "Energy that removes one hit point.",
+          "format": "double",
+          "maximum": 10000000.0,
+          "minimum": 1.0,
+          "type": "number",
+          "x-unit": "J"
+        }
+      },
+      "required": [
+        "hp",
+        "joules_per_hp",
+        "capsules"
       ],
       "type": "object"
     },
@@ -588,6 +672,124 @@
       ],
       "type": "object"
     },
+    "GunInstallFile": {
+      "additionalProperties": false,
+      "description": "An internal gun's installation.",
+      "properties": {
+        "harmonisation_mrad": {
+          "description": "Angle between the barrel and the body's x axis in the pitch plane (nose up positive).",
+          "format": "double",
+          "maximum": 100.0,
+          "minimum": -100.0,
+          "type": "number",
+          "x-unit": "mrad"
+        },
+        "muzzle_m": {
+          "description": "Muzzle position in body axes; the barrel points along the body's x axis.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        },
+        "ref": {
+          "description": "Id of the gun (`namespace:wpn/name`).",
+          "type": "string"
+        },
+        "rounds": {
+          "description": "Rounds loaded at the start of a sortie.",
+          "format": "uint16",
+          "maximum": 5000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ref",
+        "rounds",
+        "muzzle_m",
+        "harmonisation_mrad"
+      ],
+      "type": "object"
+    },
+    "InternalWeaponsFile": {
+      "additionalProperties": false,
+      "description": "The internal weapons of an aircraft.",
+      "properties": {
+        "gun": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GunInstallFile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The internal gun."
+        }
+      },
+      "type": "object"
+    },
+    "IrFile": {
+      "additionalProperties": false,
+      "description": "Infrared intensities, relative to the Kestrel's afterburner (GDD C.11).",
+      "properties": {
+        "aspect_front": {
+          "description": "Factor on the engine intensity seen from the front.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "aspect_side": {
+          "description": "Factor on the engine intensity seen from the side.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "engine_ab": {
+          "description": "Engine in full afterburner.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "engine_idle": {
+          "description": "Engine at idle.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "engine_mil": {
+          "description": "Engine at military power.",
+          "format": "double",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "skin_per_mach2": {
+          "description": "Skin-heating intensity per Mach number squared.",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "engine_idle",
+        "engine_mil",
+        "engine_ab",
+        "aspect_side",
+        "aspect_front",
+        "skin_per_mach2"
+      ],
+      "type": "object"
+    },
     "LimitersFile": {
       "additionalProperties": false,
       "description": "Limiter settings.",
@@ -621,6 +823,25 @@
         "alpha_limit_deg",
         "n_cmd_max",
         "roll_rate_max_dps"
+      ],
+      "type": "object"
+    },
+    "LoadoutFile": {
+      "additionalProperties": false,
+      "description": "What hangs on the aircraft.",
+      "properties": {
+        "rails": {
+          "description": "Launch rails.",
+          "items": {
+            "$ref": "#/$defs/RailFile"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "rails"
       ],
       "type": "object"
     },
@@ -746,6 +967,67 @@
       ],
       "type": "object"
     },
+    "RailFile": {
+      "additionalProperties": false,
+      "description": "One launch rail.",
+      "properties": {
+        "pos_m": {
+          "description": "Position of the store's centre in body axes.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-unit": "m"
+        },
+        "station": {
+          "description": "Hardpoint number, counted from 1.",
+          "format": "uint8",
+          "maximum": 40,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "store": {
+          "description": "Id of the store (`namespace:wpn/name`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "station",
+        "pos_m",
+        "store"
+      ],
+      "type": "object"
+    },
+    "SignaturesFile": {
+      "additionalProperties": false,
+      "description": "Signatures other aircraft can sense.",
+      "properties": {
+        "ir": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IrFile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Infrared signature."
+        },
+        "visual_l_eff_m": {
+          "default": 0.0,
+          "description": "Effective size to the eye (GDD 16.6.2).",
+          "format": "double",
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m"
+        }
+      },
+      "type": "object"
+    },
     "TankFile": {
       "additionalProperties": false,
       "description": "One fuel tank.",
@@ -827,6 +1109,17 @@
       "minimum": 1,
       "type": "integer"
     },
+    "damage": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DamageFile"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Damage points and hit volumes (GDD 18, aggregate model)."
+    },
     "engines": {
       "description": "Engine installations.",
       "items": {
@@ -871,6 +1164,28 @@
       "description": "`namespace:type/name`, with namespace the pack id and type `ac`.",
       "type": "string"
     },
+    "internal_weapons": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InternalWeaponsFile"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The internal gun (GDD 15.2)."
+    },
+    "loadout": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LoadoutFile"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What hangs on the aircraft: the launch rails."
+    },
     "mass": {
       "$ref": "#/$defs/MassFile",
       "description": "Mass properties."
@@ -883,6 +1198,17 @@
       "const": "aircraft/1",
       "description": "Format tag, always `aircraft/1`.",
       "type": "string"
+    },
+    "signatures": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SignaturesFile"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Signatures other aircraft can sense: infrared and visual (GDD 15.7, 16.6.2)."
     }
   },
   "required": [

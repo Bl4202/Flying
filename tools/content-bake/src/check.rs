@@ -350,8 +350,24 @@ pub fn baker_bug(file: &str) -> Vec<Diagnostic> {
 // ---------------------------------------------------------------------------------------------
 // Numeric ranges from the schema.
 
-/// Resolves a local `$ref` such as `#/$defs/Mass`.
+/// An optional struct is `anyOf [X, { "type": "null" }]` in the schema; this is `X`. Anything else
+/// (a tagged enum's variants, a plain value) is returned as it is.
+fn look_through_null(schema: &Value) -> &Value {
+    let is_null = |v: &Value| v.get("type").and_then(Value::as_str) == Some("null");
+    match schema
+        .get("anyOf")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+    {
+        Some([a, b]) if is_null(b) && !is_null(a) => a,
+        Some([a, b]) if is_null(a) && !is_null(b) => b,
+        _ => schema,
+    }
+}
+
+/// Resolves a local `$ref` such as `#/$defs/Mass`, looking through an optional struct's `null`.
 fn resolve<'a>(root: &'a Value, schema: &'a Value) -> &'a Value {
+    let schema = look_through_null(schema);
     schema
         .get("$ref")
         .and_then(Value::as_str)
@@ -478,6 +494,7 @@ fn check_aircraft(
         }
     }
     check_envelope(c, a);
+    crate::combat_check::check_armament(c, a, pack_id);
 }
 
 /// Mass at which wing loading and thrust-to-weight are judged: empty plus 60 % of the fuel.
@@ -491,7 +508,7 @@ fn masses_ok(c: &Ctx<'_>) -> bool {
     c.clean(&["/mass/empty_kg", "/mass/internal_fuel_kg"])
 }
 
-fn check_names<T>(
+pub(crate) fn check_names<T>(
     c: &mut Ctx<'_>,
     ptr: &str,
     name: &str,
@@ -510,7 +527,7 @@ fn check_names<T>(
     }
 }
 
-fn check_locale_key(c: &mut Ctx<'_>, key: &str, locale: &BTreeMap<String, String>) {
+pub(crate) fn check_locale_key(c: &mut Ctx<'_>, key: &str, locale: &BTreeMap<String, String>) {
     if !locale.contains_key(key) {
         c.err(
             "/name_key",
@@ -846,7 +863,7 @@ pub fn eval_curve(points: &[[f64; 2]], x: f64) -> f64 {
     a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0])
 }
 
-fn increasing(xs: impl Iterator<Item = f64>) -> Option<usize> {
+pub(crate) fn increasing(xs: impl Iterator<Item = f64>) -> Option<usize> {
     let mut prev = f64::NEG_INFINITY;
     for (i, x) in xs.enumerate() {
         if x <= prev {

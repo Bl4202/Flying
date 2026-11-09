@@ -189,6 +189,42 @@
       ],
       "type": "object"
     },
+    "EnemyGunVoice": {
+      "additionalProperties": false,
+      "description": "An enemy gun heard from a distance.",
+      "properties": {
+        "level_db": {
+          "description": "Level at the reference distance.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -40.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "lowpass_hz": {
+          "description": "Low-pass corner of the distant gun.",
+          "format": "double",
+          "maximum": 8000.0,
+          "minimum": 200.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "ref_distance_m": {
+          "description": "Distance at which the level is `level_db`.",
+          "format": "double",
+          "maximum": 2000.0,
+          "minimum": 20.0,
+          "type": "number",
+          "x-unit": "m"
+        }
+      },
+      "required": [
+        "level_db",
+        "lowpass_hz",
+        "ref_distance_m"
+      ],
+      "type": "object"
+    },
     "EngineAudio": {
       "additionalProperties": false,
       "description": "The engine voice: rotor tones, a hiss and a jet roar, and the afterburner.",
@@ -333,6 +369,51 @@
       ],
       "type": "object"
     },
+    "ExplosionVoice": {
+      "additionalProperties": false,
+      "description": "An explosion: a low thump and a decaying noise.",
+      "properties": {
+        "decay_s": {
+          "description": "Time for the level to fall to a thousandth.",
+          "format": "double",
+          "maximum": 3.0,
+          "minimum": 0.1,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "level_db": {
+          "description": "Level at the reference distance.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -40.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "ref_distance_m": {
+          "description": "Distance at which the level is `level_db`.",
+          "format": "double",
+          "maximum": 5000.0,
+          "minimum": 50.0,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "thump_hz": {
+          "description": "Pitch of the thump.",
+          "format": "double",
+          "maximum": 200.0,
+          "minimum": 20.0,
+          "type": "number",
+          "x-unit": "Hz"
+        }
+      },
+      "required": [
+        "level_db",
+        "thump_hz",
+        "decay_s",
+        "ref_distance_m"
+      ],
+      "type": "object"
+    },
     "Formant": {
       "additionalProperties": false,
       "description": "A resonance.",
@@ -365,6 +446,186 @@
         "f_hz",
         "q",
         "gain_db"
+      ],
+      "type": "object"
+    },
+    "GrowlVoice": {
+      "additionalProperties": false,
+      "description": "The seeker's growl.",
+      "properties": {
+        "am_hz": {
+          "description": "Rate of the amplitude flutter.",
+          "format": "double",
+          "maximum": 60.0,
+          "minimum": 2.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "base_hz": {
+          "description": "Pitch at the weakest signal.",
+          "format": "double",
+          "maximum": 2000.0,
+          "minimum": 100.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "level_db": {
+          "description": "Level.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -40.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "span_hz": {
+          "description": "How far the pitch rises at the strongest signal.",
+          "format": "double",
+          "maximum": 2000.0,
+          "minimum": 50.0,
+          "type": "number",
+          "x-unit": "Hz"
+        }
+      },
+      "required": [
+        "base_hz",
+        "span_hz",
+        "am_hz",
+        "level_db"
+      ],
+      "type": "object"
+    },
+    "GunVoice": {
+      "additionalProperties": false,
+      "description": "The gun's voice: one pulse per round, each a low body and a high crack.",
+      "properties": {
+        "body_hz": {
+          "description": "Pitch of the body of a pulse.",
+          "format": "double",
+          "maximum": 400.0,
+          "minimum": 30.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "crack_hz": {
+          "description": "Centre of the crack's band.",
+          "format": "double",
+          "maximum": 6000.0,
+          "minimum": 500.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "level_db": {
+          "description": "Level.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -40.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "pulse_ms": {
+          "description": "Length of one pulse.",
+          "format": "double",
+          "maximum": 60.0,
+          "minimum": 2.0,
+          "type": "number",
+          "x-unit": "ms"
+        },
+        "rate_hz": {
+          "description": "Pulses per second. The baker checks it equals the gun's `rpm / 60`.",
+          "format": "double",
+          "maximum": 100.0,
+          "minimum": 5.0,
+          "type": "number",
+          "x-unit": "Hz"
+        }
+      },
+      "required": [
+        "rate_hz",
+        "level_db",
+        "body_hz",
+        "crack_hz",
+        "pulse_ms"
+      ],
+      "type": "object"
+    },
+    "HitVoice": {
+      "additionalProperties": false,
+      "description": "A round hitting the aircraft: a short click.",
+      "properties": {
+        "band_hz": {
+          "description": "Centre of the click's band.",
+          "format": "double",
+          "maximum": 6000.0,
+          "minimum": 500.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "length_ms": {
+          "description": "Length of the click.",
+          "format": "double",
+          "maximum": 300.0,
+          "minimum": 10.0,
+          "type": "number",
+          "x-unit": "ms"
+        },
+        "level_db": {
+          "description": "Level.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -40.0,
+          "type": "number",
+          "x-unit": "dB"
+        }
+      },
+      "required": [
+        "level_db",
+        "band_hz",
+        "length_ms"
+      ],
+      "type": "object"
+    },
+    "LaunchVoice": {
+      "additionalProperties": false,
+      "description": "A missile launch: a whoosh that sweeps from a high band to a low one.",
+      "properties": {
+        "decay_s": {
+          "description": "Time for the level to fall to a thousandth.",
+          "format": "double",
+          "maximum": 3.0,
+          "minimum": 0.1,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "high_hz": {
+          "description": "Where the whoosh starts.",
+          "format": "double",
+          "maximum": 8000.0,
+          "minimum": 1000.0,
+          "type": "number",
+          "x-unit": "Hz"
+        },
+        "level_db": {
+          "description": "Level.",
+          "format": "double",
+          "maximum": 0.0,
+          "minimum": -40.0,
+          "type": "number",
+          "x-unit": "dB"
+        },
+        "low_hz": {
+          "description": "Where the whoosh ends.",
+          "format": "double",
+          "maximum": 2000.0,
+          "minimum": 200.0,
+          "type": "number",
+          "x-unit": "Hz"
+        }
+      },
+      "required": [
+        "level_db",
+        "low_hz",
+        "high_hz",
+        "decay_s"
       ],
       "type": "object"
     },
@@ -554,6 +815,50 @@
         "caution_chime"
       ],
       "type": "object"
+    },
+    "WeaponAudio": {
+      "additionalProperties": false,
+      "description": "The weapon voices: the gun, an enemy's gun, a launch, the seeker's growl and lock tone, a hit\ntaken and an explosion. Levels are dB relative to the master bus.",
+      "properties": {
+        "enemy_gun": {
+          "$ref": "#/$defs/EnemyGunVoice",
+          "description": "An enemy's gun, heard from a distance."
+        },
+        "explosion": {
+          "$ref": "#/$defs/ExplosionVoice",
+          "description": "An explosion."
+        },
+        "growl": {
+          "$ref": "#/$defs/GrowlVoice",
+          "description": "The seeker's growl, whose pitch rises with the signal."
+        },
+        "gun": {
+          "$ref": "#/$defs/GunVoice",
+          "description": "The player's gun."
+        },
+        "hit": {
+          "$ref": "#/$defs/HitVoice",
+          "description": "A round hitting the aircraft."
+        },
+        "launch": {
+          "$ref": "#/$defs/LaunchVoice",
+          "description": "A missile launch."
+        },
+        "lock_tone": {
+          "$ref": "#/$defs/SteadyTone",
+          "description": "The tone that says the seeker has locked."
+        }
+      },
+      "required": [
+        "gun",
+        "enemy_gun",
+        "launch",
+        "growl",
+        "lock_tone",
+        "hit",
+        "explosion"
+      ],
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -592,6 +897,17 @@
     "warnings": {
       "$ref": "#/$defs/WarningTones",
       "description": "The warning tones."
+    },
+    "weapons": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WeaponAudio"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The weapon voices (ADR-49). Optional: an aircraft with no weapons has none."
     }
   },
   "required": [
