@@ -1,29 +1,32 @@
-# Runtime architecture, as built in v0.1b
+# Runtime architecture, as built in v0.1c
 
 What runs where, how bytes move, and which switches change it. The decisions behind it are
 ADR-17 (roles), ADR-24 (renderer), ADR-25 (topology, IPC, ABI), ADR-26 (loop pacing); this page
 is the map. Code references are to files in the repository. The aircraft inside the core is
 described in [flight.md](flight.md), its control laws in [fcs.md](fcs.md) and the controls on the
 page in [controls.md](controls.md). v0.1b changed the layouts and added `fg_configure` (ABI 3,
-[ADR-36](../adr/0036-session-config-abi-v3-input-snapshot.md)).
+[ADR-36](../adr/0036-session-config-abi-v3-input-snapshot.md)); v0.1c added the arena to it, `fg_reset`
+and the presentation fields of the snapshot (ABI 4, [ADR-43](../adr/0043-arenas-abi-v4-and-the-presentation-bundle.md)).
+What is drawn and heard is in [presentation.md](presentation.md) and [audio.md](audio.md).
 
 ## Topology
 
 ```text
 Main thread   boot -> Service Worker isolation -> flags -> features -> GameFlow
-              (BOOT -> COMPAT_CHECK -> DEMO | FATAL)
-              input pump (rAF + 4 ms timer + device events) - pause menu and binding editor -
-              warning strip - status feed (its own snapshot reader) - compat screen - debug
-              overlay - perf and benchmark panels - supervisor
-   |  Input channel (96 B frames)                          |  control: typed postMessage
-   v                                                       v
+              (BOOT -> COMPAT_CHECK -> FIRST_RUN -> MAIN_MENU <-> DEMO | FATAL)
+              input pump (rAF + 4 ms timer + device events) - view input - main menu, first run,
+              settings, pause menu and binding editor - warning strip - status feed (its own
+              snapshot reader, which also drives the sound) - audio (AudioContext and worklet) -
+              compat screen - debug overlay - perf and benchmark panels - supervisor
+   |  Input channel (96 B frames)       |  View channel (64 B)       |  control: typed postMessage
+   v                                    v                            v
 Sim Worker    WASM core - FixedStepClock - step(1) x n (n <= 5) - stats at 4 Hz
    |  Snapshot channel (10 528 B per tick, latest wins)
-   |  Terrain patch over a direct MessagePort: at start, then again around the aircraft
-   |  whenever it is more than 8 km from the patch centre (checked every 500 ms)
+   |  Terrain levels over a direct MessagePort: all four at start, at `configure` and `reset`, then
+   |  each re-centred around the aircraft as it moves (one level per check, every 500 ms)
    v
-Render Worker OffscreenCanvas - interpolate two snapshots - Renderer (WebGPU | WebGL2 | Null)
-              - stats at 4 Hz
+Render Worker OffscreenCanvas - interpolate two snapshots - camera rig - sky, four terrain levels,
+              model, cockpit, HUD - Renderer (WebGPU | WebGL2 | Null) - stats at 4 Hz
 ```
 
 Nothing waits on another thread. A stalled thread costs its own work and nothing else; the
@@ -56,14 +59,19 @@ Little-endian, defined in `crates/sim-core/src/layout.rs`, generated into
 | Block | Size | Contents |
 |---|---|---|
 | `InputFrame` v3 | 96 B | `seq` u32, `flags` u32 (1 neutral, 2 changed, 4 mouse-aim, 8 auto-GCAS), `t_ms` f64 (the **source event's** time on the shared clock, never hashed), 12 axes f32 (pitch, roll, yaw, throttle, throttle2, brake L and R, trim P, R and Y, cursor X and Y), 64 buttons, 2 hats, then at 74 `assist_req` u8, `spawn_ack` u8, `spawn_req` u8, and at 80 `t_sent_ms` f64 (diagnostic, never hashed) |
-| Snapshot v3 | 10 528 B | 64 B header (magic `FGSN`, version 3, tick, `publish_time_ms`, last input `seq`, body count, core state, `input_t_ms`); 224 B ownship at 64 to 287 (the v2 block to byte 185, then assist, control-system mode, `flags2`, spawn counter, flap detent, gear, flap and airbrake positions, brakes, steering, ground speed, vertical speed, the lowest wheel's height, the pilot's lagged g, stress and red-out, the load-factor command, the last touchdown's sink rate, the aim in use, the crash cause and the gear bits); 256 bodies as structure of arrays from byte 288 |
+| Snapshot v4 | 10 528 B | 64 B header (magic `FGSN`, version 4, tick, `publish_time_ms`, last input `seq`, body count, core state, `input_t_ms`); 224 B ownship at 64 to 287 (the v2 block to byte 185, then assist, control-system mode, `flags2`, spawn counter, flap detent, gear, flap and airbrake positions, brakes, steering, ground speed, vertical speed, the lowest wheel's height, the pilot's lagged g, stress and red-out, the load-factor command, the last touchdown's sink rate, the aim in use, the crash cause and the gear bits, and **from v4** at 258 the `arena` u8, at 259 the `engine_bits` u8 (running 1, afterburner lit 2, compressor stalled 4, relighting 8), then f32 at 260 dynamic pressure, 264 fuel flow (kg/s), 268 the core thrust as a fraction of military, 272 the afterburner level, 276 the largest `n_z` since the last spawn, 280 `n_max` for the present configuration and 284 the warning angle of attack (the stall angle less 3°)); 256 bodies as structure of arrays from byte 288. The v4 fields are computed at publish from state that is already hashed: no hash moved |
 | Snapshot SAB | 31 648 B | 64 B header (magic, version, slot size and count, the `published` word, one sequence counter per slot) and 3 slots |
 | Input ring SAB | 6 176 B | 32 B header (record size, capacity 64, write and read positions, dropped count) and 64 frames |
 | Profile block | 160 B | ticks, tick time (last, EWMA), 11 stage times (last, EWMA), 13 counters (inputs applied, non-finite, stale and overflowed; FDM faults, crashes, respawns, snapshots, trim failures; touchdowns, hard landings, G-LOC events, assist changes) |
-| Terrain patch | 465 980 B | origin f64x3, posts, spacing, then 129 x 129 vertices of position, normal and height |
+| Terrain level | 465 980 B | origin f64x3, posts, spacing, then 129 x 129 vertices of position, normal and height; four of them (L0 250 m spacing, L1 1 km, L2 4 km, L3 16 km), filled by `fg_terrain_fill` from the sim's own terrain function |
+| View channel | 64 B | a sequence-locked record (`packages/sim-bridge/src/view-channel.ts`): flags (zoom, free look, reduced motion, chase), HUD declutter and brightness, look rates, running totals of mouse look, a recentre counter, field of view, shake and chase distance; a shared buffer with isolation, `view` messages without. The sim never reads it |
+| Presentation bundle | `content-out/core.present.json` | the HUD, cockpit, exterior model, stroke font and audio profile of each aircraft, canonical JSON with the SHA-256 of the sim pack it was baked with. Fetched by the app, not loaded by the core, and not part of the state hash ([ADR-43](../adr/0043-arenas-abi-v4-and-the-presentation-bundle.md)) |
 
 Battlefield frame (BF) is east, north, up; render axes are `(x, y, z) -> (x, z, -y)`. Attitudes are
-`[w, x, y, z]`. Body (FRD) to BF for the ownship; the camera applies the BF-to-render rotation.
+`[w, x, y, z]`. Body (FRD) to BF for the ownship; the camera applies the BF-to-render rotation. BF
+height is measured from the plane the sphere touches at the anchor, so the ground at distance `d` is
+`d^2 / 2R` below it. The Earth's radius and the anchor's latitude and longitude are `WORLD` in
+`layout.gen.ts` (f64, printed exactly by `cargo xtask gen-abi`).
 
 The **ownship** is the player's aircraft: the core pack's lowest-handle aircraft, spawned when the
 core starts as the session says (the runway by default, or trimmed in the air). With no aircraft
@@ -75,12 +83,14 @@ g limiter 8, overspeed 16, overstress 32, blackout 64, G-LOC 128, red-out 256, h
 mouse-aim in use 16 384, throttle held 32 768. `crash_cause` is 0 none, 1 airframe impact, 2 sink
 rate, 3 gear collapse, 4 tunnelling, 5 numerical. The authority is `crates/sim-core/src/layout.rs`.
 
-## Sim ABI v3 (`crates/sim-wasm/src/abi.rs`)
+## Sim ABI v4 (`crates/sim-wasm/src/abi.rs`)
 
 ```text
-fg_abi_version() = 3         fg_init(seed_lo, seed_hi)        fg_core_state()
+fg_abi_version() = 4         fg_init(seed_lo, seed_hi)        fg_core_state()
 fg_content_reserve(len)      fg_load_content(len) -> status
-fg_configure(spawn, assist, g_effects) -> config_status       (idle core only)
+fg_configure(spawn, assist, g_effects, arena) -> config_status (idle core only)
+fg_reset() -> status         any state to idle, the world rebuilt; content, models and the
+                             snapshot buffer (and its pointer) kept
 fg_start()  fg_pause()  fg_resume()                           fg_set_input_script(kind)
 fg_input_ptr()  fg_input_capacity() = 8  fg_push_inputs(count) -> accepted
 fg_set_profiling(on)         fg_step(max_ticks) -> ticks_run
@@ -96,13 +106,17 @@ of `AC-11.7`), 3 circuit (the virtual tester's sortie, ADR-33). Buttons: 0 reset
 nose up and down (held), 3 gear lever (toggle), 4 flaps down, 5 flaps up, 6 airbrake (held = open),
 7 parking brake (toggle), 8 recover (held), 9 trim reset, 10 flap cycle. `fg_configure` takes the
 spawn (0 runway, the default; 1 air), the assist level (1 Full, 2 Standard, the default; 3 Reduced;
-4 Manual) and the g-effects dial (0 Off, 1 Reduced, 2 Full, the default), and returns 0 ok, 1 the
-core has started, 2 an argument is out of range, 3 no core; the session is in the `ownship` hash.
+4 Manual), the g-effects dial (0 Off, 1 Reduced, 2 Full, the default) and the arena (0 `rugged`, the
+default: the v0.1b world; 1 `plain`: a 40 m plain with gentle noise and the same runway), and returns
+0 ok, 1 the core has started, 2 an argument is out of range, 3 no core; the session is in the
+`ownship` hash (the arena in its fourth byte, so `rugged` hashes as v0.1b did). `fg_reset` returns
+the core to idle after any state (the main menu's Fly and Main menu use it); it clears the input
+state, so the host sets the script again after `fg_configure`.
 `fg_init` leaves the core idle; callers load content, configure, choose a script, then `fg_start`.
 Changes during the sortie travel in the input frame (an assist level, a spawn request read on the
 reset press, the spawn acknowledgement), so they are replayed. The pointer-lifetime and
 view-refresh rules are in `crates/sim-wasm/UNSAFE.md`. v0.1b added `fg_configure` and changed the
-layouts, so the ABI is version 3.
+layouts (ABI 3); v0.1c added the arena, `fg_reset` and the v4 snapshot fields (ABI 4).
 
 ## Messages
 
@@ -111,7 +125,9 @@ Typed in `packages/sim-bridge/src/messages.ts` (Sim Worker) and
 
 | To the Sim Worker | Effect |
 |---|---|
-| `init` | load the module and the content pack, configure the session (spawn, assist, g-effects), create the core, open the channels |
+| `init` | load the module and the content pack, configure the session (spawn, assist, g-effects, arena), create the core, open the channels; the workers start at boot and the core stays idle until Fly |
+| `configure` | idle core only: a session and an input script, then all four terrain levels are filled again (Fly) |
+| `reset` | any state to idle, the world rebuilt, the terrain levels refilled (Main menu) |
 | `start`, `pause`, `resume`, `stop` | lifecycle; `pause` and `resume` re-anchor the clock |
 | `profiling` | time the core's 11 stages (the overlay turns it on while it is open) |
 | `reset-run` | forget run-level statistics (after a warm-up) |
@@ -124,10 +140,18 @@ Typed in `packages/sim-bridge/src/messages.ts` (Sim Worker) and
 | `stats` (4 Hz) | tick, rate, dropped time, tick-cost and input-age quantiles, the control, poll and tick latency of AC-58.3 (each for the report interval and since `reset-run`), queue drops, core state, the aircraft block and status of the latest snapshot (the page's source of it in message mode), stage timings when profiling |
 | `state`, `hash`, `error` | as named |
 
-The Render Worker takes `init` (the canvas, snapshot channel, terrain port), `canvas` (a fresh one),
-`resize`, `settings` (the screen-effect strength), `read-pixels` (the answer includes the mean
-luminance), `reset-run`, `stall` and `stop`, and reports `ready`, `stats`,
-`need-canvas`, `need-main-thread`, `lost`, `pixels` and `error`.
+The Render Worker takes `init` (the canvas, snapshot channel, terrain port, view channel), `canvas` (a
+fresh one), `resize`, `settings` (the screen-effect strength, the preset and resolution scale, the
+debug view and seeded fault, the HUD palette, scale and words), `view` (the view channel's record,
+where there is no shared buffer), `cockpit` and `presentation` (the aircraft's data, from the
+bundle), `read-pixels` (the answer includes the mean luminance), `read-image` (the picture as RGBA,
+top row first, for the screenshot gates), `reset-run`, `stall` and `stop`, and reports `ready`,
+`stats` (with a mask of the terrain levels it holds), `need-canvas`, `need-main-thread`, `lost`,
+`pixels`, `image` and `error`. Terrain arrives on its own port as `{ type: 'terrain', level, patch }`.
+The sound is not fed by a message: the status feed on the main thread reads the snapshot every
+animation frame and sets the worklet's parameters; in message mode (no isolation) it uses the 4 Hz
+`stats`, which is slower than the plan's 30 Hz `audio-feed` and is recorded as a gap in
+[the v0.1c exit](../exit/v0.1c.md).
 
 ## URL flags (`packages/platform-web/src/flags.ts`)
 
@@ -139,14 +163,20 @@ Unknown keys and bad values are ignored with a warning in the log.
 | `renderer` | `auto`, `webgpu`, `webgl2`, `null` | choose the backend |
 | `flags` | `transfer`, `mainrender`, `timer`, `stall` | force copies instead of shared memory; render on the main thread; timers instead of `Atomics.wait`; allow the stall hooks |
 | `compat` | `1` | show the compat screen even if it was acknowledged |
-| `selftest` | `1`, `renderer` | the determinism self-test table; the renderer contract in this browser |
-| `perf` | `ps0` | run PS-0 and show the report |
+| `selftest` | `1`, `renderer`, `audio`, `screens` | the determinism self-test table; the renderer contract in this browser; the audio self-test; the screenshot gates (`case=horizon|terrain|hud`) |
+| `perf` | `ps0`, `arena` | run PS-0 (the empty loop) or the arena scenario (the circuit over the rugged arena with the HUD and the sound, in the cockpit at High in a 1920 x 1080 buffer unless the URL says) and show the report |
 | `seconds` | 1 to 3600 | length of the measured window of a perf run |
 | `bench` | `quick`, `full` | run the first-run benchmark and show the report |
 | `spawn` | `runway` (default), `air` | where the aircraft starts and respawns; overrides the stored setting for the visit |
 | `assist` | `full`, `standard` (default), `reduced`, `manual` | the assist level to start in |
 | `g` | `off`, `reduced`, `full` (default) | the g-effects dial |
 | `script` | `circuit` | the virtual tester flies the circuit instead of the player (a test aid; no controls are created) |
+| `fly` | `1` | skip the first run and the main menu and start flying at once (`perf` and `script` imply it) |
+| `arena` | `rugged` (default), `plain` | the procedural test arena of the sortie |
+| `camera` | `cockpit`, `chase` | the camera a sortie starts in, in place of the player's setting |
+| `res` | `WxH` | fix the drawing buffer's size (perf and screenshot runs) |
+| `quality` | `low`, `medium`, `high` | the graphics preset, in place of the one chosen (a test aid) |
+| `view`, `fault` | `classify`; `flat-earth`, `no-skirts`, `hud-body-axes` | the classify view (flat key colours, for the screenshot gates) and the seeded render faults (the faults are honoured only with `debug=1`) |
 
 Keys and toggles: `Ctrl+Shift+D` opens the debug overlay and `Esc` the pause menu. The default
 keyboard bindings are in [controls.md](controls.md) and can be changed in the binding editor. The
@@ -180,14 +210,17 @@ dependable throttle keys.
 | Fixed-step clock, sleepers, loop, worker, client | `packages/sim-host/src/` |
 | Channels, layouts, messages, handle on the module | `packages/sim-bridge/src/` |
 | Ring and seqlock primitives, flags, kv store, metrics, wasm loader | `packages/platform-web/src/` |
-| Renderer seam, backends, camera, interpolation, session, worker | `packages/render/src/`, `packages/render/shaders/` |
+| Renderer seam, backends, camera rig, interpolation, terrain levels, sky, model, HUD, session, worker ([presentation.md](presentation.md)) | `packages/render/src/`, `packages/render/shaders/` |
 | Actions, profiles, devices, shaping, conflicts, the input pump ([controls.md](controls.md)) | `packages/input/src/` |
 | Compat check, screens, overlay, panels, game-flow reducer, settings, pause menu, binding editor, warning strip | `packages/ui/src/` |
 | PS-0, gates, the first-run benchmark | `packages/perf/src/` |
-| Audio seam | `packages/audio/src/` |
+| Audio: the seam, the synthesis kernel, the worklet, the backends ([audio.md](audio.md)) | `packages/audio/src/` |
+| The warning rules shared by the strip, the HUD and the tones; the view channel | `packages/sim-bridge/src/warnings.ts`, `view-channel.ts` |
+| The presentation bundle (baker, schemas, lints) | `tools/content-bake/src/present*.rs`; `content/core/{hud,cockpit,models,audio,fonts}/` |
 | Composition root, demo wiring (`controls`, `menus`, `status-feed`), self-tests, Vite config | `packages/app-shell/` |
 | Core, seams, ownship, spawn, snapshot | `crates/sim-core/src/` |
 | Flight model; the conformance test | `crates/flight/src/`; `crates/flight-test/src/` ([flight.md](flight.md)) |
 | Control laws, mouse-aim, the virtual tester | `crates/fcs/src/` ([fcs.md](fcs.md)) |
-| Terrain patch re-centring | `packages/sim-host/src/terrain-follow.ts`, `sim.worker.ts` |
+| Terrain level re-centring | `packages/sim-host/src/terrain-follow.ts`, `sim.worker.ts` |
+| Main menu, first run, settings v2, the PWA and offline ([ADR-44](../adr/0044-app-flow-settings-pwa.md)) | `packages/ui/src/`, `packages/app-shell/src/`, `packages/platform-web/src/` |
 | C ABI | `crates/sim-wasm/src/abi.rs` |

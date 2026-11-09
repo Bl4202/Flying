@@ -11,9 +11,11 @@ and what each run only approximates, is ADR-28.
 | C | Laptop, RTX 5060 | High | `rtx5060-webgpu` | project owner |
 | D | Laptop, Chrome forced onto the integrated GPU | Minimum-class GPU | `rtx5060-igpu` | project owner |
 | L | Mac M4, WebGPU, the control-latency gate | Recommended | `m4-latency` | scripted by the maintainer (v0.1b) |
+| A-arena | Mac M4, WebGPU, the arena scenario in the cockpit and in the chase view (ADR-39 P1, P2) | Recommended | `a-arena-cockpit`, `a-arena-chase` | scripted by the maintainer (v0.1c) |
+| B-arena | Mac M4, `renderer=webgl2`, 4x CPU throttle, the arena scenario (P3) | Minimum, emulated | `b-arena` | scripted by the maintainer (v0.1c) |
 
-Reports go to `docs/exit/v0.0b/machines/<folder>/` for v0.0b, and to `docs/exit/v0.1b/machines/<folder>/`
-from v0.1b (the scripted route's default).
+Reports go to `docs/exit/v0.0b/machines/<folder>/` for v0.0b, to `docs/exit/v0.1b/machines/<folder>/` for v0.1b
+and to `docs/exit/v0.1c/machines/<folder>/` from v0.1c (the scripted route's default).
 
 ## Before any run
 
@@ -50,22 +52,40 @@ pnpm perf:local --name rtx5060-webgpu --class high
 pnpm perf:local --name rtx5060-igpu --class minimum          # run D, after the Windows setting
 pnpm perf:local --name m4-webgl2-throttled --class minimum --renderer webgl2 --throttle 4
 pnpm perf:local --name m4-latency --class recommended --latency 500   # the AC-58.3 gate (v0.1b)
+pnpm perf:local --name a-arena-cockpit --class recommended --scenario arena           # P1 (v0.1c)
+pnpm perf:local --name a-arena-chase --class recommended --scenario arena --camera chase   # P2
+pnpm perf:local --name b-arena --class minimum --scenario arena --renderer webgl2 --throttle 4   # P3
+```
+
+The arena runs need **mains power**: a headed run at 1920 x 1080 with 4x MSAA is the heaviest thing the game
+does, and a laptop on battery or in low-power mode is not a reference machine. `--base http://127.0.0.1:4173/Flying/`
+measures a local `pnpm preview` of the build (the summary records the base), for a run before staging has the
+build. The screenshot gates on the reference GPU (S1 to S5 on WebGPU, ADR-39) are a separate command:
+
+```sh
+pnpm build:web
+SCREENS_RENDERER=webgpu PW_CHANNEL=chrome CI=1 pnpm exec playwright test tests/e2e/horizon.spec.ts \
+  tests/e2e/hud.spec.ts tests/e2e/terrain.spec.ts --project=e2e --retries=0
 ```
 
 It opens real Chrome (headed), records the compat verdict, flies a scripted minute (from the air
 under Standard assist, `--spawn air`; the runway start is `--spawn runway`), takes the
 control-latency samples if `--latency N` is given, runs the full benchmark and PS-0 for 120 s, and
 writes `compat.json`, `flight.json`, `flight.png`, `latency.json`, `benchmark.json`,
-`perf-ps0.json` and `summary.md` under `docs/exit/v0.1b/machines/<name>/`. The summary lists each
+`perf-ps0.json` (`perf-arena.json` with `--scenario arena`, which skips the scripted minute unless
+`--fly` says otherwise) and `summary.md` under `docs/exit/v0.1c/machines/<name>/`. The summary lists each
 pass criterion. Options: `--base URL` (default the Pages build), `--seconds`, `--fly`, `--spawn`,
-`--latency`, `--renderer`, `--throttle`, `--headless`, `--out`. Leave the machine alone while it
+`--latency`, `--renderer`, `--throttle`, `--headless`, `--out`, `--scenario ps0|arena`, `--camera`, `--res`,
+`--quality`. Leave the machine alone while it
 runs and keep the game tab visible.
 
 ## Pass criteria, per run
 
 - The compat verdict is not fatal.
 - PS-0's strict gates hold for the whole 120 s: sim rate 60.0 +- 0.1 Hz, nothing dropped, tick cost
-  p99 at most 7.0 ms and average at most 4.0 ms, render CPU average at most 7.0 ms.
+  p99 at most 7.0 ms and average at most 4.0 ms, render CPU average at most 7.0 ms. An arena run adds the
+  frame interval's average (at most 16.7 ms) and p99 (at most 22.2 ms), the render CPU's p99 (11.0 ms), no
+  lost device and no main-thread task over 50 ms (`docs/perf/README.md`).
 - Frames render without errors or device loss (no console errors, no "graphics device was lost"
   notice).
 - At least 30 FPS on Minimum-class runs (B, D); on the others, the display rate (95 % of what
@@ -97,6 +117,30 @@ provisional and these reports are what they will be tuned against.
 | FPS is half the display rate | the page is on the wrong GPU, or the tab is throttled; read the `Device` row |
 | Compat verdict fatal, `SYS-103` | hardware acceleration is off, or the GPU is on the browser's blocklist (`chrome://gpu`) |
 | A "graphics device was lost" notice | note when it happened; the renderer rebuilds once, then falls back to WebGL2. Send the console log |
+
+## The owner's look-and-listen checklist (v0.1c, not blocking)
+
+The bots gate the exit; the owner's own look is recorded and does not block the tag. On the staging build,
+in a stable headed Chrome with sound on, note what you saw and heard:
+
+1. **First visit** (a fresh profile or a private window): the compat screen, then the first-run steps in
+   order (try it with the keyboard alone), then the main menu. A second visit goes straight to the menu.
+2. **Fly** in each arena (Rugged, Plain) and **Main menu**, then Fly again: a clean sortie each time.
+3. **Cockpit and chase** (`C`): head look (`,` `.` `ArrowUp` `ArrowDown`, `X` with the mouse), zoom (right
+   button), `/` to recentre. The chase camera should sit behind and above the aircraft at every speed.
+4. **The HUD**: readable on the runway, in the climb and on final; `I` for the detail levels, `-` and `=` for
+   brightness. Is anything out of place against the horizon?
+5. **The horizon**: climb to 10 km (the overlay with `?debug=1` shows the height) and look: the dip should
+   look right, the edge crisp, no gaps in the ground.
+6. **Sound**: engine at idle, military and afterburner (the light-off thump); wind rising with speed; the
+   stall horn, the over-G tone and PULL UP; the gear chime. Anything harsh, clipped or too quiet?
+7. **Settings** (all six tabs), a change that persists over a reload, export and import of the settings file.
+8. **Install** (the menu's Install button, or the browser's), then **offline**: close the tab, go offline
+   and open the installed app; it should start and fly. With a newer build deployed, "Update ready" appears in
+   the menu, never in flight.
+
+Record per item what you saw or heard and anything that surprised you. Gamepad and HOTAS look are not built;
+the owner's devices are not tested for the view keys.
 
 ## The owner's manual circuit (v0.1b, not blocking)
 

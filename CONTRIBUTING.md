@@ -42,7 +42,8 @@ them with the change that needs them.
 | `packages/sim-bridge/src/layout.gen.ts`, `tests/vectors/*.json` | `crates/sim-core/src/layout.rs` | `cargo xtask gen-abi` |
 | `content/schemas/*.schema.json` | `tools/content-bake/src/model.rs` | `cargo xtask content --schemas` |
 | `packages/render/shaders/gen/*` | `packages/render/shaders/*.wgsl` | `pnpm wgsl:gen` |
-| `tests/golden/determinism.json`, `tests/golden/flight60.json`, `tests/golden/circuit.json` | the simulation | `cargo xtask determinism --bless` (see below) |
+| `tests/golden/determinism.json`, `tests/golden/flight60.json`, `tests/golden/circuit.json`, `tests/golden/plain-circuit.json` | the simulation | `cargo xtask determinism --bless` (see below) |
+| `content-out/core.present.json` is **not** committed; `tests/vectors/present_bundle.json` and `tests/vectors/rugged_heights.bin` are | the presentation files, and the `rugged` arena's terrain | `cargo xtask gen-abi` |
 | `content/core/aero/kestrel.json` | `content/core/aero/kestrel_gen.rs` | `KESTREL_AERO_WRITE=1 cargo test -p content-bake --test kestrel_aero` |
 
 ## No allocation on the hot paths
@@ -51,6 +52,14 @@ The tick (`fg_step`, `fg_push_inputs`, the pointer getters) allocates nothing; a
 test fails the build if it does. The same discipline applies to the Sim Worker's loop, the Render
 Worker's frame and the input pump: allocate at start-up, reuse after. The statistics classes in
 `platform-web` (`Histogram`, the rings) exist so measuring does not allocate either.
+
+The frame is held to it by counting harnesses: the camera rig, the scene builder, the HUD build, the model
+rig and the input pump's `ViewInput` have garbage tests (`*.garbage.test.ts`: a handful of boxed numbers, no
+arrays or objects). **V8 boxes a number that crosses a call it does not inline**, and stops inlining early in a
+long function, so a hot loop should not call a small function per sample: do the work in a block function
+that keeps its state in locals, as `Biquad.processBlock` does. The audio kernel is measured with V8's
+sampling heap profiler in plain Node (`packages/audio/src/test-support/process-garbage.ts`, run by test A7):
+heap-growth harnesses cannot see a small allocation made on every call and are not enough for a kernel.
 
 ## TypeScript conventions
 
@@ -92,12 +101,32 @@ Gamepad and HOTAS defaults are tested only with stubbed devices; do not claim mo
 Name every vector with its frame: `posBF`, `velBody`, `dirECEF`. Mixed-frame arithmetic is a defect.
 Angles in radians internally; degrees only with a `_deg` suffix.
 
+## Presentation content and the screenshot gates
+
+The HUD layout, cockpit, exterior model, HUD stroke font and audio profile of an aircraft are content in
+`content/core/{hud,cockpit,models,fonts,audio}/`, validated by `content-bake` (file, JSON pointer and hint)
+and baked into `content-out/core.present.json`, **never into the sim pack**: the pack's SHA-256 is part of
+the state hash, so a presentation file that reached it would move every golden (a test pins the pack's
+bytes). Numbers that are design targets are marked `*target*` in the directory's `README.md`. Anything in
+`packages/render` or `packages/audio` that depends on the sim's state reads the snapshot, and nothing in
+presentation writes back to the sim.
+
+The picture is tested by measuring it, not by comparing it with a stored image: `?selftest=screens` renders
+fixture poses and the specs `tests/e2e/{horizon,terrain,hud}.spec.ts` check the horizon dip, curvature,
+HUD conformity and the terrain seams, each with a seeded render fault (`?debug=1&fault=...`) that must make
+its gate fail, so a gate is shown to be able to fail. A new render feature that changes what is on the
+screen gets a gate of this kind (see `docs/architecture/presentation.md`). There are no image goldens yet.
+CI draws on a software rasteriser, which is slow: specs that count frames to prove the threads independent
+use `CHEAP` (`res=480x270&quality=low`) and hold the renderer to a floor, not to a speed.
+
 ## Golden hashes
 
 `tests/golden/determinism.json` (the 10⁶-tick erratic run, air spawn, Standard assist),
 `tests/golden/flight60.json` (the 60 s scripted flight, `AC-11.7`, air spawn, Manual assist) and
-`tests/golden/circuit.json` (the virtual tester's circuit from the runway, Standard assist) hold the
-expected state hashes. Each suite names its session (spawn, assist, g-effects) in
+`tests/golden/circuit.json` (the virtual tester's circuit from the runway, Standard assist) and
+`tests/golden/plain-circuit.json` (the same circuit for two minutes over the `plain` arena, so the second
+arena's ground contact is covered; bless it alone with `--suite plain-circuit`) hold the expected state
+hashes. Each suite names its session (spawn, assist, g-effects) in
 `crates/xtask/src/determinism.rs`. A change that alters sim
 behaviour must re-bless them (`cargo xtask determinism --bless`), in a commit of its own whose
 message says why and which hash columns changed. Never bless to make CI green without

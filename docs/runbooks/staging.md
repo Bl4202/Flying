@@ -12,8 +12,9 @@ Staging URL: https://bl4202.github.io/Flying/ (GitHub Pages, project site for `B
 4. `staging-smoke` loads the live URL in Chromium and checks that the deployed build id equals the
    commit, that the page becomes cross-origin isolated, runs the threads build and reports the
    golden state hash (the `?selftest=1` page). It then opens the game itself and checks that the sim
-   ticks, frames are drawn and the picture is not blank. It polls for up to 3 minutes because Pages
-   can serve the previous deploy for a short while.
+   ticks, frames are drawn and the picture is not blank, then reloads it with the network off and
+   checks that the menu and a flight still start from the Service Worker's cache (AC-66.3). It polls
+   for up to 3 minutes because Pages can serve the previous deploy for a short while.
 
 Pull requests run everything except the two deploy jobs.
 
@@ -39,8 +40,25 @@ same-origin response (ADR-22). So:
 
 To check by hand, open the staging URL with `?selftest=1` and read the status table:
 `Cross-origin isolated: true`, `Mode: full`, `WASM variant: threads`, `Build` equal to the commit
-SHA. The plain URL starts the game (a compat screen first, on the first visit); `?debug=1` adds the
+SHA. The plain URL starts the game: the compat screen on the first visit, then the **first-run setup**
+(control device, a quick joystick calibration, assist, comfort and accessibility, the photosensitivity
+notice) and the **main menu**; later visits open the main menu. **Fly** starts the runway start in the
+chosen arena. `?fly=1` skips the setup and the menu (`?perf=` and `?script=` imply it); `?debug=1` adds the
 overlay, whose `Mode` row reads `threads · shared · atomics` when isolated.
+
+## Install, offline and updates (v0.1c, ADR-44)
+
+The app is installable (a web app manifest with `id`, `start_url`, `scope` and three icons; the menu's
+**Install** button appears where the browser offers it and hides once installed). After one online visit it
+starts and flies **offline**: the Service Worker serves the page from the cache of the build that is running
+(cache-first for navigations; the network only on a first visit), and it never writes a newer page into a
+running build's cache. A newer build installs in the background and waits. On the next boot the **main menu**
+shows "Update ready: reload"; clicking it makes the waiting worker take over (`skip-waiting`, the one place
+ADR-22's "never `skipWaiting`" gives way) and reloads the page. Never in flight.
+
+To check by hand: open the staging URL, close DevTools' network to *Offline*, reload. If the compat screen,
+the menu and a flight come back, the shell is cached. `tests/e2e/offline.spec.ts` and `staging-smoke` do this
+in CI.
 
 ## Rolling back
 

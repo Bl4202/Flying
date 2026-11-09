@@ -70,6 +70,9 @@ or a message.
 - The pump keeps the player's standing requests: the **assist level** (absolute), the **spawn** for
   the next respawn, and `spawn_ack`. When `spawn_seq` changes in the snapshot it sets the throttle
   lever to the aircraft's throttle and acknowledges, which releases the throttle the core held.
+  `newSortie()` forgets the last sortie's acknowledgement when Fly starts a fresh core (which numbers
+  its spawns from 1 again); the pump also adopts the idle core's `spawn_seq` of 0 between sorties, so the
+  reset is the second guard and the end-to-end second-Fly test cannot tell it from the first.
 - The `menu` context centres the sticks, holds the throttle and ignores the flight buttons; pause
   still works. A pad that goes away reads neutral at once (the throttle holds) and the profile
   re-binds within a quarter of a second of its return (AC-58.6).
@@ -81,11 +84,42 @@ A **scripted pilot** (`?script=circuit`, the erratic script of the perf runs) ha
 takes the script's frame and then the host's, the last winning, so neutral heartbeats would
 override it.
 
+## The view (v0.1c, ADR-41)
+
+Where the pilot looks and what the HUD shows are the player's, not the aircraft's, so **none of the view
+actions reach the input frame**: the sim does not know where the pilot looks, and determinism does not
+depend on it. The pump fills a `ViewInput` each update (look rates, running totals of mouse look, held zoom and
+free look, the camera and recentre requests, HUD declutter and brightness steps) without allocating, because
+`onAction` fires on presses only; `view-controller.ts` keeps the state (the camera, the declutter level) and
+the app shell writes it to the 64-byte view channel the render worker reads
+([runtime.md](runtime.md)).
+
+| Action | Default | Does |
+|---|---|---|
+| `flight.camera_cycle` | `C` | cockpit and chase, in turn (a gamepad's right stick press does the same) |
+| `flight.free_look` | `X`, held | the mouse moves the head, or orbits the chase camera |
+| `flight.zoom` | right mouse button, held | the cockpit's field of view narrows to 30 degrees |
+| `flight.look_up`, `look_down` | `ArrowUp`, `ArrowDown`, held | the head turns up and down (90 degrees a second) |
+| `flight.look_left`, `look_right` | `,` and `.`, held | the head turns left and right |
+| `flight.look_recentre` | `/` | the head returns to the front |
+| `flight.hud_declutter` | `I` | the HUD's three detail levels in turn |
+| `flight.hud_brightness_down`, `up` | `-` and `=` | the HUD's brightness |
+
+With the mouse mode off the mouse looks round; the right mouse button works without the pointer lock (the left
+click that asks for the lock is still not a control). These keys avoid `CTRL_SHORTCUTS` and the function
+keys. GDD 58.5's `C` for free look and `1` to `4` for the cameras change: Ctrl is throttle-down, and Ctrl and a
+digit switches browser tabs and cannot be blocked (a GDD clarification, 0.2.3).
+
+**Existing profiles.** The action catalogue is versioned (`ACTION_CATALOGUE_VERSION`, stored as `catalogue`
+in a profile; none means 1, the v0.1b catalogue). `migrateProfile` gives a stored custom profile the default
+bindings of the actions added since its version where those inputs are free, and leaves an action unbound,
+with a note in the editor, where they are not. A profile that already binds `C` to something keeps it.
+
 ## Settings and profiles in the browser
 
 | Key (key-value store) | Contents |
 |---|---|
-| `settings/1` | assist, g-effects, effect strength, respawn spawn, mouse mode, sensitivity, spring, ground-collision avoidance (omitted from the menu) |
+| `settings/2` | v1's fields (assist, g-effects, effect strength, respawn spawn, mouse mode, sensitivity, spring, ground-collision avoidance) and, new in v0.1c, the arena, camera, field of view, shake, reduced motion, the HUD (palette, brightness, declutter, overlay scale), video (renderer, preset, resolution scale) and audio (the four buses and mute-when-hidden); `migrateSettings` reads `settings/1` and keeps every field (AC-53.6); export and import are `flying-settings.json`, byte for byte |
 | `controls/profile/<id>`, an index, `controls/active` | the player's profiles in canonical JSON |
 
 `?spawn=`, `?assist=` and `?g=` override the stored settings for one visit; the menu shows the
