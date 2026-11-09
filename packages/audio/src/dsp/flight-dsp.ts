@@ -27,7 +27,7 @@
  */
 import { WARNING } from '@flying/sim-bridge/warnings';
 import type { AudioProfile } from '../profile.ts';
-import { blockCoefficient, Biquad, dbToLin, noise, noiseState } from './primitives.ts';
+import { blockCoefficient, Biquad, dbToLin, fillNoise5, noiseState } from './primitives.ts';
 
 /** Indices into `FlightDsp.params`: the state the page feeds the synthesis. */
 export const P = {
@@ -177,7 +177,16 @@ export class FlightDsp {
   readonly #buffetLow: Biquad;
   readonly #tyreLow: Biquad;
   readonly #canopy: Biquad;
-  // Per-block scratch.
+  // Per-block scratch: the noise draws in five planes (engine, hiss, wind, tyres, buffet), filtered
+  // in place, and the outside mix before and after the canopy.
+  readonly #planes = new Float64Array(MAX_BLOCK * 5);
+  readonly #white = this.#planes.subarray(0, MAX_BLOCK);
+  readonly #hiss = this.#planes.subarray(MAX_BLOCK, 2 * MAX_BLOCK);
+  readonly #windN = this.#planes.subarray(2 * MAX_BLOCK, 3 * MAX_BLOCK);
+  readonly #tyreN = this.#planes.subarray(3 * MAX_BLOCK, 4 * MAX_BLOCK);
+  readonly #buffetN = this.#planes.subarray(4 * MAX_BLOCK, 5 * MAX_BLOCK);
+  readonly #outside = new Float64Array(MAX_BLOCK);
+  readonly #canopied = new Float64Array(MAX_BLOCK);
   readonly #aircraft = new Float32Array(MAX_BLOCK);
   readonly #harmonics: Float64Array;
   readonly #rpmCurve: readonly (readonly [number, number])[];
@@ -416,11 +425,32 @@ export class FlightDsp {
     const cpStep = (cockpit1 - cockpit0) / n;
     let dk = duckNow;
     const dkStep = (duck1 - duckNow) / n;
-    const nz = this.#noise;
     const aircraft = this.#aircraft;
+    const white = this.#white;
+    const hissN = this.#hiss;
+    const windN = this.#windN;
+    const tyreN = this.#tyreN;
+    const buffetN = this.#buffetN;
+    const outside = this.#outside;
+    const canopied = this.#canopied;
     const formants = this.#formants;
     const nf = formants.length;
 
+    // The block is made in passes over its samples, each voice's filters in one call a block rather
+    // than one a sample: V8 does not inline everything into a function this long, and a number
+    // returned from a call it does not inline is boxed on the heap (A7). The arithmetic, and so the
+    // sound, is the same sample for sample.
+    // Pass 1: the noise, five draws a sample in the order engine, hiss, wind, tyres, buffet, then
+    // each voice's filters.
+    fillNoise5(this.#noise, this.#planes, MAX_BLOCK, n);
+    this.#roarLow.processBlock(white, white, n);
+    for (let f = 0; f < nf; f++) (formants[f] as Biquad).processBlock(white, white, n);
+    this.#hissHigh.processBlock(hissN, hissN, n);
+    this.#windBand.processBlock(windN, windN, n);
+    this.#tyreLow.processBlock(tyreN, tyreN, n);
+    this.#buffetLow.processBlock(buffetN, buffetN, n);
+
+    // Pass 2: the engine, wind, tyres and buffet, ducked, into the outside mix.
     for (let i = 0; i < n; i++) {
       // Engine.
       phShaft += stepShaft;
@@ -428,14 +458,11 @@ export class FlightDsp {
       phB2 += stepB * 2;
       phB3 += stepB * 3;
       phB4 += stepB * 4;
-      const white = noise(nz);
       let tonal =
         bladeAmp *
           (h1 * Math.sin(phB1) + h2 * Math.sin(phB2) + h3 * Math.sin(phB3) + h4 * Math.sin(phB4)) +
         shaftAmp * Math.sin(phShaft);
-      let roar = this.#roarLow.process(white);
-      for (let f = 0; f < nf; f++) roar = (formants[f] as Biquad).process(roar);
-      tonal += roarAmp * roar + hissAmp * this.#hissHigh.process(noise(nz));
+      tonal += roarAmp * (white[i] as number) + hissAmp * (hissN[i] as number);
       thumpPh += thumpStep;
       thumpEnv *= thumpDecay;
       tonal += thumpAmp * thumpEnv * Math.sin(thumpPh);
@@ -443,21 +470,28 @@ export class FlightDsp {
       eg += egStep;
 
       // Wind, tyres and buffet.
-      const wind = wg * this.#windBand.process(noise(nz));
+      const wind = wg * (windN[i] as number);
       wg += wgStep;
-      const tyre = tg * this.#tyreLow.process(noise(nz));
+      const tyre = tg * (tyreN[i] as number);
       tg += tgStep;
       buffetPh += buffetStep;
-      const buffet = bg * this.#buffetLow.process(noise(nz)) * (0.6 + 0.4 * Math.sin(buffetPh));
+      const buffet = bg * (buffetN[i] as number) * (0.6 + 0.4 * Math.sin(buffetPh));
       bg += bgStep;
 
-      // The outside, ducked, then through the canopy in the cockpit.
-      const outside = (engine + wind + tyre + buffet) * dk;
+      // The outside, ducked.
+      outside[i] = (engine + wind + tyre + buffet) * dk;
       dk += dkStep;
-      const filtered = this.#canopy.process(outside) * canopyAtten;
+    }
+
+    // Pass 3: the canopy.
+    this.#canopy.processBlock(outside, canopied, n);
+
+    // Pass 4: the cockpit's hum and the cabin mix, the warning tone, the master and the limiter.
+    for (let i = 0; i < n; i++) {
+      const filtered = (canopied[i] as number) * canopyAtten;
       humPh += humStep;
       const cabin = filtered + humAmp * (Math.sin(humPh) + 0.3 * Math.sin(humPh * 2.01));
-      const bare = outside * chaseGain;
+      const bare = (outside[i] as number) * chaseGain;
       const mixed = bare + (cabin - bare) * cp;
       cp += cpStep;
 
@@ -505,8 +539,15 @@ export class FlightDsp {
       }
       aircraft[i] = mixed * aircraftBus;
 
-      // Master, limiter.
-      const y = softLimit((aircraft[i] as number) + warn * warningsBus);
+      // Master, limiter (`softLimit`, written out: it is called a sample at a time).
+      const x = (aircraft[i] as number) + warn * warningsBus;
+      const ax = Math.abs(x);
+      let y = x;
+      if (ax > LIMITER_KNEE) {
+        const room = CEILING - LIMITER_KNEE;
+        const limited = LIMITER_KNEE + room * Math.tanh((ax - LIMITER_KNEE) / room);
+        y = x < 0 ? -limited : limited;
+      }
       left[i] = y;
       right[i] = y;
     }
@@ -529,13 +570,15 @@ export class FlightDsp {
 /** The output ceiling: 0.85 is -1.4 dBFS, so the true peak stays under -1 dBTP. */
 export const CEILING = 0.85;
 
+/** Where the soft limiter starts to bend. */
+const LIMITER_KNEE = 0.5;
+
 /** A soft limiter: linear below the knee, saturating smoothly to the ceiling above it. */
 export function softLimit(x: number): number {
   const ax = Math.abs(x);
-  const knee = 0.5;
-  if (ax <= knee) return x;
-  const over = ax - knee;
-  const room = CEILING - knee;
-  const y = knee + room * Math.tanh(over / room);
+  if (ax <= LIMITER_KNEE) return x;
+  const over = ax - LIMITER_KNEE;
+  const room = CEILING - LIMITER_KNEE;
+  const y = LIMITER_KNEE + room * Math.tanh(over / room);
   return x < 0 ? -y : y;
 }

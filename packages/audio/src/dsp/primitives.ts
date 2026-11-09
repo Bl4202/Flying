@@ -29,6 +29,29 @@ export function noise(state: Uint32Array): number {
   return (x >>> 0) / 0x8000_0000 - 1;
 }
 
+/**
+ * Draws `n` times five numbers from `state`, in the order `noise` would give them, into five planes
+ * of one array: draw `k` of sample `i` goes to `planes[k * stride + i]`. A block of noise made in one
+ * call, so no draw is returned as a number from a call inside a loop (see `Biquad.processBlock`).
+ */
+export function fillNoise5(
+  state: Uint32Array,
+  planes: Float64Array,
+  stride: number,
+  n: number,
+): void {
+  let x = state[0] as number;
+  for (let i = 0; i < n; i++) {
+    for (let k = 0; k < 5; k++) {
+      x ^= x << 13;
+      x ^= x >>> 17;
+      x ^= x << 5;
+      planes[k * stride + i] = (x >>> 0) / 0x8000_0000 - 1;
+    }
+  }
+  state[0] = x;
+}
+
 /** A noise state with a non-zero seed. */
 export function noiseState(seed: number): Uint32Array {
   const s = new Uint32Array(1);
@@ -119,6 +142,33 @@ export class Biquad {
     z[0] = (c[1] as number) * x - (c[3] as number) * y + (z[1] as number);
     z[1] = (c[2] as number) * x - (c[4] as number) * y;
     return y;
+  }
+
+  /**
+   * Filters the first `n` samples of `input` into `output` (they may be the same array). The same
+   * arithmetic as `process`, sample for sample, with the delay registers held in locals: one call
+   * a block instead of one a sample, so no number crosses a call inside the loop (V8 boxes such a
+   * number on the heap when it does not inline the call).
+   */
+  processBlock(input: Float64Array, output: Float64Array, n: number): void {
+    const c = this.c;
+    const z = this.z;
+    const b0 = c[0] as number;
+    const b1 = c[1] as number;
+    const b2 = c[2] as number;
+    const a1 = c[3] as number;
+    const a2 = c[4] as number;
+    let z0 = z[0] as number;
+    let z1 = z[1] as number;
+    for (let i = 0; i < n; i++) {
+      const x = input[i] as number;
+      const y = b0 * x + z0;
+      z0 = b1 * x - a1 * y + z1;
+      z1 = b2 * x - a2 * y;
+      output[i] = y;
+    }
+    z[0] = z0;
+    z[1] = z1;
   }
 
   /** Clears the state. */
