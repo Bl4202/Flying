@@ -1,6 +1,6 @@
 # ADR-44: Application flow, first run, the main menu, settings v2, the PWA and offline
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-11-05
 - **Affects:** ADR-19, ADR-22 (amended in the PWA part), ADR-37; GDD 53, 57.4, 59, 61.12;

@@ -4,8 +4,8 @@
 | | |
 |---|---|
 | **Working Title** | TBD |
-| **Document Version** | 0.2.2 (Draft 2 — technical expansion of `GDD_Outline.md`, retargeted to run in a web browser) |
-| **Document Date** | 2026-10-07 |
+| **Document Version** | 0.2.3 (Draft 2 — technical expansion of `GDD_Outline.md`, retargeted to run in a web browser) |
+| **Document Date** | 2026-11-08 |
 | **Primary Platform** | Desktop web browser (installable PWA). WebGPU renderer, WebAssembly simulation core. |
 | **Multiplayer** | LAN / VLAN / direct-connect co-op and 1v1 over WebRTC |
 | **World** | Real-world Earth geography (WGS84), fictional factions |
@@ -935,6 +935,8 @@ The renderer MUST reproduce the dip angle (a visible horizon that sits 3.2° bel
 ### 7.4.4 Valid extent of a BF
 
 A BF is valid within 1 000 km of its anchor. Across that range the 32-bit-render concern is handled by camera-relative rendering (§0.3.3). The ellipsoid is *not* replaced by a sphere anywhere in the sim; a sphere-of-curvature approximation differs from the ellipsoid by ≈ 66 m in height at 500 km and would break terrain collision at coastlines. The campaign (§35) creates a new BF per Operation.
+
+*Clarified in 0.2.3 (ADR-40):* the render-only terrain level L3 (16 km posts, 2 048 km across) has corners up to 1 448 km from the anchor, past the 1 000 km above. It is drawn for the horizon and read for nothing: physics, sensors and AI read the sim's terrain inside the valid extent, and above about 20 km of height, where no level reaches the horizon, the sky pass's analytic globe forms it.
 
 ## 7.5 Altitude definitions
 
@@ -6703,6 +6705,8 @@ Events: `aircraft_lost ×2 @ node_defend`, `op_attack{node=…, type=sead}`, `ne
 - Works from a cold cache (network) and fully offline (cache/OPFS/host relay).
 - Sim consistency: collision, radar and placement use a **deterministic sim terrain layer** that every participant has (§44.6).
 
+*Clarified in 0.2.3 (ADR-40, ADR-43): what "basic" means in v0.1c.* Before streaming (v0.2a) the terrain is **four nested levels filled from the sim's own terrain function** (`ground_z_bf`, curvature included) at 250 m, 1 km, 4 km and 16 km posts, covering 32, 128, 512 and 2 048 km, each re-centred as the aircraft moves (snapped to the next coarser grid, one level per check), with a hole where the finer level lies and skirts down from its outer and hole edges so no crack can show sky, plus an **analytic globe** below the arena's lowest terrain that guarantees the horizon's dip at any height. Nothing is fetched. The two procedural arenas (`rugged`, the v0.1b world, and `plain`, a 40 m plain with gentle noise and the same runway) are static test content, which NN-1 allows so long as nothing relies on static maps.
+
 ## 44.2 Streaming levels (outline §81)
 
 | Level | Used for | Quadtree levels | Source of data | Typical residency |
@@ -8104,6 +8108,8 @@ Mouse/keyboard (Tab order, arrow navigation in grids, type-ahead), **gamepad** (
 - **Help:** searchable in-game encyclopaedia (aircraft, weapons, systems, brevity codes, glossary — Appendix G), control cheat sheet, links to the community docs.
 - **Hardcore opt-outs:** all assists, hints and overlays can be disabled.
 
+*Clarified in 0.2.3 (ADR-44):* in v0.1c the first run is the compat check, a short setup (control device, a quick joystick calibration, assist, comfort and accessibility basics, the photosensitivity notice of §57.4) and then the **main menu**, which later visits open directly; **Fly** starts the runway start in the chosen arena. Every step is keyboard-operable, skippable and repeatable from Settings ("Run setup again"). The First Flight mission waits for the mission chapters (§25); the setup does not end in a mission.
+
 ## 53.12 Loading and startup experience
 
 | Phase | Target |
@@ -8156,6 +8162,8 @@ u = tan(az) / tan(TFOV_h / 2),   v = tan(el) / tan(TFOV_v / 2)       az = atan2(
 5. **Resolution independence:** all symbols are authored in milliradians/angle units; text height is set in mrad (default 12 mrad ≈ 0.69°) to remain legible at any resolution.
 6. **Failure/degradation rendering:** flicker, partial blanking, fading and "FAIL" annunciators driven by the damage and electrical models (§18, §16.10), plus jitter under extreme vibration (G/buffet) — accessibility setting reduces jitter (§57).
 
+*Clarified in 0.2.3 (ADR-41, amending ADR-20):* v0.1c draws the HUD **directly in the main pass, as directions at infinity**, not into a render target: every symbol is a segment in the HUD's body-fixed tangent plane `(u, v) = (tan az, tan el)`, projected with `w = 0` and expanded into an anti-aliased capsule of constant pixel width, so the symbols are collimated by construction and the gnomonic plane keeps straight lines straight. The glass-aperture mask is analytic, per fragment: the ray from the current eye is intersected with the glass rectangle of the cockpit data, and the eye-box fade follows the text above. Text is an **original single-stroke font** (`stroke_font/1`, A.1) drawn by the same segment pipeline, so there is no glyph atlas or MSDF tool. The 2048 x 2048 RGBA16F target is deferred to the MFDs (M3), where a texture is needed.
+
 ## 54.3 Core symbology (all aircraft)
 
 | Element | Definition / formula | Notes |
@@ -8175,6 +8183,8 @@ u = tan(az) / tan(TFOV_h / 2),   v = tan(el) / tan(TFOV_v / 2)       az = atan2(
 | **Steering cue** | Waypoint steering line/diamond, time-to-go, distance | From the active route (§50) |
 | **Objective cue** | Optional marker of the current primary objective's direction/distance (hidden in realistic modes) | Bearing & range text |
 | **Autopilot modes** | Engaged lateral/vertical/speed modes and selected values | §50.4 |
+
+*Clarified in 0.2.3 (ADR-41):* the speed tape shows the Mach number from M 0.6; radar altitude (`R`) replaces the barometric one below 1 500 ft above ground; the G meter turns amber at 85 % and red at 100 % of `n_max` for the present configuration and is then also **boxed and flashing**, so colour is never the only cue (§57.1); the AoA bracket shows with the gear down, around the on-speed angle in the aircraft's data.
 
 ## 54.4 Gun sight and ranging
 
@@ -8260,6 +8270,8 @@ Message rules: priority queue; maximum 3 simultaneous visible messages (the rest
 
 All camera parameters follow critically-damped springs (time constant tuned per camera); camera positions are clamped to remain 1.5 m above terrain/ship decks to avoid clipping; occlusion avoidance for third-person/chase (raycast against terrain/buildings with spring arm). Camera switching is instantaneous with a short cross-fade (80 ms) for chase/3rd-person transitions. Horizon-level (roll-stabilised) option for chase/free. Camera shake sources: buffet (AoA), gunfire, explosions, ground roll, afterburner; magnitude scaled by user setting (0–100 %, §57).
 
+*Clarified in 0.2.3 (ADR-41):* the chase camera's height is 20 % of its distance (45 m behind, 9 m above by default; the 25 % above is the third-person camera's), its lag is a first-order lag on the camera's **offset from the aircraft** (0.8 s; a lag on its absolute position would leave it `speed x lag` behind), its field of view widens by 8 degrees towards the top speed, and its near plane is 0.5 m (§44.8's 5 m would clip the ground when the camera is held 1.5 m above it). The cockpit near plane is 0.3 m. Both cameras keep the eye at least 1.5 m above the terrain (AC-54.6); shake is at most 0.5 degrees with reduced motion (AC-57.3).
+
 ## 54.12 Behaviour by avionics, realism and damage
 
 - HUD content is built from a layer list declared in `hud_layout.json` (data): each element has `required_systems` (e.g. radar for target box, INS for FPM), `min_tier` (A/B/C), and `realism_gate` (e.g. `objective_cue: easy-only`). Missing systems hide elements or substitute degraded variants (FPM without INS → "attitude only").
@@ -8295,6 +8307,8 @@ Layers are implemented as a registry of Rust/TS "HUD element" types, so new airc
 - `AC-54.8` Layout validator accepts all shipped `hud_layout.json` files and rejects a corpus of 40 invalid layouts with precise messages.
 
 ---
+
+*Clarified in 0.2.3 (ADR-39 S4):* AC-54.1 compares the HUD's 0-degree line with the rendered horizon **plus the analytic dip** (about 0.18 degrees at 30 m), since the HUD's zero line is the true horizontal at infinity and the rendered terrain edge lies at the dip below it.
 
 # 55. TACTICAL MAP
 
@@ -8462,6 +8476,8 @@ Team knowledge is merged through the datalink model (fused tracks from teammates
 | Loudness | Target −16 LUFS integrated (game mix), true peak ≤ −1 dBTP; a final soft limiter; user dynamic-range presets (§56.10) |
 | Autoplay policy | The `AudioContext` is created/resumed on the first user gesture (the main-menu "Fly" click); a "click to enable audio" fallback is shown if suspended |
 
+*Clarified in 0.2.3 (ADR-42):* v0.1c's synthesis is **TypeScript in an AudioWorklet**, not Rust and WASM: at this voice count it is cheap, the kernels are pure functions over preallocated blocks, and a port is mechanical. The state reaches it as **k-rate AudioParams** set from the main thread's status feed at the animation rate (a bitmask is set, not ramped); the shared ring of this section arrives with spatial emitters. The kernel makes its block in passes and allocates nothing but a boxed number or two (ADR-39 test A7).
+
 ## 56.3 Sound design inventory (outline §100)
 
 | Category | Content | Method |
@@ -8568,6 +8584,8 @@ All cues respect mute filters (RWR volume/mute, threat-only filters, §16.10), a
 - Launch: English voice (brevity codes are English by convention). Text subtitles localised from M5; voice localisation for later languages optional (callsigns and numbers per language).
 - Warnings can be spoken in the player's language (GPWS-type voice set), configurable.
 - Placeholder rule: a missing voice clip falls back to a subtitle + non-speech tone, never silent.
+
+*Clarified in 0.2.3 (ADR-42):* until voice lines exist (M3), the warnings are **tones and HUD text** (stall horn, over-G tone, PULL UP warble with its text, gear and caution chimes), the placeholder rule of this section.
 
 ## 56.10 Mixing, buses, and options
 
@@ -8806,6 +8824,8 @@ Defaults:
 | Pause | `Esc` | Start | Button |
 
 *Gamepad scheme:* modifier layers (`LB` held = secondary function set), radial menus for infrequent actions, auto-managed countermeasures if enabled. *HOTAS scheme:* ships with named presets for common device families (identified by `vendorId:productId` and `id` strings); unknown devices use the generic wizard ("move the axis you want to assign").
+
+*Clarified in 0.2.3 (ADR-41):* the view actions are `C` camera cycle (cockpit and chase), `X` held for free look (the mouse moves the head, or orbits the chase camera), the right mouse button held for zoom, `ArrowUp` and `ArrowDown` to look up and down, `,` and `.` to look left and right, `/` to recentre, `I` for the HUD's three detail levels and `-` and `=` for its brightness; a gamepad's right-stick press cycles the camera. The `C` for free look and the digit keys for the cameras above change, because Ctrl is throttle-down and Ctrl and a digit switches browser tabs, which a page cannot block. View actions never enter the input frame. A stored profile gains the new actions' default bindings where those inputs are free.
 
 ## 58.6 Binding editor, profiles and conflict handling
 
@@ -9218,6 +9238,8 @@ Deterministic scenes (fixed seed, camera, time, weather) render at 1920 × 1080 
 
 Differences are triaged with image diffs; goldens are per GPU vendor family (tolerance tuned) because floating-point/filtering differences are expected.
 
+*Clarified in 0.2.3 (ADR-39):* v0.1c's screenshot tests are **measurements**, not image comparisons: 1280 x 720 images from a self-test page (`?selftest=screens`) that fills the terrain levels from the real sim, checked for the horizon's dip against the analytic value (0.05 degrees), its curvature (0.5 px RMS), the HUD's zero line against the horizon (0.1 degrees) and the absence of cracks at the level seams, each with a seeded fault that must make its gate fail. They run in CI on the software rasteriser and on a reference machine's GPU. SSIM goldens per platform, at the size above, are not built yet.
+
 ## 60.11 Network performance (outline §112)
 
 Network synchronisation prioritises important entities and never transmits everything at the maximum rate. The mechanism is specified in §33.5; the budgets and tests are:
@@ -9538,6 +9560,8 @@ Test data: fixed seeds, a minimal GeoPack (3 regions), reference aircraft (Kestr
 - **Dedicated server:** container image of the native sim-core with a WebRTC/WebSocket gateway (§33.10); health endpoint, metrics, structured logs; configuration via env/JSON; horizontal scaling by session (no shared state).
 - **Rollbacks:** previous versions remain available via versioned URLs; content/datapacks are versioned independently.
 - **Environments:** `dev` (hot reload), `staging` (CI deploys), `prod`.
+
+*Clarified in 0.2.3 (ADR-44, amending ADR-22):* a new build **updates on the player's request**: it installs in the background and waits, the main menu shows "Update ready: reload", and clicking it makes the waiting worker take over (`skipWaiting` only on that request) and reloads the page; never in flight. Navigations are served cache-first from the running build's cache and a fresh page is never written into it.
 
 ## 61.13 Offline operation (outline §123)
 
@@ -10722,7 +10746,9 @@ This appendix is the normative index of data formats. Schemas are written in a T
 | `session_config/1` | §6.3 | Sandbox/lobby configuration |
 | `loadout/1` | A.9, §14.8 | |
 | `target_def/1` | A.10, §47.6 | |
-| `hud/1`, `cockpit_layout/1` | §54.13, A.11 | |
+| `hud/1`, `cockpit_layout/1` | §54.13, A.11 | Baked into the presentation bundle (ADR-43), not the sim pack |
+| `model/1` | ADR-41, ADR-43 | The procedural exterior model of an aircraft (stations, planforms, canopy, parts bound to snapshot channels); presentation bundle |
+| `stroke_font/1` | ADR-41 | The HUD's single-stroke font (`core:fnt/hudstroke`); presentation bundle |
 | `audio_profile/1` | A.12, §56.3 | |
 | `difficulty_preset/1`, `sandbox_preset/1` | §59.3, §30.3 | |
 | `controls/1` | §58.6 | |
@@ -10792,6 +10818,8 @@ normative for the fields that exist; the interface above remains the target. Dif
 - `aero.n_max_by_config` is present (`gear` and `flaps`, the limit with either out).
 - `fcs.gains_ref` is present and names an `fcs/1` entry (A.1); `fcs.actuators.gear` carries `transit_s` (the gear moves at that rate, with no lag).
 - Envelope points with `requires: "gear"` are no longer deferred: `to_roll` and `ldg_roll` are flown (C.8). A model without a braked main leg still defers them.
+
+*Clarified in 0.2.3 (ADR-43):* the `cockpit?`, `hud?` and `audio?` references and the `model` block of this schema live in the **presentation bundle** (`core.present.json`), which maps `core:ac/kestrel` to its `core:hud/`, `core:cpt/`, `core:aud/`, `core:mdl/` and font ids; none of it is in the sim pack, whose hash is part of the state hash.
 
 ## A.3 `engine/1`
 
@@ -10936,6 +10964,8 @@ interface CockpitLayout { schema: "cockpit_layout/1"; id: Ref<CockpitLayout>; ti
   instruments: { kind: "airspeed"|"altimeter"|"attitude"|"compass"|"fuel"|"rpm"|"gear_lights"|"warning_panel"; node: string; channel: string }[];
   switches?: { id: string; node: string; action: string }[]; mirrors?: { node: string; fov_deg: number }[]; canopy_node: string }
 ```
+
+*Clarified in 0.2.3 (ADR-41, ADR-43):* the cockpit is procedural, so `hud_glass` gives the four corners of the combiner glass in metres in body axes (`corners_m[4]`, `tfov_deg`, `eye_box_mm`) in place of a mesh `node`; `eye_point_m`, `head_limits_deg {yaw, pitch_up, pitch_down}` and the canopy bows, glare shield and panel boxes are as in the subset of this schema the Kestrel uses, and every cockpit surface is at least 0.35 m from the design eye.
 
 ## A.12 `audio_profile/1`
 
@@ -11881,7 +11911,7 @@ Each template has ≥ 6 weighted variants and urgency variants (calm/urgent/pani
 | Format | Single Markdown file (`GDD.md`), headings per the table of contents; Appendices A–I |
 | Roadmap companion | `roadmap.md` (version plan v0.0 → v1.0) |
 | Version scheme | `MAJOR.MINOR.PATCH`: MAJOR = change of vision/platform; MINOR = new or changed chapters/ADRs; PATCH = corrections/clarifications |
-| Current version | 0.2.2 (v0.1b control and ground clarifications) |
+| Current version | 0.2.3 (v0.1c presentation clarifications) |
 
 ## I.2 Change log
 
@@ -11891,6 +11921,7 @@ Each template has ≥ 6 weighted variants and urgency variants (calm/urgent/pani
 | 0.2.0 | Browser-native specification: WebGPU/WebGL2 renderer, Rust→WASM Sim Core, worker topology, WebRTC networking, OPFS/IndexedDB storage; all 71 chapters and Appendices A–I written; replay decision aligned with ADR-09 (snapshot-based); Kestrel reference data computed |
 | 0.2.1 | Clarifications from building the v0.1a flight model (ADR-29, ADR-30, ADR-31): §11.2.4 sign of the side-force term of `Z`; §11.6.3 post-stall blend is a data-driven smoothstep; §11.19 sustained load factor is wind-axis, `mach` and `requires` on envelope points; §61.5 Aero seam wired; A.2 and A.3 notes on what `aircraft/1` and `engine/1` implement now; C.3 spool figures against §11.8.2; C.7 rate of climb is the maximum 1 g P_s; C.8 altitude datum and 0.01 Mach floor; C.9 envelope fields; OQ-01 closed. No gate or target changed |
 | 0.2.2 | Clarifications from building the v0.1b control and ground work (ADR-32 to ADR-38): §11.11.2 the control laws are incremental dynamic inversion; §11.11.3 Full Assist is a bank-angle command and the recovery button's behaviour; §11.13.2 tanh-regularised, additive friction; §11.13.3 how the touchdown thresholds are judged, and that they govern over §18.8.1; §11.13.4 the debounce; §11.14 `n_z` at the CG, the dial, the AC-11.9 figures; §11.15 lateral tables against α, `C_nβ,dyn` and no break-up before §18; §48.2 Runway hot as built; §54.9 the Auto-GCAS timing conflict; §58.2 InputFrame v3; §58.4 mouse-aim runs in the sim; AC-58.3 measured from the source event; AC-58.4 scaled to the aircraft (owner decision, ADR-33 amendment 1); A.1 `fcs/1`; A.2 gear, contacts, `n_max_by_config`, `fcs.gains_ref`; C.8 the ground-roll segments and the C.7/C.8 landing-roll note (target kept). The header version, left at 0.2.0 in 0.2.1, is corrected. No gate or target changed except as the owner decided (AC-58.4) |
+| 0.2.3 | Clarifications from building the v0.1c presentation work (ADR-39 to ADR-44): §7.4.4 the render-only level L3 passes the 1 000 km extent; §44 "basic" is four levels from the sim's terrain function plus an analytic globe; §53.11 the first run ends at the main menu and the runway start; §54.2 the HUD is drawn directly as directions at infinity with an analytic aperture and a stroke font, the render target deferred to the MFDs; AC-54.1 compares against the horizon plus its dip; §54.3 the Mach rule, the G meter's shape cue, radar altitude and the AoA bracket; §54.11 the chase camera's height, lag and near plane; §56.2 the worklet is TypeScript and the state travels as AudioParams; §56.9 tones stand in for voice; §58.5 the view keys; §60.10 the screenshot tests are measurements at 1280 x 720, SSIM goldens not built; §61.12 update on request; A.1 `model/1` and `stroke_font/1`; A.2 presentation references and A.11 `hud_glass` corners live in the presentation bundle. No gate or target changed except as ADR-39 records (S6 cut, A1 and A7 methods).
 
 ## I.3 Ownership
 

@@ -194,3 +194,59 @@ a candidate for a later milestone.
 already flies both arenas (`cargo xtask circuit` defaults to `--arena all`) and the determinism job runs the
 `plain-circuit` suite, so neither needed a new step.
 
+
+## Amendment 2 (2026-11-08): how the audio and performance gates are measured, and what the fault runs found
+
+Written when WP11 and WP12 ran the remaining gates and the deliberate faults of the plan, each introduced
+in the working tree, checked, and restored.
+
+**The arena run (P1, P2).** Built as written: `?perf=arena` flies the circuit from the runway over the rugged
+arena for 120 s after a 5 s warm-up, in the cockpit at the High preset in a 1920 x 1080 buffer unless the URL
+says (`camera`, `quality`, `res`), with the sound running (the context is resumed and the status feed drives
+it). Its gates are PS-0's five plus the frame interval's average (at most 16.7 ms) and p99 (22.2 ms), the render
+CPU's p99 (11.0 ms), no lost device and no main-thread task over 50 ms. Two of these are not plain pass or fail:
+where the browser has no `longtask` entries the count is a **missing reading**, which does not pass and is not
+counted against the run; and the Minimum-class 30 FPS (P3) is recorded as a reading in every report and is not
+part of the verdict (a gate's `informational` flag). The CI spec (P5) runs the arena at 480 x 270 on the lowest
+preset and holds the sim to 57 Hz and the report to its shape.
+
+**A1 compares with the GDD, not with the profile.** The blade-pass peak was compared with `rpm / 60 x
+bladeCount` using the profile's own count, so a profile with 12 blades passed (the seeded fault of the plan's
+table did not fail A1; the profile's data test and A5 failed instead). It now compares with the GDD's 24 blades,
+and the same fault fails all three cases.
+
+**A7 measures what the worklet allocates.** The first A7 measured the heap's growth over chunks of calls and
+passed with a 4 KB array allocated in every call (the seeded fault did not fail it). Heap growth moves in steps
+of a page and, over chunks that make more garbage than the young generation holds, is dominated by scavenges.
+Measured properly, with V8's sampling heap profiler (which attributes each allocation, short-lived ones
+included, to its call site), `FlightDsp.process` made **about 23 KB a block**: V8 boxes a number returned
+from a call it does not inline, and in a function as long as `process` it stops inlining early (the five noise
+draws, ten biquads and the limiter, each called per sample). The kernel now makes its block in passes with one
+call per voice per block; its output is bit-identical over 4 000 blocks in varying states (checked against the
+old kernel before the change), and a block makes 33 bytes. A7 runs the measurement in plain Node in a child
+process (the test runner's module transform stops cross-module inlining and boxes the numbers again), at most
+64 bytes a block, and fails an array or a typed array made per block. The other counting harnesses were checked against one injected 4-element array a call:
+the input pump's and the audio feed's fail it; the camera rig's and the model rig's do not (their stated bounds,
+320 and 2 048 bytes for the camera and a few hundred for the model rig, allow a few boxed numbers per terrain
+sample and are wide enough to pass 80 bytes more), so they catch arrays and objects made per frame in bulk and
+not one small one. Tightening them needs numbers from CI's V8 and is left (recorded in the exit checklist).
+
+**The thread specs hold the renderer to a floor, not a speed.** With the sky, four terrain levels, the HUD and the
+model, CI's software rasteriser draws at 7 to 20 FPS and shares four cores with the sim, so the specs that counted
+frames (`loop`, `independence`, `degraded`) failed on 60 frames in a window and on 100 ms frame intervals,
+twice. They now use a small buffer at the lowest preset (`CHEAP`), a floor of 10 frames a second and a longest
+interval of 200 ms (short of the 300 ms and 1 000 ms stalls they inject). The sim's 59 to 61 Hz bounds are
+unchanged.
+
+**S1 to S5 on the reference GPU.** The screenshot specs take `SCREENS_RENDERER=webgpu PW_CHANNEL=chrome` and
+fail a run that asked for WebGPU and fell back (the self-test reports its backend). On the M4 in Chrome
+146 (`webgpu apple metal-3`) all five pass and every seeded fault fails: for example S1 at 10 km measured 3.218
+degrees against 3.208 (limit 0.05), and 0.000 degrees with the flat-Earth fault.
+
+**The deliberate faults** are recorded in `docs/exit/v0.1c.md` with what actually failed. Three differed from the
+plan's table: the collimation twin did not see a shader that drew the HUD at a finite distance (it modelled the
+shader, not read it; it now also reads the shader's source for `w = 0`); the second-Fly end-to-end test does
+not fail without `newSortie()` (the pump also adopts the idle core's spawn counter of 0 between sorties, so the
+reset is the second guard; the pump's unit test, which skips the idle observation, fails); and a presentation
+string put into the sim pack's locale file is rejected earlier, by the unused-key lint, while a change to a pack
+datum moves the pack's hash and the goldens as the plan expects.
