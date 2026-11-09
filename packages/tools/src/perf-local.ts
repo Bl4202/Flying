@@ -240,8 +240,9 @@ async function fly(seconds: number): Promise<FlightSummary> {
 }
 
 try {
-  // 1. Compat screen and a scripted flight.
-  await page.goto(url(`debug=1&spawn=${opts.spawn}`));
+  // 1. Compat screen and a scripted flight. `fly=1` skips the first run and the main menu: a fresh
+  // profile would otherwise sit at the first run with the sim idle, and no flight or latency would run.
+  await page.goto(url(`debug=1&fly=1&spawn=${opts.spawn}`));
   await passCompat();
   await byId(page, 'stage')
     .and(page.locator('[data-state="running"]'))
