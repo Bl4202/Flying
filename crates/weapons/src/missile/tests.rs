@@ -45,8 +45,8 @@ fn the_dart1_from_its_entry() {
         (85.0, 11_000.0, 2.5, 11.5)
     );
     assert_eq!(
-        (p.cn_max, p.g_max, p.g_min_speed_mps, p.n_prime),
-        (12.0, 30.0, 150.0, 4.0)
+        (p.cn_max, p.g_max, p.g_min_speed_mps, p.n_prime, p.tau_s),
+        (8.0, 30.0, 150.0, 4.0, f64::from(0.4_f32))
     );
     assert_eq!(
         (
@@ -273,9 +273,9 @@ fn ms3_the_lateral_limit() {
         m.mass = mass;
         lateral_limit(&m, &p, &FlatSea, &atmo, 0.0)
     };
-    // Slow and high: the aerodynamic limit q̄ S 12 / m.
+    // Slow and high: the aerodynamic limit q̄ S C_N,max / m (C_N,max 8, the WP4 tuning).
     let rho = atmo.sample(8_000.0, FlatSea.day()).rho_kgpm3;
-    let aero = 0.5 * rho * 300.0 * 300.0 * p.s_ref_m2 * 12.0 / 73.5;
+    let aero = 0.5 * rho * 300.0 * 300.0 * p.s_ref_m2 * 8.0 / 73.5;
     assert!((limit(300.0, 8_000.0, 73.5) - aero).abs() < 1e-9);
     assert!(aero < 30.0 * G0);
     // Fast and low: the structural 30 g.
