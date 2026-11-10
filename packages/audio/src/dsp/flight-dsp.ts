@@ -24,9 +24,17 @@
  * - **Tones** (GDD 56.7): the stall horn pulses faster as the angle of attack passes the warning angle,
  *   the PULL UP warble alternates two pitches, the over-g tone beeps, the gear chime and the master
  *   caution chime repeat. The most urgent warning is the one heard.
+ * - **The duel** (ADR-42 amendment 1, from the profile's `weapons` block): the gun (a pulse per round:
+ *   a crack of band-passed noise and a decaying low sine), the bandit's gun (the same, low-passed and
+ *   quieter with distance), a missile launch (a decaying rush of band-passed noise), a hit taken (a
+ *   short click) and an explosion (a thump and a rumble, quieter with distance) on the aircraft bus;
+ *   the seeker's growl (its pitch rising with the signal) and the lock tone on the warnings bus. The
+ *   one-shot sounds start when the session's counters rise; the first values after a reset are
+ *   adopted without a sound. Their levels are relative to the master, like the warning tones'.
  */
 import { WARNING } from '@flying/sim-bridge/warnings';
-import type { AudioProfile } from '../profile.ts';
+import { SEEKER_MODE } from '@flying/sim-bridge/layout';
+import type { AudioProfile, WeaponsProfile } from '../profile.ts';
 import { blockCoefficient, Biquad, dbToLin, fillNoise5, noiseState } from './primitives.ts';
 
 /** Indices into `FlightDsp.params`: the state the page feeds the synthesis. */
@@ -56,9 +64,22 @@ export const P = {
   /** The aircraft and warning bus volumes, linear 0 to 1 (the player's settings). */
   AIRCRAFT_BUS: 12,
   WARNINGS_BUS: 13,
+  /** 1 while the player's gun fires. */
+  GUN_FIRING: 14,
+  /** How far away the bandit's gun is firing, m; 0 while it is not. */
+  ENEMY_GUN_DIST_M: 15,
+  /** The next missile's `SEEKER_MODE`, and its signal ratio (1 at the lock range). */
+  SEEKER: 16,
+  SIGNAL: 17,
+  /** The session's missiles launched, hits taken and explosions: a sound when one rises. */
+  LAUNCHES: 18,
+  HITS_TAKEN: 19,
+  EXPLOSIONS: 20,
+  /** How far away the newest explosion is, m (0 when not known: heard at its reference distance). */
+  EXPLOSION_DIST_M: 21,
 } as const;
 
-export const PARAM_COUNT = 14;
+export const PARAM_COUNT = 22;
 
 /**
  * The names the page and the worklet know the parameters by: the worklet's `AudioParam`s, in the
@@ -79,6 +100,14 @@ export const PARAM_NAMES = [
   'master',
   'aircraftBus',
   'warningsBus',
+  'gunFiring',
+  'enemyGunDist',
+  'seeker',
+  'signal',
+  'launches',
+  'hitsTaken',
+  'explosions',
+  'explosionDist',
 ] as const;
 
 /** `[min, max, default]` of each parameter, in the order of `P` (an `AudioParam` clamps to them). */
@@ -97,6 +126,15 @@ export const PARAM_RANGE: readonly (readonly [number, number, number])[] = [
   [0, 1, 1],
   [0, 1, 1],
   [0, 1, 1],
+  [0, 1, 0],
+  [0, 1e6, 0],
+  [0, 3, 0],
+  [0, 1000, 0],
+  // The counters: an AudioParam is a 32-bit float, exact to 2^24.
+  [0, 2 ** 24, 0],
+  [0, 2 ** 24, 0],
+  [0, 2 ** 24, 0],
+  [0, 1e7, 0],
 ];
 
 /** The largest block `process` is asked for (the Web Audio quantum is 128). */
@@ -136,7 +174,54 @@ const S_BLADE_PH1 = 24;
 const S_BLADE_PH2 = 25;
 const S_BLADE_PH3 = 26;
 const S_BLADE_PH4 = 27;
-const S_STATE = 32;
+// The duel's voices.
+const S_GUN_ACC = 32;
+const S_GUN_SINCE = 33;
+const S_GUN_BODY = 34;
+const S_GUN_BODY_PH = 35;
+const S_GUN_PREV = 36;
+const S_EN_ACC = 37;
+const S_EN_SINCE = 38;
+const S_EN_BODY = 39;
+const S_EN_BODY_PH = 40;
+const S_EN_PREV = 41;
+const S_LAUNCH_ENV = 42;
+const S_HIT_SINCE = 43;
+const S_BOOM_ENV = 44;
+const S_BOOM_PH = 45;
+const S_BOOM_AMP = 46;
+const S_GROWL_PH = 47;
+const S_GROWL_AM_PH = 48;
+const S_GROWL_G = 49;
+const S_LOCK_PH = 50;
+const S_LOCK_G = 51;
+const S_SEEN = 52;
+const S_LAUNCHES = 53;
+const S_HITS = 54;
+const S_BOOMS = 55;
+const S_STATE = 64;
+
+// The duel's amplitudes (`#amp`).
+const A_GUN = 0;
+const A_ENEMY = 1;
+const A_LAUNCH = 2;
+const A_HIT = 3;
+const A_GROWL = 4;
+const A_LOCK = 5;
+const A_BOOM = 6;
+
+/** Long ago: a one-shot voice whose clock reads this is silent. */
+const LONG_AGO_S = 1e9;
+// ALGO: band-passed white noise keeps only a slice of its power, so the noise voices are scaled up to
+// sit near their data level; the decaying sines are at it.
+const CRACK_GAIN = 3;
+const LAUNCH_GAIN = 2.5;
+const HIT_GAIN = 3;
+const BOOM_NOISE = 1.5;
+/** How fast each pulse's low sine dies away, s (about a pulse's length). */
+const GUN_BODY_S = 0.012;
+/** The growl's amplitude modulation depth. */
+const GROWL_AM = 0.35;
 
 const TWO_PI = 2 * Math.PI;
 
@@ -190,6 +275,33 @@ export class FlightDsp {
   readonly #aircraft = new Float32Array(MAX_BLOCK);
   readonly #harmonics: Float64Array;
   readonly #rpmCurve: readonly (readonly [number, number])[];
+  // The duel's voices: their own noise (so the flight voices' noise is the same with or without
+  // them), five planes (crack, enemy crack, launch, hit, explosion), their filters, and what they make
+  // for each bus.
+  readonly #weapons: WeaponsProfile | undefined;
+  readonly #combatNoise = noiseState(0x2545_f491);
+  readonly #combatPlanes = new Float64Array(MAX_BLOCK * 5);
+  readonly #crackN = this.#combatPlanes.subarray(0, MAX_BLOCK);
+  readonly #enemyN = this.#combatPlanes.subarray(MAX_BLOCK, 2 * MAX_BLOCK);
+  readonly #launchN = this.#combatPlanes.subarray(2 * MAX_BLOCK, 3 * MAX_BLOCK);
+  readonly #hitN = this.#combatPlanes.subarray(3 * MAX_BLOCK, 4 * MAX_BLOCK);
+  readonly #boomN = this.#combatPlanes.subarray(4 * MAX_BLOCK, 5 * MAX_BLOCK);
+  readonly #enemy = new Float64Array(MAX_BLOCK);
+  readonly #combatAir = new Float64Array(MAX_BLOCK);
+  readonly #combatWarn = new Float64Array(MAX_BLOCK);
+  readonly #crackBand: Biquad;
+  readonly #enemyBand: Biquad;
+  readonly #enemyLow: Biquad;
+  readonly #launchBand: Biquad;
+  readonly #hitBand: Biquad;
+  readonly #boomLow: Biquad;
+  /** Whether the duel's voices made anything this block (when not, they are not mixed). */
+  #combatOn = false;
+  /**
+   * The duel's levels as linear amplitudes (`A_*`), worked out once: a number returned from a call
+   * per block would be boxed (A7).
+   */
+  readonly #amp = new Float64Array(7);
 
   constructor(profile: AudioProfile, sampleRate = 48_000) {
     this.#profile = profile;
@@ -217,6 +329,28 @@ export class FlightDsp {
       this.#harmonics[i] = db === undefined ? (i === 0 ? 1 : 0) : dbToLin(db);
     }
     this.#rpmCurve = e.rpmByCore;
+    // The duel's filters (placeholders at 1 kHz when the profile has no weapons: never run).
+    const wp = profile.weapons;
+    this.#weapons = wp;
+    this.#crackBand = new Biquad('bandpass', sampleRate, wp?.gun.crackHz ?? 1000, 1.5);
+    this.#enemyBand = new Biquad('bandpass', sampleRate, wp?.gun.crackHz ?? 1000, 1.5);
+    this.#enemyLow = new Biquad('lowpass', sampleRate, wp?.enemyGun.lowpassHz ?? 1000, 0.7);
+    const lo = wp?.launch.lowHz ?? 500;
+    const hi = wp?.launch.highHz ?? 2000;
+    const mid = Math.sqrt(lo * hi);
+    this.#launchBand = new Biquad('bandpass', sampleRate, mid, mid / Math.max(hi - lo, 1));
+    this.#hitBand = new Biquad('bandpass', sampleRate, wp?.hit.bandHz ?? 1000, 2);
+    this.#boomLow = new Biquad('lowpass', sampleRate, 600, 0.7);
+    if (wp !== undefined) {
+      const amp = this.#amp;
+      amp[A_GUN] = dbToLin(wp.gun.levelDb);
+      amp[A_ENEMY] = dbToLin(wp.enemyGun.levelDb);
+      amp[A_LAUNCH] = dbToLin(wp.launch.levelDb) * LAUNCH_GAIN;
+      amp[A_HIT] = dbToLin(wp.hit.levelDb) * HIT_GAIN;
+      amp[A_GROWL] = dbToLin(wp.growl.levelDb);
+      amp[A_LOCK] = dbToLin(wp.lockTone.levelDb);
+      amp[A_BOOM] = dbToLin(wp.explosion.levelDb);
+    }
     this.reset();
   }
 
@@ -238,6 +372,20 @@ export class FlightDsp {
       f.reset();
     }
     for (const f of this.#formants) f.reset();
+    for (const f of [
+      this.#crackBand,
+      this.#enemyBand,
+      this.#enemyLow,
+      this.#launchBand,
+      this.#hitBand,
+      this.#boomLow,
+    ]) {
+      f.reset();
+    }
+    s[S_GUN_SINCE] = LONG_AGO_S;
+    s[S_EN_SINCE] = LONG_AGO_S;
+    s[S_HIT_SINCE] = LONG_AGO_S;
+    this.#combatOn = false;
     this.params.fill(0);
     this.params[P.MASTER] = 1;
     this.params[P.AIRCRAFT_BUS] = 1;
@@ -483,8 +631,16 @@ export class FlightDsp {
       dk += dkStep;
     }
 
-    // Pass 3: the canopy.
+    // Pass 3: the canopy, and the duel's voices.
     this.#canopy.processBlock(outside, canopied, n);
+    this.#combat(n);
+    const combatOn = this.#combatOn;
+    const combatAir = this.#combatAir;
+    const combatWarn = this.#combatWarn;
+    // The duel's aircraft-bus voices are near and loud: no canopy and no calibration offset (their
+    // levels are the master's, as the warning tones' are), but the bus volume and the duck.
+    const combatBus = (p[P.AIRCRAFT_BUS] as number) * (p[P.MASTER] as number);
+    let dc = duckNow;
 
     // Pass 4: the cockpit's hum and the cabin mix, the warning tone, the master and the limiter.
     for (let i = 0; i < n; i++) {
@@ -538,6 +694,11 @@ export class FlightDsp {
           break;
       }
       aircraft[i] = mixed * aircraftBus;
+      if (combatOn) {
+        aircraft[i] = (aircraft[i] as number) + (combatAir[i] as number) * combatBus * dc;
+        warn += combatWarn[i] as number;
+      }
+      dc += dkStep;
 
       // Master, limiter (`softLimit`, written out: it is called a sample at a time).
       const x = (aircraft[i] as number) + warn * warningsBus;
@@ -564,6 +725,215 @@ export class FlightDsp {
     s[S_PULSE_PH] = pulsePh % TWO_PI;
     s[S_CHIME_T] = chimeT;
     s[S_HUM_PH] = humPh % TWO_PI;
+  }
+
+  /**
+   * The duel's voices for `n` samples, into `#combatAir` (before the aircraft bus) and `#combatWarn`
+   * (before the warnings bus), from the current `params`. Sets `#combatOn` to whether any of them is
+   * sounding; when none is, it does no per-sample work.
+   */
+  #combat(n: number): void {
+    const wp = this.#weapons;
+    if (wp === undefined) return;
+    const fs = this.#fs;
+    const p = this.params;
+    const s = this.#s;
+    const amp = this.#amp;
+    const dt = 1 / fs;
+
+    // ---- block-rate decisions -------------------------------------------------------------
+    // The counters: a rise starts a one-shot voice; the first values after a reset are adopted.
+    const launches = p[P.LAUNCHES] as number;
+    const hits = p[P.HITS_TAKEN] as number;
+    const booms = p[P.EXPLOSIONS] as number;
+    if ((s[S_SEEN] as number) !== 0) {
+      if (launches > (s[S_LAUNCHES] as number)) s[S_LAUNCH_ENV] = 1;
+      if (hits > (s[S_HITS] as number)) s[S_HIT_SINCE] = 0;
+      if (booms > (s[S_BOOMS] as number)) {
+        s[S_BOOM_ENV] = 1;
+        s[S_BOOM_PH] = 0;
+        // Its level by its distance, fixed when it starts.
+        const d = p[P.EXPLOSION_DIST_M] as number;
+        const ref = wp.explosion.refDistanceM;
+        s[S_BOOM_AMP] = ((amp[A_BOOM] as number) * ref) / Math.max(d > 0 ? d : ref, ref);
+      }
+    }
+    s[S_SEEN] = 1;
+    s[S_LAUNCHES] = launches;
+    s[S_HITS] = hits;
+    s[S_BOOMS] = booms;
+
+    // The guns: a rising edge fires the first pulse at once.
+    const firing = (p[P.GUN_FIRING] as number) > 0.5;
+    if (firing && (s[S_GUN_PREV] as number) === 0) s[S_GUN_ACC] = 1;
+    s[S_GUN_PREV] = firing ? 1 : 0;
+    const enemyDist = p[P.ENEMY_GUN_DIST_M] as number;
+    const enemyFiring = enemyDist > 0;
+    if (enemyFiring && (s[S_EN_PREV] as number) === 0) s[S_EN_ACC] = 1;
+    s[S_EN_PREV] = enemyFiring ? 1 : 0;
+    const enRef = wp.enemyGun.refDistanceM;
+    const enemyAmp = enemyFiring
+      ? ((amp[A_ENEMY] as number) * enRef) / Math.max(enemyDist, enRef)
+      : 0;
+
+    // The seeker: the growl in SEARCH with some signal and in TONE, the lock tone when LOCKED.
+    const seeker = p[P.SEEKER] as number;
+    const signal = p[P.SIGNAL] as number;
+    const growlOn =
+      seeker === SEEKER_MODE.TONE || (seeker === SEEKER_MODE.SEARCH && signal > 0.3) ? 1 : 0;
+    const lockOn = seeker === SEEKER_MODE.LOCKED ? 1 : 0;
+    const growlHz =
+      wp.growl.baseHz + wp.growl.spanHz * Math.min(Math.max((signal - 0.3) / 3.7, 0), 1);
+    const growlG0 = s[S_GROWL_G] as number;
+    const lockG0 = s[S_LOCK_G] as number;
+    s[S_GROWL_G] = growlOn;
+    s[S_LOCK_G] = lockOn;
+
+    const pulseS = wp.gun.pulseMs / 1000;
+    const hitS = wp.hit.lengthMs / 1000;
+    const quiet =
+      !firing &&
+      !enemyFiring &&
+      (s[S_GUN_SINCE] as number) > pulseS + 10 * GUN_BODY_S &&
+      (s[S_EN_SINCE] as number) > pulseS + 10 * GUN_BODY_S &&
+      (s[S_LAUNCH_ENV] as number) < 1e-5 &&
+      (s[S_HIT_SINCE] as number) > hitS &&
+      (s[S_BOOM_ENV] as number) < 1e-5 &&
+      growlOn === 0 &&
+      growlG0 === 0 &&
+      lockOn === 0 &&
+      lockG0 === 0;
+    this.#combatOn = !quiet;
+    if (quiet) return;
+
+    // ---- per-sample synthesis ------------------------------------------------------------
+    fillNoise5(this.#combatNoise, this.#combatPlanes, MAX_BLOCK, n);
+    const crackN = this.#crackN;
+    const enemyN = this.#enemyN;
+    const launchN = this.#launchN;
+    const hitN = this.#hitN;
+    const boomN = this.#boomN;
+    this.#crackBand.processBlock(crackN, crackN, n);
+    this.#enemyBand.processBlock(enemyN, enemyN, n);
+    this.#launchBand.processBlock(launchN, launchN, n);
+    this.#hitBand.processBlock(hitN, hitN, n);
+    this.#boomLow.processBlock(boomN, boomN, n);
+
+    const gunAmp = amp[A_GUN] as number;
+    const gunInc = wp.gun.rateHz / fs;
+    const bodyStep = (TWO_PI * wp.gun.bodyHz) / fs;
+    const bodyDecay = Math.exp(-1 / (GUN_BODY_S * fs));
+    const launchAmp = amp[A_LAUNCH] as number;
+    const launchDecay = Math.exp(-1 / (wp.launch.decayS * fs));
+    const hitAmp = amp[A_HIT] as number;
+    const boomAmp = s[S_BOOM_AMP] as number;
+    const boomDecay = Math.exp(-1 / (wp.explosion.decayS * fs));
+    const thumpStep = (TWO_PI * wp.explosion.thumpHz) / fs;
+    const growlAmp = amp[A_GROWL] as number;
+    const growlStep = (TWO_PI * growlHz) / fs;
+    const amStep = (TWO_PI * wp.growl.amHz) / fs;
+    const lockAmp = amp[A_LOCK] as number;
+    const lockStep = (TWO_PI * wp.lockTone.freqHz) / fs;
+
+    let gunAcc = s[S_GUN_ACC] as number;
+    let gunSince = s[S_GUN_SINCE] as number;
+    let gunBody = s[S_GUN_BODY] as number;
+    let gunBodyPh = s[S_GUN_BODY_PH] as number;
+    let enAcc = s[S_EN_ACC] as number;
+    let enSince = s[S_EN_SINCE] as number;
+    let enBody = s[S_EN_BODY] as number;
+    let enBodyPh = s[S_EN_BODY_PH] as number;
+    let launchEnv = s[S_LAUNCH_ENV] as number;
+    let hitSince = s[S_HIT_SINCE] as number;
+    let boomEnv = s[S_BOOM_ENV] as number;
+    let boomPh = s[S_BOOM_PH] as number;
+    let growlPh = s[S_GROWL_PH] as number;
+    let amPh = s[S_GROWL_AM_PH] as number;
+    let lockPh = s[S_LOCK_PH] as number;
+    let gg = growlG0;
+    const ggStep = (growlOn - growlG0) / n;
+    let lg = lockG0;
+    const lgStep = (lockOn - lockG0) / n;
+    const air = this.#combatAir;
+    const warn = this.#combatWarn;
+    const enemy = this.#enemy;
+
+    for (let i = 0; i < n; i++) {
+      // The gun: a pulse each round, `pulse_ms` of crack and a low sine dying away.
+      if (firing) {
+        gunAcc += gunInc;
+        if (gunAcc >= 1) {
+          gunAcc -= 1;
+          gunSince = 0;
+          gunBody = 1;
+          gunBodyPh = 0;
+        }
+      }
+      const crack = gunSince < pulseS ? 1 - gunSince / pulseS : 0;
+      gunBodyPh += bodyStep;
+      let a = gunAmp * (CRACK_GAIN * crack * (crackN[i] as number) + gunBody * Math.sin(gunBodyPh));
+      gunBody *= bodyDecay;
+      gunSince += dt;
+
+      // The bandit's gun: the same pulses, low-passed below.
+      if (enemyFiring) {
+        enAcc += gunInc;
+        if (enAcc >= 1) {
+          enAcc -= 1;
+          enSince = 0;
+          enBody = 1;
+          enBodyPh = 0;
+        }
+      }
+      const enCrack = enSince < pulseS ? 1 - enSince / pulseS : 0;
+      enBodyPh += bodyStep;
+      enemy[i] =
+        enemyAmp * (CRACK_GAIN * enCrack * (enemyN[i] as number) + enBody * Math.sin(enBodyPh));
+      enBody *= bodyDecay;
+      enSince += dt;
+
+      // The launch, the hit and the explosion.
+      a += launchAmp * launchEnv * (launchN[i] as number);
+      launchEnv *= launchDecay;
+      if (hitSince < hitS) {
+        const k = 1 - hitSince / hitS;
+        a += hitAmp * k * k * (hitN[i] as number);
+      }
+      hitSince += dt;
+      boomPh += thumpStep;
+      a += boomAmp * boomEnv * (Math.sin(boomPh) + BOOM_NOISE * (boomN[i] as number));
+      boomEnv *= boomDecay;
+      air[i] = a;
+
+      // The growl: a square-ish tone (its first three odd harmonics), amplitude-modulated.
+      growlPh += growlStep;
+      amPh += amStep;
+      const sq = Math.sin(growlPh) + Math.sin(3 * growlPh) / 3 + Math.sin(5 * growlPh) / 5;
+      let w = growlAmp * gg * (1 - GROWL_AM + GROWL_AM * Math.sin(amPh)) * sq;
+      gg += ggStep;
+      lockPh += lockStep;
+      w += lockAmp * lg * Math.sin(lockPh);
+      lg += lgStep;
+      warn[i] = w;
+    }
+    this.#enemyLow.processBlock(enemy, enemy, n);
+    for (let i = 0; i < n; i++) air[i] = (air[i] as number) + (enemy[i] as number);
+
+    s[S_GUN_ACC] = gunAcc;
+    s[S_GUN_SINCE] = Math.min(gunSince, LONG_AGO_S);
+    s[S_GUN_BODY] = gunBody;
+    s[S_GUN_BODY_PH] = gunBodyPh % TWO_PI;
+    s[S_EN_ACC] = enAcc;
+    s[S_EN_SINCE] = Math.min(enSince, LONG_AGO_S);
+    s[S_EN_BODY] = enBody;
+    s[S_EN_BODY_PH] = enBodyPh % TWO_PI;
+    s[S_LAUNCH_ENV] = launchEnv;
+    s[S_HIT_SINCE] = Math.min(hitSince, LONG_AGO_S);
+    s[S_BOOM_ENV] = boomEnv;
+    s[S_BOOM_PH] = boomPh % TWO_PI;
+    s[S_GROWL_PH] = growlPh % TWO_PI;
+    s[S_GROWL_AM_PH] = amPh % TWO_PI;
+    s[S_LOCK_PH] = lockPh % TWO_PI;
   }
 }
 

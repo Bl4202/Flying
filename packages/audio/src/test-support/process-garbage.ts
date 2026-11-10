@@ -10,7 +10,7 @@
  * returns are then boxed on the heap, about 4.5 KB a block, which the shipped worklet (one bundle)
  * does not make. Not production code.
  */
-import { WARNING } from '@flying/sim-bridge';
+import { SEEKER_MODE, WARNING } from '@flying/sim-bridge';
 import { FlightDsp, P } from '../dsp/flight-dsp.ts';
 import { kestrelProfile } from './fixtures.ts';
 import { Session } from 'node:inspector/promises';
@@ -19,7 +19,7 @@ const dsp = new FlightDsp(kestrelProfile());
 const left = new Float32Array(128);
 const right = new Float32Array(128);
 
-// States that exercise every voice and every tone, switching every 256 calls.
+// States that exercise every voice and every tone (the duel's too), switching every 256 calls.
 const states: ((p: Float64Array) => void)[] = [
   (p) => {
     p[P.ENGINE_BITS] = 3;
@@ -44,6 +44,22 @@ const states: ((p: Float64Array) => void)[] = [
     p[P.AB_LEVEL] = 0;
     p[P.WARNINGS] = WARNING.GEAR;
     p[P.COCKPIT] = 0;
+  },
+  // The duel (AU4): both guns, the growl, and a launch, a hit and an explosion every block.
+  (p) => {
+    p[P.GUN_FIRING] = 1;
+    p[P.ENEMY_GUN_DIST_M] = 400;
+    p[P.SEEKER] = SEEKER_MODE.TONE;
+    p[P.SIGNAL] = 2.2;
+    p[P.LAUNCHES] = (p[P.LAUNCHES] as number) + 1;
+    p[P.HITS_TAKEN] = (p[P.HITS_TAKEN] as number) + 1;
+    p[P.EXPLOSIONS] = (p[P.EXPLOSIONS] as number) + 1;
+    p[P.EXPLOSION_DIST_M] = 800;
+  },
+  (p) => {
+    p[P.GUN_FIRING] = 0;
+    p[P.ENEMY_GUN_DIST_M] = 0;
+    p[P.SEEKER] = SEEKER_MODE.LOCKED;
   },
 ];
 

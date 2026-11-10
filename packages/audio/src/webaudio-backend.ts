@@ -8,7 +8,7 @@
  * parameter feed are tested in Node with a fake context, and the real one in the browser
  * (`?selftest=audio`).
  */
-import type { AircraftStatus } from '@flying/sim-bridge';
+import type { AircraftStatus, CombatStatus } from '@flying/sim-bridge';
 import { clampVolume, type AudioCue, type AudioState } from './backend.ts';
 import { PARAM_COUNT, PARAM_NAMES, PARAM_RANGE } from './dsp/flight-dsp.ts';
 import { defaultBuses, fillParams, type BusLevels, type CameraMode } from './feed.ts';
@@ -125,6 +125,11 @@ export class WebAudioBackend implements FlightAudio {
   workletError: string | undefined;
   /** How many `AudioParam` values have been written (for tests and the overlay). */
   paramWrites = 0;
+  /**
+   * The audio nodes made here and not yet disconnected: the soak's leak gate L6 (ADR-45) wants it
+   * the same at every sortie start. A cue's two nodes count until its note ends.
+   */
+  liveNodes = 0;
 
   readonly #env: WebAudioEnv;
   readonly #ctx: AudioContextLike;
@@ -145,15 +150,16 @@ export class WebAudioBackend implements FlightAudio {
   #camera: CameraMode = 'cockpit';
   #buses: BusLevels = defaultBuses();
   #status: AircraftStatus | undefined;
+  #combat: CombatStatus | undefined;
   #lastWriteMs = Number.NEGATIVE_INFINITY;
   #closed = false;
 
   constructor(options: WebAudioOptions) {
     this.#env = options.env ?? browserEnv();
     this.#ctx = this.#env.createContext();
-    this.#master = this.#ctx.createGain();
-    this.#ui = this.#ctx.createGain();
-    this.#analyser = this.#ctx.createAnalyser();
+    this.#master = this.#made(this.#ctx.createGain());
+    this.#ui = this.#made(this.#ctx.createGain());
+    this.#analyser = this.#made(this.#ctx.createAnalyser());
     this.#analyser.fftSize = this.#meterBuffer.length;
     this.#ui.connect(this.#master);
     this.#master.connect(this.#ctx.destination);
@@ -175,7 +181,7 @@ export class WebAudioBackend implements FlightAudio {
     try {
       await this.#ctx.audioWorklet.addModule(options.workletUrl);
       if (this.#closed) return;
-      const node = this.#env.createWorkletNode(this.#ctx, options.profile);
+      const node = this.#made(this.#env.createWorkletNode(this.#ctx, options.profile));
       node.connect(this.#master);
       node.port.onmessage = (event) => {
         if (!isToneOnset(event.data)) return;
@@ -228,10 +234,10 @@ export class WebAudioBackend implements FlightAudio {
     this.#closed = true;
     this.#listeners.clear();
     try {
-      this.#node?.disconnect();
-      this.#master.disconnect();
-      this.#analyser.disconnect();
-      this.#ui.disconnect();
+      if (this.#node !== undefined) this.#disconnect(this.#node);
+      this.#disconnect(this.#master);
+      this.#disconnect(this.#analyser);
+      this.#disconnect(this.#ui);
       await this.#ctx.close();
     } catch {
       // Already closed by the browser: nothing left to release.
@@ -268,8 +274,9 @@ export class WebAudioBackend implements FlightAudio {
     this.#write();
   }
 
-  update(status: AircraftStatus | undefined): void {
+  update(status: AircraftStatus | undefined, combat?: CombatStatus): void {
     this.#status = status;
+    this.#combat = combat;
     const now = this.#env.now();
     if (now - this.#lastWriteMs < UPDATE_MIN_INTERVAL_MS) return;
     this.#lastWriteMs = now;
@@ -291,8 +298,8 @@ export class WebAudioBackend implements FlightAudio {
     let t = this.#ctx.currentTime;
     for (const [hz, seconds] of cue.notes) {
       if (hz > 0) {
-        const osc = this.#ctx.createOscillator();
-        const env = this.#ctx.createGain();
+        const osc = this.#made(this.#ctx.createOscillator());
+        const env = this.#made(this.#ctx.createGain());
         osc.type = 'sine';
         osc.frequency.value = hz;
         env.gain.setValueAtTime(0, t);
@@ -301,14 +308,26 @@ export class WebAudioBackend implements FlightAudio {
         osc.connect(env);
         env.connect(this.#ui);
         osc.onended = () => {
-          osc.disconnect();
-          env.disconnect();
+          this.#disconnect(osc);
+          this.#disconnect(env);
         };
         osc.start(t);
         osc.stop(t + seconds + 0.02);
       }
       t += seconds;
     }
+  }
+
+  /** Counts a node made. */
+  #made<T extends AudioNodeLike>(node: T): T {
+    this.liveNodes += 1;
+    return node;
+  }
+
+  /** Disconnects a node and stops counting it. */
+  #disconnect(node: AudioNodeLike): void {
+    this.liveNodes -= 1;
+    node.disconnect();
   }
 
   #applyMaster(): void {
@@ -319,7 +338,14 @@ export class WebAudioBackend implements FlightAudio {
   #write(): void {
     if (this.#node === undefined || this.#closed) return;
     const v = this.#values;
-    fillParams(v, this.#status, this.#camera, this.#buses.aircraft, this.#buses.warnings);
+    fillParams(
+      v,
+      this.#status,
+      this.#combat,
+      this.#camera,
+      this.#buses.aircraft,
+      this.#buses.warnings,
+    );
     for (let i = 0; i < PARAM_COUNT; i++) {
       const value = v[i] as number;
       if (value === this.#written[i]) continue;

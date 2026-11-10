@@ -1,4 +1,4 @@
-import type { AircraftStatus } from '@flying/sim-bridge';
+import type { AircraftStatus, CombatStatus } from '@flying/sim-bridge';
 import { clampVolume, type AudioCue, type AudioState } from './backend.ts';
 import { defaultBuses, type BusLevels, type CameraMode } from './feed.ts';
 import type { FlightAudio } from './flight-audio.ts';
@@ -20,6 +20,7 @@ export class NullAudioBackend implements FlightAudio {
   muted = false;
   buses: BusLevels = defaultBuses();
   lastStatus: AircraftStatus | undefined;
+  lastCombat: CombatStatus | undefined;
   updates = 0;
 
   resume(): Promise<void> {
@@ -54,8 +55,9 @@ export class NullAudioBackend implements FlightAudio {
     return Promise.resolve();
   }
 
-  update(status: AircraftStatus | undefined): void {
+  update(status: AircraftStatus | undefined, combat?: CombatStatus): void {
     this.lastStatus = status;
+    this.lastCombat = combat;
     this.updates += 1;
   }
 

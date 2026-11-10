@@ -184,6 +184,38 @@ describe('readCombatStatus', () => {
     expect(s.tgtRange).toBe(d.tgt_range);
   });
 
+  it('measures the bandit and the newest explosion from the ownship', () => {
+    const bytes = new Uint8Array(SNAPSHOT.SIZE);
+    const v = new DataView(bytes.buffer);
+    const put3 = (at: number, xyz: [number, number, number]): void => {
+      xyz.forEach((x, k) => {
+        v.setFloat64(at + 8 * k, x, true);
+      });
+    };
+    put3(SNAPSHOT.O_POS_BF, [100, 200, 1000]);
+    v.setUint8(SNAPSHOT.BD_LIFE, 1);
+    put3(SNAPSHOT.BD_POS_BF, [100, 1400, 1500]); // 1 200 m north, 500 m up: 1 300 m
+    const boom = (i: number, xyz: [number, number, number], age: number): void => {
+      const at = SNAPSHOT.EXPLOSIONS + SNAPSHOT.EXPLOSION_STRIDE * i;
+      put3(at + SNAPSHOT.XP_POS_BF, xyz);
+      v.setFloat32(at + SNAPSHOT.XP_AGE, age, true);
+      v.setUint8(at + SNAPSHOT.XP_KIND, 1);
+    };
+    boom(2, [100, 200, 3000], 0.5);
+    boom(5, [400, 600, 1000], 0.1); // the newest: 300 east, 400 north, 500 m away
+    const s = newCombatStatus();
+    readCombatStatus(new SnapshotReader(bytes), s);
+    expect(s.banditRange).toBeCloseTo(1300, 9);
+    expect(s.explosionRange).toBeCloseTo(500, 9);
+    // Without a bandit or an explosion, both are 0.
+    v.setUint8(SNAPSHOT.BD_LIFE, 0);
+    for (const i of [2, 5]) {
+      v.setUint8(SNAPSHOT.EXPLOSIONS + SNAPSHOT.EXPLOSION_STRIDE * i + SNAPSHOT.XP_KIND, 0);
+    }
+    readCombatStatus(new SnapshotReader(bytes), s);
+    expect([s.banditRange, s.explosionRange]).toEqual([0, 0]);
+  });
+
   it('reads all zero from a free-flight snapshot, and keeps its arrays', () => {
     const s = newCombatStatus();
     const { pipperBf, counters, banditPosBf } = s;

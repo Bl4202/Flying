@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { integratedLoudness, render, truePeakDb } from '../test-support/analysis.ts';
-import { circuitTrace, feedRow, kestrelProfile } from '../test-support/fixtures.ts';
+import {
+  circuitTrace,
+  combatTrace,
+  feedCombatRow,
+  feedRow,
+  kestrelProfile,
+} from '../test-support/fixtures.ts';
 import { FlightDsp } from './flight-dsp.ts';
 
 const profile = kestrelProfile();
@@ -57,5 +63,37 @@ describe('A5: the 60 s circuit mix (GDD 56.6)', () => {
     expect(chaseLufs).toBeGreaterThan(-17.5);
     expect(chaseLufs).toBeLessThan(-14.5);
     expect(chaseTp).toBeLessThanOrEqual(-1);
+  }, 60_000);
+});
+
+describe('AU5: the 60 s combat mix', () => {
+  const combat = combatTrace();
+
+  it('is 60 seconds of a sortie from the first shot, with the guns and an explosion in it', () => {
+    expect(combat).toHaveLength(600);
+    expect(combat[0]?.['gun_firing']).toBe(1);
+    expect(combat.some((r) => (r['enemy_gun_dist_m'] ?? 0) > 0)).toBe(true);
+    expect((combat.at(-1)?.['explosions'] ?? 0) - (combat[0]?.['explosions'] ?? 0)).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it('peaks at no more than -1 dBTP (its loudness is reported)', () => {
+    for (const cockpit of [true, false]) {
+      const dsp = new FlightDsp(profile);
+      const { left, right } = render(dsp, combat.length / 10, (_block, t) => {
+        const row = combat[Math.min(Math.floor(t * 10), combat.length - 1)];
+        if (row !== undefined) {
+          feedRow(dsp, row, cockpit);
+          feedCombatRow(dsp, row);
+        }
+      });
+      const lufs = integratedLoudness(left, right);
+      const tp = Math.max(truePeakDb(left), truePeakDb(right));
+      console.info(
+        `AU5 ${cockpit ? 'cockpit' : 'chase'}: ${lufs.toFixed(2)} LUFS, ${tp.toFixed(2)} dBTP`,
+      );
+      expect(tp).toBeLessThanOrEqual(-1);
+    }
   }, 60_000);
 });

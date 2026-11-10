@@ -23,7 +23,20 @@ export type TraceRow = Record<string, number>;
 
 /** The 60 s circuit trace (`test/fixtures/circuit-60s.csv`): numbers by column name. */
 export function circuitTrace(): TraceRow[] {
-  const [head, ...lines] = text('../../test/fixtures/circuit-60s.csv').trim().split('\n');
+  return trace('circuit-60s.csv');
+}
+
+/**
+ * 60 s of a bot sortie from its first shot (`test/fixtures/combat-60s.csv`: `fg sortie --assist
+ * standard --skill 2 --seeds 1-1 --traces`, rows from the first with `gun_firing` 1): the circuit's
+ * columns and the duel's.
+ */
+export function combatTrace(): TraceRow[] {
+  return trace('combat-60s.csv');
+}
+
+function trace(file: string): TraceRow[] {
+  const [head, ...lines] = text(`../../test/fixtures/${file}`).trim().split('\n');
   const names = (head ?? '').split(',');
   return lines.map((line) => {
     const row: TraceRow = {};
@@ -66,4 +79,20 @@ export function feedRow(dsp: FlightDsp, row: TraceRow, cockpit = true): void {
   p[P.ON_GROUND] = row['wow'] ?? 0;
   p[P.WARNINGS] = traceWarnings(row);
   p[P.COCKPIT] = cockpit ? 1 : 0;
+}
+
+/**
+ * Feeds the duel's columns of a sortie trace row. The trace's distances are -1 for none; the
+ * synthesis takes 0 for that.
+ */
+export function feedCombatRow(dsp: FlightDsp, row: TraceRow): void {
+  const p = dsp.params;
+  p[P.GUN_FIRING] = row['gun_firing'] ?? 0;
+  p[P.ENEMY_GUN_DIST_M] = Math.max(row['enemy_gun_dist_m'] ?? 0, 0);
+  p[P.SEEKER] = row['seeker'] ?? 0;
+  p[P.SIGNAL] = row['signal'] ?? 0;
+  p[P.LAUNCHES] = row['launches'] ?? 0;
+  p[P.HITS_TAKEN] = row['hits_taken'] ?? 0;
+  p[P.EXPLOSIONS] = row['explosions'] ?? 0;
+  p[P.EXPLOSION_DIST_M] = Math.max(row['explosion_dist_m'] ?? 0, 0);
 }

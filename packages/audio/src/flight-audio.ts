@@ -1,4 +1,4 @@
-import type { AircraftStatus } from '@flying/sim-bridge';
+import type { AircraftStatus, CombatStatus } from '@flying/sim-bridge';
 import type { AudioBackend } from './backend.ts';
 import type { BusLevels, CameraMode } from './feed.ts';
 
@@ -15,8 +15,11 @@ export interface ToneOnset {
  * aircraft's state in, the player's mix and camera, and a report when a warning tone starts.
  */
 export interface FlightAudio extends AudioBackend {
-  /** The aircraft's state; call it every frame, the backend decides how often to pass it on. */
-  update(status: AircraftStatus | undefined): void;
+  /**
+   * The aircraft's state and the duel's; call it every frame, the backend decides how often to pass
+   * them on. Both are read when passed on, so the caller may refill them in place.
+   */
+  update(status: AircraftStatus | undefined, combat?: CombatStatus): void;
   /** Cockpit hears the outside through the canopy; chase hears it bare. */
   setCamera(camera: CameraMode): void;
   /** The player's volumes (`master` is the same as `setVolume`). */
