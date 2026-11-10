@@ -591,7 +591,7 @@ layouts! {
         SORTIE = 4,
         // Straight and level at the height, heading and speed of the first tick. Duels only.
         HOLD = 5,
-        // HOLD, and the missile button pressed once, when the seeker first locks. Duels only.
+        // HOLD, and the missile button pressed once at the first armed lock. Duels only.
         HOLD_FIRE = 6,
     }
 

@@ -46,6 +46,10 @@ const CIRCUIT_TICKS: u64 = 21_600;
 const CIRCUIT_EVERY: u64 = 600;
 /// Length of the plain-circuit suite, ticks (two minutes: the take-off roll, lift-off and climb).
 const PLAIN_CIRCUIT_TICKS: u64 = 7_200;
+/// The combat suite: the bot's whole sortie against a Regular, 10 minutes (ADR-45 DT2).
+const COMBAT_TICKS: u64 = 36_000;
+/// ... checkpointed every 10 s.
+const COMBAT_EVERY: u64 = 600;
 
 struct Options {
     ticks: u64,
@@ -106,7 +110,7 @@ struct Suite {
 }
 
 /// The suites, in the order they run.
-fn suites(ticks: u64) -> [Suite; 4] {
+fn suites(ticks: u64) -> [Suite; 5] {
     [
         Suite {
             name: "erratic",
@@ -140,6 +144,25 @@ fn suites(ticks: u64) -> [Suite; 4] {
             debug_probe: 3_000,
             session: &[
                 "--spawn", "runway", "--assist", "standard", "--g", "full", "--arena", "plain",
+            ],
+        },
+        Suite {
+            name: "combat",
+            script: "sortie",
+            at: every(COMBAT_TICKS, COMBAT_EVERY),
+            golden: "tests/golden/combat.json",
+            debug_probe: 3_000,
+            session: &[
+                "--spawn",
+                "runway",
+                "--assist",
+                "standard",
+                "--g",
+                "full",
+                "--scenario",
+                "duel",
+                "--skill",
+                "2",
             ],
         },
     ]
@@ -505,7 +528,7 @@ mod tests {
     }
 
     #[test]
-    fn the_v0_1b_suites_keep_their_session_lists_and_plain_circuit_adds_the_arena() {
+    fn the_old_suites_keep_their_session_lists_plain_circuit_adds_the_arena_and_combat_the_duel() {
         // The goldens store these joined and compare them strictly (ADR-39 D2: unchanged).
         let s = suites(1_000_000);
         let joined: Vec<String> = s.iter().map(|x| x.session.join(" ")).collect();
@@ -516,8 +539,18 @@ mod tests {
             joined[3],
             "--spawn runway --assist standard --g full --arena plain"
         );
+        assert_eq!(
+            joined[4],
+            "--spawn runway --assist standard --g full --scenario duel --skill 2"
+        );
         let names: Vec<_> = s.iter().map(|x| x.name).collect();
-        assert_eq!(names, ["erratic", "flight60", "circuit", "plain-circuit"]);
+        assert_eq!(
+            names,
+            ["erratic", "flight60", "circuit", "plain-circuit", "combat"]
+        );
+        let combat = &s[4];
+        assert_eq!((combat.at.len(), combat.at[60]), (61, 36_000));
+        assert!(combat.at.contains(&combat.debug_probe));
         let plain = &s[3];
         assert_eq!((plain.at.len(), plain.at[12]), (13, 7_200));
         assert!(plain.at.contains(&plain.debug_probe));

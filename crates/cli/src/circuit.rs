@@ -155,10 +155,10 @@ fn fly(
 
 /// The trace columns: the v0.1b set, then the snapshot v4 fields and what the audio needs to
 /// replay a sortie offline (ADR-39 A5).
-const TRACE_HEADER: &str = "t_s,phase,along_m,across_m,agl_m,cas_mps,gs_mps,alpha_deg,nz_g,wow,gear_pos,stall_warning,\
+pub(crate) const TRACE_HEADER: &str = "t_s,phase,along_m,across_m,agl_m,cas_mps,gs_mps,alpha_deg,nz_g,wow,gear_pos,stall_warning,\
 tas_mps,qbar_pa,throttle,engine_core,ab_level,engine_bits,airbrake,fuel_flow_kgps,alpha_warn_deg,n_max_g,max_nz_g,vs_mps,flags,flags2\n";
 
-fn trace_row(out: &mut String, s: &Sample) {
+pub(crate) fn trace_row(out: &mut String, s: &Sample) {
     let _ = writeln!(
         out,
         "{:.1},{},{:.1},{:.2},{:.2},{:.2},{:.2},{:.2},{:.3},{},{:.2},{},{:.2},{:.1},{:.4},{:.4},{:.4},{},{:.3},{:.4},{:.2},{:.2},{:.3},{:.2},{},{}",

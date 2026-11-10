@@ -165,6 +165,8 @@ pub struct CombatSetup {
     pub bandit_active: bool,
     /// The GCI cue is on.
     pub gci: bool,
+    /// The player's gun and rails are empty (AI2 measures the bot's tracking, not its kills).
+    pub unarmed: bool,
 }
 
 impl Default for CombatSetup {
@@ -175,6 +177,7 @@ impl Default for CombatSetup {
             brain: BrainKind::Normal,
             bandit_active: false,
             gci: true,
+            unarmed: false,
         }
     }
 }
@@ -285,6 +288,8 @@ pub struct Combat {
     pub skill: SkillParams,
     /// The GCI cue is on.
     pub gci: bool,
+    /// The player flies with empty weapons (a gate's set-up).
+    pub unarmed: bool,
     /// The brain the bandits fly with.
     pub brain_kind: BrainKind,
     /// The bandit has been told of the player (the player airborne 10 s, or a set-up or a merge).
@@ -341,12 +346,13 @@ impl Combat {
             rank: session.skill,
             skill,
             gci: setup.gci,
+            unarmed: setup.unarmed,
             brain_kind: setup.brain,
             activated: setup.bandit_active || merge,
             airborne_ticks: 0,
             cap_centre_bf: DVec3::new(cap.x, cap.y, cap_z),
             bandit: Bandit::new(model, session, models),
-            player: PlayerWeapons::new(models, player.spawn_seq),
+            player: PlayerWeapons::loaded(models, player.spawn_seq, setup.unarmed),
             cues: Cues::default(),
             rounds: RoundPool::new(),
             missiles: [MissileSlot::default(); MISSILE_CAPACITY],

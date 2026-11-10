@@ -6,8 +6,8 @@
 //! and WRECK waits for the skill's commitment time to run out.
 //!
 //! 1. WRECK is final (set by `sim-core` when the bandit is destroyed).
-//! 2. RECOVER below the skill's terrain clearance, or under 150 m above the ground; until clear by
-//!    twice the clearance and climbing.
+//! 2. RECOVER below the skill's terrain clearance, under 150 m above the ground, or in a dive that
+//!    would not come level above the clearance; until clear by twice the clearance and climbing.
 //! 3. RETURN beyond the arena's radius from home; until inside 0.8 of it.
 //! 4. `DEFEND_MISSILE` once a noticed missile has been seen for the skill's defence delay.
 //! 5. `DEFEND_GUN` when the player is seen within 2 500 m, its nose within 30° of the bandit, in the
@@ -20,22 +20,29 @@
 
 use flight::controls::PilotControls;
 use flight::env::FlightEnv;
+use flight::physical::G0;
 use simmath::dmath;
 use simmath::math::DVec3;
 
 use crate::geometry::{aa_rad, angle_between, closure_mps, lead_point};
 use crate::hold::{HEIGHT_GAMMA_MAX, HEIGHT_PER_RAD_M, HoldCourse};
 use crate::maneuver::{
-    AFTERBURNER, Airframe, Goal, MILITARY, climb_dir, fly_goal, height_gamma, hold_speed,
+    AFTERBURNER, Airframe, Goal, K_TURN, MILITARY, climb_dir, fly_goal, height_gamma, hold_speed,
     horizontal,
 };
-use crate::percept::{Contact, Percept};
+use crate::percept::{Contact, OwnView, Percept};
 use crate::skill::{
     SkillParams, TACTIC_EXTEND, TACTIC_JINK, TACTIC_LAG_PURSUIT, TACTIC_LEAD_PURSUIT,
 };
 
 /// RECOVER below this height above the ground whatever the skill, m. // ALGO: ADR-47
 pub const RECOVER_AGL_M: f64 = 150.0;
+/// RECOVER also when a dive would not come level above the skill's terrain clearance at its load
+/// cap, allowing this long for the wings to come level first, s. // ALGO: ADR-47
+pub const RECOVER_REACT_S: f64 = 2.5;
+/// RECOVER pulls out of a dive steeper than this at the airframe's load limit, rad (10°).
+/// // ALGO: ADR-47
+pub const RECOVER_DIVE_RAD: f64 = 0.174_532_925_199_432_96;
 /// RETURN ends inside this share of the arena radius. // ALGO: ADR-47
 pub const RETURN_LEAVE_FRACTION: f64 = 0.8;
 /// `DEFEND_GUN`: the player within this range, m. // ALGO: ADR-47
@@ -111,6 +118,43 @@ pub const RETURN_CAS_MPS: f64 = 220.0;
 pub const RETURN_N_CAP: f64 = 3.0;
 /// WRECK: the roll stick the dead pilot leaves. // ALGO: ADR-47 (a spiral)
 pub const WRECK_ROLL: f64 = 0.6;
+/// The speed guard (AI4: the bandit flies the player's airframe and must not overspeed it): from
+/// this share of `V_mo` up, in every state it flies itself, the throttle closes, the airbrake opens
+/// and the path is held no steeper than [`GUARD_GAMMA_RAD`] below the horizon, the floor rising
+/// linearly to level at `V_mo`. // ALGO: ADR-47
+pub const GUARD_VMO_SHARE: f64 = 0.92;
+/// See [`GUARD_VMO_SHARE`] (15° below the horizon).
+pub const GUARD_GAMMA_RAD: f64 = -0.261_799_387_799_149_4;
+/// Closing speed: inside this range, m, PURSUE and GUN hold the closure to the range beyond the
+/// stand-off over this time, s, kept between these, m/s (negative: opening), with this much
+/// throttle per m/s of error (never below military under the afterburner speed); closing this much
+/// faster than wanted, m/s, the airbrake opens too (not under the afterburner speed: a bandit
+/// slowed behind a slow target stalls). Without it a fast bandit overshoots its gun solution, and
+/// a slow one flies into the player. // ALGO: ADR-47
+pub const CLOSE_RANGE_M: f64 = 3_000.0;
+/// See [`CLOSE_RANGE_M`].
+pub const CLOSE_STANDOFF_M: f64 = 300.0;
+/// See [`CLOSE_RANGE_M`].
+pub const CLOSE_TIME_S: f64 = 20.0;
+/// See [`CLOSE_RANGE_M`].
+pub const CLOSE_MIN_MPS: f64 = -30.0;
+/// See [`CLOSE_RANGE_M`].
+pub const CLOSE_MAX_MPS: f64 = 150.0;
+/// See [`CLOSE_RANGE_M`].
+pub const K_CLOSE: f64 = 0.02;
+/// See [`CLOSE_RANGE_M`].
+pub const CLOSE_BRAKE_ABOVE_MPS: f64 = 30.0;
+/// Collision avoidance, in every state it flies itself: when the contact (dead-reckoned from the
+/// percept to now) will pass within this, m, and either closes faster than this, m/s, inside this
+/// time, s, or is closing at all inside this range, m, the bandit turns away from where it will
+/// pass at its skill's load cap. // ALGO: ADR-47
+pub const AVOID_MISS_M: f64 = 60.0;
+/// See [`AVOID_MISS_M`].
+pub const AVOID_CLOSURE_MPS: f64 = 150.0;
+/// See [`AVOID_MISS_M`].
+pub const AVOID_TIME_S: f64 = 1.0;
+/// See [`AVOID_MISS_M`].
+pub const AVOID_RANGE_M: f64 = 200.0;
 
 /// The bandit's states (the codes are the snapshot's `bandit_ai`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -323,7 +367,9 @@ impl BanditBrain {
 
     /// Rule 2.
     fn recover_rule(&self, p: &Percept, skill: &SkillParams) -> Option<BanditState> {
-        let need = p.clearance_min_m < skill.terrain_min_agl_m || p.own.agl_m < RECOVER_AGL_M;
+        let need = p.clearance_min_m < skill.terrain_min_agl_m
+            || p.own.agl_m < RECOVER_AGL_M
+            || p.own.agl_m < pull_out_m(&p.own, skill) + skill.terrain_min_agl_m;
         let clear = p.clearance_min_m > 2.0 * skill.terrain_min_agl_m
             && p.own.vel_bf.dot(p.own.up_bf) > 0.0;
         let stay = self.state == BanditState::Recover && !clear;
@@ -461,8 +507,20 @@ impl BanditBrain {
             };
         }
         let dt = af.fcs.tick_dt_s;
-        let (goal, fire) = self.goal(p, skill, dt);
+        let (mut goal, fire) = self.goal(p, skill, dt);
+        avoid_collision(&mut goal, p, skill);
+        let guarded = speed_guard(&mut goal, &p.own);
+        let overtaking = matches!(self.state, BanditState::Pursue | BanditState::Gun)
+            && p.own.cas_mps >= PURSUE_AB_BELOW_CAS_MPS
+            && p.contact.is_some_and(|c| {
+                let (_, closure, want) = closing(&p.own, &c);
+                closure > want + CLOSE_BRAKE_ABOVE_MPS
+            });
+        let pulling_out = self.state == BanditState::Recover && diving(&p.own);
         let mut controls = fly_goal(&goal, af);
+        if guarded || overtaking || pulling_out {
+            controls.airbrake = 1.0;
+        }
         if !(controls.pitch.is_finite() && controls.roll.is_finite()) {
             controls = PilotControls {
                 throttle: MILITARY,
@@ -502,10 +560,12 @@ impl BanditBrain {
                 n_cap: 1.0,
                 throttle: AFTERBURNER,
             },
+            // Diving, it pulls out at the airframe's limit with the throttle closed (and the
+            // airbrake out, in `act`), whatever its skill; then it climbs in afterburner.
             (BanditState::Recover, _) => Goal {
                 dir_bf: climb_dir(level, up, RECOVER_GAMMA_RAD),
-                n_cap: skill.n_cap,
-                throttle: AFTERBURNER,
+                n_cap: if diving(o) { o.n_max } else { skill.n_cap },
+                throttle: if diving(o) { 0.0 } else { AFTERBURNER },
             },
             (BanditState::Return, _) => {
                 let gamma = height_gamma(
@@ -606,8 +666,12 @@ impl BanditBrain {
         let aim = (base + e1 * self.aim_offset[0] + e2 * self.aim_offset[1]).normalized_or(base);
         let nose = p.nose_bf();
         // Steer the velocity so the nose (the gun) comes onto the aim: the angle of attack stays.
+        // The line of sight's own rate is fed forward, so a crossing target is tracked without
+        // the lag of the controller's turn gain.
         let v_hat = o.vel_bf.normalized_or(nose);
-        let dir = v_hat + (aim - nose);
+        let r = c.pos_bf + c.vel_bf * c.age_s - o.pos_bf;
+        let los_rate = r.cross(c.vel_bf - o.vel_bf) * (1.0 / r.length_squared().max(1.0));
+        let dir = v_hat + (aim - nose) + los_rate.cross(aim) * (1.0 / K_TURN);
         let range = (c.pos_bf - o.pos_bf).length();
         let want =
             skill.fires_gun && range <= FIRE_RANGE_M && angle_between(nose, aim) <= FIRE_AIM_RAD;
@@ -616,7 +680,7 @@ impl BanditBrain {
             Goal {
                 dir_bf: dir,
                 n_cap: skill.n_cap,
-                throttle: pursuit_throttle(o.cas_mps),
+                throttle: closing_throttle(o, c),
             },
             fire,
         )
@@ -688,6 +752,70 @@ impl BanditBrain {
     }
 }
 
+/// Descending more steeply than [`RECOVER_DIVE_RAD`].
+fn diving(o: &OwnView) -> bool {
+    o.vel_bf.dot(o.up_bf) < -dmath::sin(RECOVER_DIVE_RAD) * o.vel_bf.length()
+}
+
+/// The height a dive needs to come level ([`RECOVER_REACT_S`]): the arc at the skill's load cap,
+/// plus the path flown while the wings come level, m (0 climbing).
+fn pull_out_m(o: &OwnView, skill: &SkillParams) -> f64 {
+    let v = o.vel_bf.length();
+    let sin_down = -o.vel_bf.dot(o.up_bf) / v.max(1.0);
+    if !(sin_down > 0.0 && v.is_finite()) {
+        return 0.0;
+    }
+    let radius = v * v / ((skill.n_cap - 1.0).max(1.0) * G0);
+    let cos_dive = dmath::sqrt((1.0 - sin_down * sin_down).max(0.0));
+    radius * (1.0 - cos_dive) + v * sin_down * RECOVER_REACT_S
+}
+
+/// Collision avoidance ([`AVOID_CLOSURE_MPS`]): true when it turns the goal away.
+fn avoid_collision(goal: &mut Goal, p: &Percept, skill: &SkillParams) -> bool {
+    let Some(c) = p.contact else {
+        return false;
+    };
+    let o = &p.own;
+    let r = c.pos_bf + c.vel_bf * c.age_s - o.pos_bf;
+    let v = c.vel_bf - o.vel_bf;
+    let vv = v.length_squared();
+    if vv.is_nan() || vv <= 1.0 {
+        return false;
+    }
+    let t = -r.dot(v) / vv;
+    let miss = r + v * t;
+    let fast = vv > AVOID_CLOSURE_MPS * AVOID_CLOSURE_MPS && t < AVOID_TIME_S;
+    let near = r.length() < AVOID_RANGE_M;
+    if !(t > 0.0 && miss.length() < AVOID_MISS_M && (fast || near)) {
+        return false;
+    }
+    let v_hat = o.vel_bf.normalized_or(p.nose_bf());
+    let lift = o.att.rotate(DVec3::new(0.0, 0.0, -1.0));
+    let away = (-miss).normalized_or(lift);
+    let side = (away - v_hat * away.dot(v_hat)).normalized_or(lift);
+    goal.dir_bf = v_hat + side;
+    goal.n_cap = skill.n_cap;
+    true
+}
+
+/// The speed guard ([`GUARD_VMO_SHARE`]): true when it acts (the caller opens the airbrake).
+fn speed_guard(goal: &mut Goal, o: &OwnView) -> bool {
+    let share = o.cas_mps / o.vmo_mps;
+    if share.is_nan() || share < GUARD_VMO_SHARE {
+        return false;
+    }
+    goal.throttle = 0.0;
+    let k = ((share - GUARD_VMO_SHARE) / (1.0 - GUARD_VMO_SHARE)).clamp(0.0, 1.0);
+    let floor = GUARD_GAMMA_RAD * (1.0 - k);
+    let up = o.up_bf;
+    let path = horizontal(o.vel_bf, up, DVec3::Y);
+    let d = goal.dir_bf.normalized_or(o.vel_bf.normalized_or(path));
+    if d.dot(up) < dmath::sin(floor) {
+        goal.dir_bf = climb_dir(horizontal(d, up, path), up, floor);
+    }
+    true
+}
+
 /// `INTERCEPT`: to the lead-collision point, a little above the contact.
 fn intercept(p: &Percept, skill: &SkillParams, c: &Contact) -> Goal {
     let o = &p.own;
@@ -723,7 +851,36 @@ fn pursue(p: &Percept, skill: &SkillParams, c: &Contact, v_hat: DVec3) -> Goal {
     Goal {
         dir_bf: aim - o.pos_bf,
         n_cap: skill.n_cap,
-        throttle: pursuit_throttle(o.cas_mps),
+        throttle: closing_throttle(o, c),
+    }
+}
+
+/// The range, the closure and the closure wanted ([`CLOSE_RANGE_M`]) on a contact, dead-reckoned
+/// to now; m, m/s, m/s.
+fn closing(o: &OwnView, c: &Contact) -> (f64, f64, f64) {
+    let pos = c.pos_bf + c.vel_bf * c.age_s;
+    let range = (pos - o.pos_bf).length();
+    let closure = closure_mps(o.pos_bf, o.vel_bf, pos, c.vel_bf);
+    let want = if range < CLOSE_RANGE_M {
+        ((range - CLOSE_STANDOFF_M) / CLOSE_TIME_S).clamp(CLOSE_MIN_MPS, CLOSE_MAX_MPS)
+    } else {
+        f64::INFINITY
+    };
+    (range, closure, want)
+}
+
+/// The throttle of PURSUE and GUN: [`pursuit_throttle`] far out, the closure held inside
+/// [`CLOSE_RANGE_M`].
+fn closing_throttle(o: &OwnView, c: &Contact) -> f64 {
+    let (range, closure, want) = closing(o, c);
+    if range >= CLOSE_RANGE_M || !closure.is_finite() {
+        return pursuit_throttle(o.cas_mps);
+    }
+    let lever = (MILITARY + K_CLOSE * (want - closure)).clamp(0.0, AFTERBURNER);
+    if o.cas_mps < PURSUE_AB_BELOW_CAS_MPS {
+        lever.max(MILITARY)
+    } else {
+        lever
     }
 }
 

@@ -2,16 +2,20 @@
 //!
 //! ```text
 //! fg version
-//! fg hash  [--seed HEX] [--script none|erratic|flight60|circuit] [--content PATH]
-//!          [--spawn runway|air] [--assist full|standard|reduced|manual] [--g off|reduced|full]
-//!          [--arena rugged|plain] (--ticks N | --at T1,T2,... | --every N --ticks N)
-//! fg bench [--seed HEX] [--script none|erratic|flight60|circuit] [--content PATH] [--ticks N] [--json]
+//! fg hash  [--seed HEX] [--script none|erratic|flight60|circuit|sortie|hold|hold-fire]
+//!          [--content PATH] [--spawn runway|air] [--assist full|standard|reduced|manual]
+//!          [--g off|reduced|full] [--arena rugged|plain] [--scenario free|duel|merge]
+//!          [--skill 1|2|3] (--ticks N | --at T1,T2,... | --every N --ticks N)
+//! fg bench [--seed HEX] [--script ...] [--content PATH] [--scenario ...] [--skill K]
+//!          [--ticks N] [--json]
 //! fg bench --aircraft N --content PATH [--assist full|standard|reduced|manual] [--ground]
 //!          [--ticks N] [--json]
 //! fg conformance --content PATH [--aircraft-index N] [--json PATH] [--traces DIR]
 //!                [--only ID,...] [--expect-deferred ID,...]
 //! fg circuit --content PATH [--assist all|full|standard|reduced|manual] [--json PATH]
 //!            [--traces DIR] [--robustness] [--seed HEX] [--arena rugged|plain|all]
+//! fg sortie --content PATH (--matrix bp | --assist LEVEL --skill K) [--seeds A-B] [--arena A]
+//!           [--sweep] [--ai-gates] [--threads N] [--json PATH] [--traces DIR]
 //! ```
 //!
 //! `fg hash` prints one JSON object per requested tick with the combined and per-subsystem state
@@ -23,29 +27,36 @@
 //! `fg conformance` runs the Performance Conformance Test
 //! (ADR-31) and exits 1 when its gate fails. `fg circuit` flies the virtual tester's take-off,
 //! circuit and landing under each assist level (ADR-33) and exits 1 when a gate run fails.
+//! `fg sortie` flies the duel gates: the bot playtester's sorties, the missile sweep and the
+//! bandit's gates (ADR-48), and exits 1 when one fails. A duel needs `--content`.
 
 mod circuit;
 mod conformance;
+mod sortie;
 
 use std::io::Write;
 use std::process::ExitCode;
 use std::time::Instant;
 
 use sim_core::layout::input_script;
-use sim_core::{Arena, Assist, DEFAULT_SEED, GEffects, SessionConfig, SimCore, Spawn};
+use sim_core::{Arena, Assist, DEFAULT_SEED, GEffects, Scenario, SessionConfig, SimCore, Spawn};
 
 const USAGE: &str = "usage:
   fg version
-  fg hash  [--seed HEX] [--script none|erratic|flight60|circuit] [--content PATH]
-           [--spawn runway|air] [--assist full|standard|reduced|manual] [--g off|reduced|full]
-           [--arena rugged|plain] (--ticks N | --at T1,T2,... | --every N --ticks N)
-  fg bench [--seed HEX] [--script none|erratic|flight60|circuit] [--content PATH] [--ticks N] [--json]
+  fg hash  [--seed HEX] [--script none|erratic|flight60|circuit|sortie|hold|hold-fire]
+           [--content PATH] [--spawn runway|air] [--assist full|standard|reduced|manual]
+           [--g off|reduced|full] [--arena rugged|plain] [--scenario free|duel|merge]
+           [--skill 1|2|3] (--ticks N | --at T1,T2,... | --every N --ticks N)
+  fg bench [--seed HEX] [--script ...] [--content PATH] [--scenario ...] [--skill K]
+           [--ticks N] [--json]
   fg bench --aircraft N --content PATH [--assist full|standard|reduced|manual] [--ground]
            [--ticks N] [--json]
   fg conformance --content PATH [--aircraft-index N] [--json PATH] [--traces DIR]
                  [--only ID,...] [--expect-deferred ID,...]
   fg circuit --content PATH [--assist all|full|standard|reduced|manual] [--json PATH]
-             [--traces DIR] [--robustness] [--seed HEX] [--arena rugged|plain|all]";
+             [--traces DIR] [--robustness] [--seed HEX] [--arena rugged|plain|all]
+  fg sortie --content PATH (--matrix bp | --assist LEVEL --skill K) [--seeds A-B] [--arena A]
+            [--sweep] [--ai-gates] [--threads N] [--json PATH] [--traces DIR]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -79,6 +90,18 @@ fn main() -> ExitCode {
                 option_env!("GIT_SHA").unwrap_or("unknown")
             );
             match circuit::run(&args[1..], &build) {
+                Ok(true) => Ok(()),
+                Ok(false) => return ExitCode::from(1),
+                Err(e) => Err(e),
+            }
+        }
+        Some("sortie") => {
+            let build = format!(
+                "fg {} {}",
+                env!("CARGO_PKG_VERSION"),
+                option_env!("GIT_SHA").unwrap_or("unknown")
+            );
+            match sortie::run(&args[1..], &build) {
                 Ok(true) => Ok(()),
                 Ok(false) => return ExitCode::from(1),
                 Err(e) => Err(e),
@@ -196,11 +219,29 @@ fn parse(args: &[String], switches: &[&str]) -> Result<Parsed, String> {
                     "erratic" => input_script::ERRATIC as u32,
                     "flight60" => input_script::FLIGHT60 as u32,
                     "circuit" => input_script::CIRCUIT as u32,
+                    "sortie" => input_script::SORTIE as u32,
+                    "hold" => input_script::HOLD as u32,
+                    "hold-fire" => input_script::HOLD_FIRE as u32,
                     other => {
                         return Err(format!(
-                            "unknown --script {other:?} (none, erratic, flight60 or circuit)"
+                            "unknown --script {other:?} (none, erratic, flight60, circuit, sortie, hold or hold-fire)"
                         ));
                     }
+                };
+            }
+            "--scenario" => {
+                setup.session.scenario = Scenario::from_name(value)
+                    .ok_or_else(|| format!("unknown --scenario {value:?} (free, duel or merge)"))?;
+                if setup.session.scenario.is_duel() && setup.session.skill == 0 {
+                    setup.session.skill = 2;
+                }
+            }
+            "--skill" => {
+                setup.session.skill = match value.as_str() {
+                    "1" => 1,
+                    "2" => 2,
+                    "3" => 3,
+                    other => return Err(format!("unknown --skill {other:?} (1, 2 or 3)")),
                 };
             }
             "--content" => {
@@ -330,6 +371,9 @@ fn run_bench(args: &[String]) -> Result<(), String> {
         input_script::NONE => "none",
         input_script::ERRATIC => "erratic",
         input_script::CIRCUIT => "circuit",
+        input_script::SORTIE => "sortie",
+        input_script::HOLD => "hold",
+        input_script::HOLD_FIRE => "hold-fire",
         _ => "flight60",
     };
     if json {

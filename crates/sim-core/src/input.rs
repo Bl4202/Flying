@@ -484,7 +484,7 @@ pub enum Script {
     /// made by the core from the aircraft and the combat state.
     Sortie(Box<ai_pilot::SortieTester>),
     /// Straight and level at what it found (HOLD), and with `fire_once` the missile button pressed
-    /// at the first lock (`HOLD_FIRE`). Duels only.
+    /// at the first lock with the weapons armed (`HOLD_FIRE`). Duels only.
     Hold(ai_pilot::HoldCourse),
 }
 

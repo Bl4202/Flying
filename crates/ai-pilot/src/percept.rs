@@ -28,6 +28,8 @@ pub struct OwnView {
     pub up_bf: DVec3,
     /// The airframe's load limit, g.
     pub n_max: f64,
+    /// The airframe's maximum operating speed, CAS, m/s.
+    pub vmo_mps: f64,
 }
 
 /// Something the bandit perceives: where and how fast, how it knows, and how old the knowledge is.
@@ -102,9 +104,16 @@ impl Percept {
         let own = finite3(o.pos_bf)
             && finite3(o.vel_bf)
             && o.att.is_finite()
-            && [o.cas_mps, o.tas_mps, o.agl_m, o.alt_msl_m, o.n_max]
-                .iter()
-                .all(|x| x.is_finite())
+            && [
+                o.cas_mps,
+                o.tas_mps,
+                o.agl_m,
+                o.alt_msl_m,
+                o.n_max,
+                o.vmo_mps,
+            ]
+            .iter()
+            .all(|x| x.is_finite())
             && finite3(o.up_bf);
         let rest = self.t_s.is_finite()
             && contact_finite(self.contact.as_ref())

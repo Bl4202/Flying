@@ -287,6 +287,7 @@ pub(crate) fn percept(
             alt_msl_m: svc.geo.height_msl_m(bandit.ref_bf),
             up_bf: up,
             n_max: model.limits.n_max,
+            vmo_mps: model.limits.vmo_mps,
         },
         contact,
         threat_ata_rad,

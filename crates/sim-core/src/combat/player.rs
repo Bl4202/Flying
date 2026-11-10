@@ -73,6 +73,18 @@ pub struct PlayerWeapons {
 }
 
 impl PlayerWeapons {
+    /// Loaded for the life `spawn_seq`, or empty (`unarmed`, a gate's set-up).
+    #[must_use]
+    pub fn loaded(models: &CombatModels, spawn_seq: u8, unarmed: bool) -> Self {
+        let mut w = Self::new(models, spawn_seq);
+        if unarmed {
+            w.gun.rounds = 0;
+            w.missiles_left = 0;
+            w.seeker = SeekerState::default();
+        }
+        w
+    }
+
     /// Loaded, for the life `spawn_seq`.
     #[must_use]
     pub fn new(models: &CombatModels, spawn_seq: u8) -> Self {
@@ -267,7 +279,7 @@ pub(crate) fn weapons_tick(
     let dt = model.tick_dt_s();
     let t = crate::time::sim_time(tick + 1);
     if slot.spawn_seq != c.player.spawn_seq {
-        c.player = PlayerWeapons::new(models, slot.spawn_seq);
+        c.player = PlayerWeapons::loaded(models, slot.spawn_seq, c.unarmed);
     }
     let alive = !(slot.crashed || slot.state.numerical_fault);
     let p = &mut c.player;
