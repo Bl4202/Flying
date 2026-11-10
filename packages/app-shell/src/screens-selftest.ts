@@ -138,7 +138,7 @@ async function startRig(flags: Flags, arena: number, cameraSettings: boolean): P
       contentUrl: coreContentUrl,
       seed: SEED,
       script: INPUT_SCRIPT.NONE,
-      session: { spawn: 0, assist: 2, gEffects: 2, arena },
+      session: { spawn: 0, assist: 2, gEffects: 2, arena, scenario: 0, skill: 0 },
       snapshot: simSnapshots.sink,
       input: inputs.source,
       terrainPort: terrain.port1,

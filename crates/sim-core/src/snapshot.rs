@@ -1,10 +1,11 @@
-//! Snapshot v4: the render-relevant state published at the end of every tick
+//! Snapshot v5: the render-relevant state published at the end of every tick
 //! (GDD 61.2 "Sim -> Render", layout in [`crate::layout::snapshot`]).
 //!
 //! The core writes into a buffer it owns and never reallocates; the host copies it out into a
 //! shared, seqlock-protected slot. Positions are `f64` in BF so the renderer can subtract the
 //! camera in `f64` before casting to `f32` (ADR-03, GDD 44.8); attitudes and velocities are `f32`.
 
+use crate::combat::view::{CombatView, clear_block};
 use crate::layout::snapshot as s;
 use crate::ownship::OwnshipView;
 use crate::probe::{BODY_COUNT, ProbeWorld};
@@ -23,6 +24,8 @@ pub struct SnapshotSource<'a> {
     pub ownship: &'a OwnshipView,
     /// The probe bodies.
     pub probe: &'a ProbeWorld,
+    /// The duel, when there is one (the combat block is zero without).
+    pub combat: Option<&'a CombatView<'a>>,
 }
 
 /// A preallocated snapshot.
@@ -172,6 +175,10 @@ impl SnapshotBuffer {
                 put_f32(b, s::B_QUAT + 16 * i + 4 * k, c as f32);
             }
         }
+        match src.combat {
+            Some(view) => view.write(b),
+            None => clear_block(b),
+        }
     }
 }
 
@@ -257,7 +264,7 @@ mod tests {
         let b = SnapshotBuffer::new();
         assert_eq!(b.bytes().len(), s::SIZE);
         assert_eq!(&b.bytes()[0..4], b"FGSN");
-        assert_eq!(u32_at(b.bytes(), s::H_VERSION), 4);
+        assert_eq!(u32_at(b.bytes(), s::H_VERSION), 5);
         assert!(b.bytes()[8..].iter().all(|&x| x == 0));
     }
 
@@ -292,6 +299,7 @@ mod tests {
             input_t_ms: 1234.5,
             ownship: &o,
             probe: &probe,
+            combat: None,
         });
         let b = buf.bytes();
         assert_eq!(&b[0..4], b"FGSN");
@@ -388,6 +396,7 @@ mod tests {
             input_t_ms: 1.0,
             ownship: &o,
             probe: &probe,
+            combat: None,
         });
         buf.clear();
         assert_eq!(buf.bytes(), SnapshotBuffer::new().bytes());
@@ -404,6 +413,7 @@ mod tests {
             input_t_ms: 0.0,
             ownship: &o,
             probe: &probe,
+            combat: None,
         };
         buf.write(&src);
         let first = buf.bytes().to_vec();

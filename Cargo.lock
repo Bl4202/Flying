@@ -399,11 +399,13 @@ dependencies = [
 name = "sim-core"
 version = "0.1.0"
 dependencies = [
+ "ai-pilot",
  "content",
  "content-bake",
  "fcs",
  "flight",
  "simmath",
+ "weapons",
 ]
 
 [[package]]

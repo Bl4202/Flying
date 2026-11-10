@@ -1,11 +1,13 @@
 import { defaultFlags, type Flags } from '@flying/platform-web';
-import { ARENA, ASSIST_LEVEL, G_EFFECTS, SPAWN_KIND } from '@flying/sim-bridge/layout';
+import { ARENA, ASSIST_LEVEL, G_EFFECTS, SCENARIO, SPAWN_KIND } from '@flying/sim-bridge/layout';
 import { describe, expect, it } from 'vitest';
 import { ARENA as ARENA_SCENARIO, PS0 } from '@flying/perf';
 import { DEFAULT_SETTINGS } from '@flying/ui';
 import { sessionFromFlags, sessionOverrides } from './session.ts';
 
 const flags = (over: Partial<Flags>): Flags => ({ ...defaultFlags(), ...over });
+/** Free flight: the scenario every session flown from the menu has until the duel joins it (WP5). */
+const FREE = { scenario: SCENARIO.FREE, skill: 0 };
 
 describe('sessionFromFlags', () => {
   it('starts on the runway under Standard assist with full g-effects by default', () => {
@@ -14,6 +16,7 @@ describe('sessionFromFlags', () => {
       assist: ASSIST_LEVEL.STANDARD,
       gEffects: G_EFFECTS.FULL,
       arena: ARENA.RUGGED,
+      ...FREE,
     });
   });
 
@@ -31,6 +34,7 @@ describe('sessionFromFlags', () => {
       assist: ASSIST_LEVEL.FULL,
       gEffects: G_EFFECTS.REDUCED,
       arena: ARENA.PLAIN,
+      ...FREE,
     });
   });
 
@@ -44,6 +48,7 @@ describe('sessionFromFlags', () => {
       assist: ASSIST_LEVEL.STANDARD,
       gEffects: G_EFFECTS.FULL,
       arena: ARENA.RUGGED,
+      ...FREE,
     });
   });
 
@@ -54,9 +59,10 @@ describe('sessionFromFlags', () => {
       gEffects: G_EFFECTS.OFF,
       arena: ARENA.PLAIN,
     };
-    expect(sessionFromFlags(defaultFlags(), false, settings)).toEqual(settings);
+    expect(sessionFromFlags(defaultFlags(), false, settings)).toEqual({ ...settings, ...FREE });
     expect(sessionFromFlags(flags({ assist: 'full' }), false, settings)).toEqual({
       ...settings,
+      ...FREE,
       assist: ASSIST_LEVEL.FULL,
     });
     // A performance run ignores both.
@@ -65,6 +71,7 @@ describe('sessionFromFlags', () => {
       assist: ASSIST_LEVEL.STANDARD,
       gEffects: G_EFFECTS.FULL,
       arena: ARENA.RUGGED,
+      ...FREE,
     });
   });
 });
@@ -104,6 +111,7 @@ describe('sessionOverrides', () => {
       assist: ASSIST_LEVEL.FULL,
       gEffects: G_EFFECTS.FULL,
       arena: ARENA.RUGGED,
+      ...FREE,
     });
   });
 
@@ -114,12 +122,14 @@ describe('sessionOverrides', () => {
       assist: ASSIST_LEVEL.STANDARD,
       gEffects: G_EFFECTS.FULL,
       arena: ARENA.RUGGED,
+      ...FREE,
     });
     expect(sessionFromFlags(flown, PS0, DEFAULT_SETTINGS)).toEqual({
       spawn: SPAWN_KIND.AIR,
       assist: ASSIST_LEVEL.STANDARD,
       gEffects: G_EFFECTS.FULL,
       arena: ARENA.RUGGED,
+      ...FREE,
     });
   });
 

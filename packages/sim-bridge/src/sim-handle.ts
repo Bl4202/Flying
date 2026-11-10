@@ -25,6 +25,7 @@ import {
   G_EFFECTS,
   HASH_KIND,
   INPUT_FRAME,
+  SCENARIO,
   SPAWN_KIND,
   TERRAIN,
 } from './layout.gen.ts';
@@ -41,14 +42,23 @@ export interface SessionConfig {
   gEffects: number;
   /** `ARENA`: the procedural test arena, Rugged or Plain. */
   arena: number;
+  /** `SCENARIO`: free flight, or a duel against one bandit (ADR-48). */
+  scenario: number;
+  /** The bandit's skill rank, 1 to 3 in a duel (0 in free flight). */
+  skill: number;
 }
 
-/** The session the game starts with: the runway, Standard assist, full g-effects, Rugged. */
+/**
+ * The session the game starts with: the runway, Standard assist, full g-effects, Rugged, free
+ * flight.
+ */
 export const DEFAULT_SESSION: Readonly<SessionConfig> = {
   spawn: SPAWN_KIND.RUNWAY,
   assist: ASSIST_LEVEL.STANDARD,
   gEffects: G_EFFECTS.FULL,
   arena: ARENA.RUGGED,
+  scenario: SCENARIO.FREE,
+  skill: 0,
 };
 
 /**
@@ -61,6 +71,8 @@ export const SCRIPTED_SESSION: Readonly<SessionConfig> = {
   assist: ASSIST_LEVEL.STANDARD,
   gEffects: G_EFFECTS.FULL,
   arena: ARENA.RUGGED,
+  scenario: SCENARIO.FREE,
+  skill: 0,
 };
 
 /** Must equal `ABI_VERSION` in `crates/sim-wasm/src/abi.rs`. */
@@ -222,7 +234,14 @@ export function wrapSim({ variant, instance, memory }: LoadedWasm): SimHandle {
       }
     },
     configure(session) {
-      const status = configure(session.spawn, session.assist, session.gEffects, session.arena);
+      const status = configure(
+        session.spawn,
+        session.assist,
+        session.gEffects,
+        session.arena,
+        session.scenario,
+        session.skill,
+      );
       if (status !== CONFIG_STATUS.OK) {
         throw new Error(`SYS-009: session rejected (status ${String(status)})`);
       }

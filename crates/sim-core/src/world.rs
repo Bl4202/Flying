@@ -1,5 +1,6 @@
 //! The mutable state the schedule's systems operate on (GDD 61.4.2).
 
+use crate::combat::Combat;
 use crate::input::InputState;
 use crate::ownship::Ownship;
 use crate::probe::ProbeWorld;
@@ -51,4 +52,6 @@ pub struct World {
     pub snapshot: SnapshotBuffer,
     /// Receives every snapshot published by a tick.
     pub replay: Box<dyn ReplaySink>,
+    /// The duel, in a duel session once started (allocated once in `SimCore::start`).
+    pub combat: Option<Box<Combat>>,
 }

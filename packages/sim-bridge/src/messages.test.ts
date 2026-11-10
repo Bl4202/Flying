@@ -15,7 +15,7 @@ const init: SimInit = {
   contentUrl: '/c.cpack',
   seed: '1f',
   script: 1,
-  session: { spawn: 1, assist: 2, gEffects: 2, arena: 0 },
+  session: { spawn: 1, assist: 2, gEffects: 2, arena: 0, scenario: 0, skill: 0 },
   snapshot: { kind: 'shared', sab: new SharedArrayBuffer(4) },
   input: { kind: 'shared', sab: new SharedArrayBuffer(4) },
   terrainPort: null,

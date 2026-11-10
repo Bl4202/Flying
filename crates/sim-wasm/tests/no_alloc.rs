@@ -26,12 +26,12 @@ use sim_core::InputFrame;
 use sim_core::dmath;
 use sim_core::layout::{
     arena, assist_level, axis, button, config_status, content_status, counter, g_effects,
-    input_frame, input_script, spawn_kind, spawn_request,
+    input_frame, input_script, scenario, spawn_kind, spawn_request,
 };
 use sim_wasm::abi::{
     fg_configure, fg_content_reserve, fg_init, fg_load_content, fg_profile_ptr, fg_push_inputs,
     fg_reset, fg_set_input_script, fg_set_profiling, fg_snapshot_ptr, fg_start, fg_state_hash_lo,
-    fg_step, with_content_buffer, with_input_buffer, with_profile,
+    fg_step, with_content_buffer, with_input_buffer, with_profile, with_snapshot,
 };
 
 thread_local! {
@@ -155,7 +155,9 @@ fn the_tick_path_allocates_nothing_after_warm_up() {
             spawn_kind::AIR as u32,
             assist_level::MANUAL as u32,
             g_effects::FULL as u32,
-            arena::RUGGED as u32
+            arena::RUGGED as u32,
+            scenario::FREE as u32,
+            0
         ),
         config_status::OK as u32
     );
@@ -197,6 +199,7 @@ fn the_tick_path_allocates_nothing_after_warm_up() {
 
     runway_flight(&pack);
     circuit_flight(&pack);
+    duel_sorties();
 }
 
 /// The counters of the profile block.
@@ -349,7 +352,9 @@ fn circuit_flight(pack: &[u8]) {
                 spawn_kind::RUNWAY as u32,
                 assist as u32,
                 g_effects::FULL as u32,
-                arena::RUGGED as u32
+                arena::RUGGED as u32,
+                scenario::FREE as u32,
+                0
             ),
             config_status::OK as u32
         );
@@ -381,7 +386,9 @@ fn circuit_flight(pack: &[u8]) {
             spawn_kind::RUNWAY as u32,
             assist_level::STANDARD as u32,
             g_effects::FULL as u32,
-            arena::PLAIN as u32
+            arena::PLAIN as u32,
+            scenario::FREE as u32,
+            0
         ),
         config_status::OK as u32
     );
@@ -402,6 +409,67 @@ fn circuit_flight(pack: &[u8]) {
     assert!(counters(counter::TOUCHDOWNS) >= 1, "it landed on the plain");
     assert_eq!(counters(counter::CRASHES), 0);
     assert_eq!(counters(counter::HARD_LANDINGS), 0);
+}
+
+/// A combat counter of the snapshot (`C_ROUNDS_FIRED` ... `C_BANDIT_SPAWNS`, by index).
+fn combat_counter(i: usize) -> u32 {
+    with_snapshot(|b| {
+        let at = sim_core::layout::snapshot::C_ROUNDS_FIRED + 4 * i;
+        u32::from_le_bytes(b[at..at + 4].try_into().unwrap())
+    })
+    .unwrap()
+}
+
+/// The bot's duel sortie against a Regular under each assist level, from the runway (NA): the
+/// take-off, the attack (bursts, launches, the kill), the wreck, the respawned bandit, the
+/// return and the landing, and whatever the bandit does to the player. Nothing is allocated
+/// after `fg_start`.
+fn duel_sorties() {
+    // The counters summed over the four sorties: rounds fired, missiles fired, kills, the bandit's
+    // rounds and the bandits spawned.
+    let mut totals = [0_u32; 5];
+    for assist in [
+        assist_level::STANDARD,
+        assist_level::FULL,
+        assist_level::REDUCED,
+        assist_level::MANUAL,
+    ] {
+        assert_eq!(fg_reset(), config_status::OK as u32);
+        assert_eq!(
+            fg_configure(
+                spawn_kind::RUNWAY as u32,
+                assist as u32,
+                g_effects::FULL as u32,
+                arena::RUGGED as u32,
+                scenario::DUEL as u32,
+                2
+            ),
+            config_status::OK as u32
+        );
+        assert_eq!(fg_set_input_script(input_script::SORTIE as u32), 1);
+        assert_eq!(fg_start(), 1);
+        let before = allocations();
+        for i in 0..36_000 {
+            assert_eq!(fg_step(1), 1);
+            if i % 15 == 0 {
+                assert_ne!(fg_snapshot_ptr(), 0);
+                let _ = fg_state_hash_lo();
+            }
+        }
+        assert_eq!(
+            allocations() - before,
+            0,
+            "the duel sortie under assist {assist} allocated"
+        );
+        for (t, k) in totals.iter_mut().zip([0, 2, 4, 9, 11]) {
+            *t += combat_counter(k);
+        }
+    }
+    let [rounds, missiles, kills, bandit_rounds, spawns] = totals;
+    assert!(rounds > 0 && kills >= 1 && spawns >= 5, "{totals:?}");
+    eprintln!(
+        "duel sorties: {rounds} rounds, {missiles} missiles, {kills} kills, {bandit_rounds} bandit rounds, {spawns} bandits"
+    );
 }
 
 /// `input_flag::MOUSE_AIM` as the frame's flag word.

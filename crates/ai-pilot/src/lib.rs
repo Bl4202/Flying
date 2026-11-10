@@ -26,7 +26,7 @@ pub use hold::HoldCourse;
 pub use maneuver::{Airframe, Goal};
 pub use percept::{Contact, Dice, OwnView, Percept};
 pub use skill::SkillParams;
-pub use sortie::{SortieOut, SortiePhase, SortieTester};
+pub use sortie::{BanditView, OwnInputs, SortieOut, SortiePhase, SortieTester};
 
 #[cfg(test)]
 pub(crate) mod test_support;

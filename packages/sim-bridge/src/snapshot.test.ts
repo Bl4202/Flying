@@ -65,7 +65,7 @@ interface Decoded {
   bodies: { pos_bf: number[]; quat: number[] }[];
 }
 const vector = JSON.parse(
-  readFileSync(new URL('../../../tests/vectors/snapshot_v4.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../tests/vectors/snapshot_v5.json', import.meta.url), 'utf8'),
 ) as { size: number; hex: string; decoded: Decoded };
 
 const bytes = (): Uint8Array =>

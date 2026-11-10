@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use sim_core::circuit::Phase;
 use sim_core::circuit::report::{self, CircuitReport, Sample};
 use sim_core::layout::input_script;
-use sim_core::{Arena, Assist, DEFAULT_SEED, GEffects, SessionConfig, SimCore, Spawn};
+use sim_core::{Arena, Assist, DEFAULT_SEED, GEffects, Scenario, SessionConfig, SimCore, Spawn};
 
 /// The fuel the gate flies with, as a fraction of capacity (the spawn's default).
 pub const GATE_FUEL: f64 = 0.6;
@@ -125,6 +125,8 @@ fn fly(
         assist,
         g_effects: GEffects::Full,
         arena,
+        scenario: Scenario::Free,
+        skill: 0,
     })
     .map_err(|e| format!("cannot configure the session: {e}"))?;
     if !core.set_input_script(input_script::CIRCUIT as u32) {

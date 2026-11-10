@@ -88,6 +88,19 @@ impl Xoshiro256StarStar {
     }
 }
 
+/// Two independent standard normal draws (Box–Muller, with [`crate::dmath`]): `u1 = 1 − U`
+/// (so it is never 0), `u2 = U`, `r = √(−2 ln u1)`, `(r cos 2πu2, r sin 2πu2)`.
+pub fn gaussian_pair(r: &mut Xoshiro256StarStar) -> (f64, f64) {
+    let u1 = 1.0 - r.next_f64();
+    let u2 = r.next_f64();
+    let radius = crate::dmath::sqrt(-2.0 * crate::dmath::ln(u1));
+    let theta = core::f64::consts::TAU * u2;
+    (
+        radius * crate::dmath::cos(theta),
+        radius * crate::dmath::sin(theta),
+    )
+}
+
 /// Factory for named, independent random streams derived from one master seed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RngStreams {
@@ -149,6 +162,34 @@ mod tests {
             let x = r.next_f64();
             assert!((0.0..1.0).contains(&x));
         }
+    }
+
+    #[test]
+    fn gaussian_pairs_are_standard_normal() {
+        // A worked example: with the generator at [1, 2, 3, 4] the first two uniforms are
+        // 11 520 / 2^64 and 0, so u1 = 1 − 6.245e-16, u2 = 0: r = √(−2 ln u1) ≈ 3.534e-8, θ = 0.
+        let mut r = Xoshiro256StarStar::from_state([1, 2, 3, 4]);
+        let (a, b) = gaussian_pair(&mut r);
+        let u1 = 1.0 - (11_520_u64 >> 11) as f64 / 9_007_199_254_740_992.0;
+        assert_eq!(a, crate::dmath::sqrt(-2.0 * crate::dmath::ln(u1)));
+        assert_eq!(b, 0.0);
+        // 20 000 pairs: mean near 0, variance near 1, the two halves uncorrelated.
+        let mut r = Xoshiro256StarStar::from_seed(9);
+        let n = 20_000;
+        let (mut s1, mut s2, mut ss1, mut ss2, mut s12) = (0.0, 0.0, 0.0, 0.0, 0.0);
+        for _ in 0..n {
+            let (x, y) = gaussian_pair(&mut r);
+            assert!(x.is_finite() && y.is_finite());
+            s1 += x;
+            s2 += y;
+            ss1 += x * x;
+            ss2 += y * y;
+            s12 += x * y;
+        }
+        let n = f64::from(n);
+        assert!((s1 / n).abs() < 0.03 && (s2 / n).abs() < 0.03);
+        assert!((ss1 / n - 1.0).abs() < 0.04 && (ss2 / n - 1.0).abs() < 0.04);
+        assert!((s12 / n).abs() < 0.03);
     }
 
     #[test]

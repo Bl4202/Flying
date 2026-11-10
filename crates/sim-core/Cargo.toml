@@ -12,10 +12,12 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+ai-pilot.workspace = true
 content.workspace = true
 fcs.workspace = true
 flight.workspace = true
 simmath.workspace = true
+weapons.workspace = true
 
 [dev-dependencies]
 # Tests bake the real core pack (dev-dependencies are exempt from the layer rules).

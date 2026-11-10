@@ -5,7 +5,7 @@ import { SNAPSHOT } from './layout.gen.ts';
 import { SnapshotReader } from './snapshot.ts';
 
 const vector = JSON.parse(
-  readFileSync(new URL('../../../tests/vectors/snapshot_v4.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../tests/vectors/snapshot_v5.json', import.meta.url), 'utf8'),
 ) as {
   hex: string;
   decoded: {
