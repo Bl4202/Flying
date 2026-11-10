@@ -197,3 +197,25 @@ on the Mac M4 (WebGPU, mains, `pnpm soak`), report in `docs/exit/v0.1d/soak/`.
   the one re-bless; `golden-diff --fresh` is the check in between.
 - Every gate above is written before the code. A gate that turns out to be unmeasurable or wrong is
   changed only by an amendment to this ADR with the reason, never by editing a threshold in a test.
+
+## Amendment 1 (2026-11-10): BP1 under Full, and MS5's cells without a lock
+
+**BP1 under Full is informational (owner decision D6).** Full flies the stick as a bank angle of at
+most 60° and a flight-path rate of at most 10°/s (ADR-32): a level turn of at most 2 g. A Recruit
+pulls about 5 g, so under Full the bot cannot turn with it; its only kills come from head-on gun
+passes, at the merge or a later one (37 of 50 with the bot's final aim, ADR-47 amendment 1). Full
+is built for flying, not for dogfighting, and the owner chose not to change that in v0.1d. BP1 now
+reads: **≥ 40 of 50 successes under Standard, Reduced and Manual each (gate); Full's rate reported
+(informational).** `fg sortie` still flies and reports the Full cell; the exit doc records its
+rate. Whether Full should be able to fight is a design question for later.
+
+**MS5 judges the cells where the seeker can lock.** With launcher and target co-speed and the
+launcher pointing at the target, the 30° cells cross the line of sight at about 115 m/s. At 1 km
+that is 6.6°/s, and the target leaves the caged 4° field of view before the 0.5 s of tone the lock
+needs; at 3 km the target's 30°-aspect signature is below the lock threshold. No missile leaves in
+those two cells, under either target, so they have no hit rate. The defending criteria (strictly
+lower, < 95 %, > 5 % somewhere) are applied over the cells where the non-manoeuvring target was
+marked `IN RNG` and the defending target saw launches (4 of the 6); `fg sortie` prints the other two
+as "no launch". After the Dart-1's tuning (`content/core/weapons/README.md`) the result is:
+non-manoeuvring 100 % in all four judged cells; defending 80 % at 0°/1 km and 0 % at 0°/2 km,
+0°/3 km and 30°/2 km.

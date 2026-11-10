@@ -24,7 +24,7 @@ use simmath::math::{DQuat, DVec3};
 use crate::geometry::{aa_rad, angle_between, lead_point};
 use crate::hold::HEIGHT_PER_RAD_M;
 use crate::maneuver::{
-    AFTERBURNER, Airframe, Goal, MILITARY, climb_dir, fly_goal, heading_dir, height_gamma,
+    AFTERBURNER, Airframe, Goal, K_TURN, MILITARY, climb_dir, fly_goal, heading_dir, height_gamma,
     hold_speed, horizontal,
 };
 
@@ -430,19 +430,23 @@ impl SortieTester {
             self.missile_cooldown_until_s = t + MISSILE_COOLDOWN_S;
         }
         let pip = own.pipper_bf.map(|p| (p - pos).normalized_or(nose));
+        // The line of sight's own rate, fed forward when the nose or the pipper is put on the
+        // bandit, so the controller's turn gain does not leave them lagging behind it.
+        let los_rate = r.cross(b.vel_bf - body.vel_bf) * (1.0 / r.length_squared().max(1.0));
+        let lead_los = los_rate.cross(s_hat) * (1.0 / K_TURN);
         let (mut dir, mut n_cap) = if own.missiles > 0
             && (SEEKER_MIN_RANGE_M..=SEEKER_MAX_RANGE_M).contains(&range)
             && aspect <= SEEKER_MAX_ASPECT_RAD
         {
             // The nose (the caged seeker) on the bandit.
-            (v_hat + (s_hat - nose), ATTACK_N_CAP)
+            (v_hat + (s_hat - nose) + lead_los, ATTACK_N_CAP)
         } else if range > PIPPER_RANGE_M || pip.is_none() {
             let speed = body.vel_bf.length();
             let lead = lead_point(pos, speed, b.pos_bf, b.vel_bf).map_or(b.pos_bf, |(p, _)| p);
             (lead - pos, ATTACK_N_CAP)
         } else {
             let p_hat = pip.unwrap_or(s_hat);
-            (v_hat + (s_hat - p_hat), PIPPER_N_CAP)
+            (v_hat + (s_hat - p_hat) + lead_los, PIPPER_N_CAP)
         };
         let s = af.sensed();
         let cas = s.cas;

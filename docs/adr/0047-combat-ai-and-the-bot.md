@@ -231,3 +231,29 @@ head-on pass at the merge or not at all. After the merge it does not win the tur
 Recruit, its seeker almost never sees the bandit's tail (it launches about 1 missile per 50
 sorties), and under Full (60° of bank, 10°/s of flight-path rate) it cannot turn with the bandit at
 all. The plan's step 18 asks the owner at this point.
+
+**The owner's answer (2026-11-10).** D5: give the bot real dogfight logic (bot code only, no sim
+data). D6: Full is informational for BP1 (ADR-45 amendment 1).
+
+**The bot's aim after D5.** When the bot puts its nose (the caged seeker) or its pipper on the
+bandit, it now feeds the line of sight's own rate forward (`ω_los × ŝ / K_TURN`), as the bandit's
+GUN does. Without it the controller's turn gain left the nose lagging a crossing bandit, and the
+second and third merges went by without a shot. BP1 after it (seeds 1 to 50, `rugged`, Recruit):
+**Standard 42, Reduced 42, Manual 44** (gate: ≥ 40 each), Full 37 (informational); BP2: Regular
+42, Veteran 43. AI1, AI2, AI4, AI5, AI8 and MS5 pass on the same build (AI5: 0 impacts over 855
+bandits; highest CAS 0.943 `V_mo`). The margin is thin (Standard and Reduced by 2 runs); the runs
+are deterministic, so it moves only when the code or the data does.
+
+Tried and dropped: turning level towards a bandit behind instead of looping towards it (Reduced 41,
+Regular 40, the rest unchanged), which also drew out fights long enough to empty the bandit's tanks
+(below).
+
+**Known limits** (left for later milestones):
+- The bandit has no fuel logic (bingo is a v0.1d non-goal). After about 6.5 minutes in afterburner
+  it is dry, glides and flies into the ground. No bot sortie fights that long; a human who drags
+  out a fight can.
+- The bot needs 234 to 369 s from the kill to the stop (median 250 s), so a kill after about 350 s
+  ends "not stopped" at the 600 s limit (2 of 50 under Standard).
+- Nearly every other failure is "no kill": after a missed merge the bandit gets behind the bot,
+  and the bot does not win the rolling fight that follows within its 480 s of attack. The Recruit
+  never fires, so the bot is never in danger from it.
