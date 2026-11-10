@@ -29,7 +29,8 @@ pub struct HoldCourse {
     pub speed_i: f64,
     /// It has taken its references.
     pub set: bool,
-    /// `HOLD_FIRE`: press the missile button once, at the first tick the seeker is locked.
+    /// `HOLD_FIRE`: press the missile button once, at the first tick the seeker is locked with the
+    /// weapons armed.
     pub fire_once: bool,
     /// It has pressed it.
     pub fired: bool,
@@ -81,9 +82,10 @@ impl HoldCourse {
         )
     }
 
-    /// `HOLD_FIRE`'s trigger: true once, at the first call with the seeker locked.
-    pub fn fire(&mut self, locked: bool) -> bool {
-        let press = self.fire_once && !self.fired && locked;
+    /// `HOLD_FIRE`'s trigger: true once, at the first call with `ready` (the seeker locked and the
+    /// weapons armed).
+    pub fn fire(&mut self, ready: bool) -> bool {
+        let press = self.fire_once && !self.fired && ready;
         self.fired |= press;
         press
     }

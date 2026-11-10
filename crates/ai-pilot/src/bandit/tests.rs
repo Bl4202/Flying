@@ -6,6 +6,8 @@ use fcs::tester::Presses;
 use simmath::math::DQuat;
 
 const N_MAX: f64 = 9.0;
+/// The Kestrel's `V_mo`, m/s.
+const VMO_MPS: f64 = 360.0;
 
 fn skill(rank: u8) -> SkillParams {
     SkillParams::from_def(skill_def(rank), N_MAX)
@@ -31,6 +33,7 @@ fn base(t: f64) -> Percept {
             alt_msl_m: 4_500.0,
             up_bf: DVec3::Z,
             n_max: N_MAX,
+            vmo_mps: VMO_MPS,
         },
         contact: None,
         threat_ata_rad: None,
@@ -483,4 +486,44 @@ fn the_patrol_orbits_at_its_height() {
     }
     assert_eq!(b.state, BanditState::Patrol);
     assert!(turned > 0.5, "clockwise: {turned} rad");
+}
+
+#[test]
+fn the_speed_guard_closes_the_throttle_and_limits_the_dive_near_vmo() {
+    let dive = DVec3::new(0.0, 1.0, -1.0).normalized_or(DVec3::Y); // 45° down
+    let goal = || Goal {
+        dir_bf: dive,
+        n_cap: 4.0,
+        throttle: MILITARY,
+    };
+    let mut o = base(0.0).own;
+    o.vel_bf = dive * 300.0;
+    // Below the share: untouched.
+    o.cas_mps = 0.9 * VMO_MPS;
+    let mut g = goal();
+    assert!(!speed_guard(&mut g, &o));
+    assert_eq!(g, goal());
+    // Half way from the share to V_mo: idle, and no steeper than half of 15° down.
+    o.cas_mps = f64::midpoint(GUARD_VMO_SHARE, 1.0) * VMO_MPS;
+    let mut g = goal();
+    assert!(speed_guard(&mut g, &o));
+    assert_eq!(g.throttle, 0.0);
+    let gamma = dmath::asin(g.dir_bf.normalized_or(DVec3::Y).dot(o.up_bf));
+    assert!((gamma - 0.5 * GUARD_GAMMA_RAD).abs() < 1e-9, "{gamma}");
+    assert!(
+        g.dir_bf.x.abs() < 1e-9 && g.dir_bf.y > 0.0,
+        "still northbound"
+    );
+    // At V_mo and above: level at the least. A climb is left alone.
+    o.cas_mps = 1.05 * VMO_MPS;
+    let mut g = goal();
+    assert!(speed_guard(&mut g, &o));
+    assert!(g.dir_bf.dot(o.up_bf).abs() < 1e-9);
+    let climb = DVec3::new(0.0, 1.0, 0.5);
+    let mut g = Goal {
+        dir_bf: climb,
+        ..goal()
+    };
+    assert!(speed_guard(&mut g, &o));
+    assert_eq!(g.dir_bf, climb);
 }

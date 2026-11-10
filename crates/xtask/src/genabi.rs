@@ -510,6 +510,7 @@ fn duel_snapshot(pack: &[u8]) -> (u32, Value, String) {
         brain: BrainKind::HoldCourse,
         bandit_active: true,
         gci: true,
+        unarmed: false,
     }));
     core.start();
     let mut pressed = false;

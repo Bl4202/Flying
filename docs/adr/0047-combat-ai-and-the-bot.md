@@ -170,3 +170,64 @@ again (the take-off on the runway; the attack or the climb in the air).
   this crate's ALGO constants (the plan's WP4 step 18).
 - Lag pursuit, the jink and the extend are the cut list's item 5 if time runs short (a sim-pack
   change, before the re-bless only).
+
+## Amendment 1 (2026-11-10): what WP4's gates asked of the bandit and the bot
+
+`fg sortie` (ADR-45) flew the brains against the real core for the first time. What it showed, and
+what changed (every value an ALGO constant of this crate; no sim datum except the Dart-1's, see
+`content/core/weapons/README.md`):
+
+**The bandit**
+- **Speed guard (AI4).** A Recruit chasing the bot down from 6 km reached 1.18 `V_mo` in a 70° dive
+  (RECOVER even lit the afterburner). From 0.92 `V_mo`, in every state it flies itself, the
+  throttle closes, the airbrake opens and the path is held no steeper than 15° down, the floor
+  rising to level at `V_mo`. The percept's `own` carries `vmo_mps` for it. Highest CAS since:
+  0.945 `V_mo`.
+- **Collision avoidance.** Head-on merges flown nose to nose passed within 4 m: 16 of 50 bot
+  sorties under Full ended in a collision. When the contact (dead-reckoned from the percept to now)
+  will pass within 60 m, either closing faster than 150 m/s inside 1 s or closing at all inside
+  200 m, the bandit turns away from where it will pass at its load cap. Breaking at 2.5 s cost the
+  bot nearly every kill (its head-on gun pass is fired inside about 0.6 s of the pass); 1 s keeps
+  the pass.
+- **Closing speed in PURSUE and GUN (AI8).** A Veteran closing at 130 m/s overshot every gun
+  solution; Regular fired in 9 of 50 AI1 runs, Veteran in none. Inside 3 km the closure is held to
+  `(R − 300 m) / 20 s`, between −30 and 150 m/s, at 0.02 throttle per m/s (never below military under
+  200 m/s CAS), with the airbrake when 30 m/s too fast above 200 m/s CAS (below it a bandit slowed
+  behind the landing bot stalled into the ground). GUN also feeds the line of sight's own rate
+  forward (`ω_los × aim / K_TURN`), so a crossing target is tracked without the controller's lag.
+  Regular and Veteran now fire in 50 of 50.
+- **RECOVER (AI5).** A Recruit in a 79° dive from 2.2 km could not come level at its own load cap.
+  Rule 2 now also fires when the height is below the pull-out arc at the skill's load plus 2.5 s of
+  path (for the wings to come level) plus the skill's clearance; diving more than 10°, RECOVER pulls
+  at the airframe's limit with the throttle closed and the airbrake open, whatever the skill. 0 ground
+  impacts by a living bandit over the 824 bandits of the last run.
+
+**The bot**
+- **Ground guard.** Over the climb, the attack and the return: if the straight path 1 to 8 s ahead,
+  or the aircraft now, is under 250 m above the ground (150 m on the way home, which comes down to
+  the circuit's 300 m), it climbs at 20° in afterburner at 5 g or more.
+- **Energy and g in the attack.** The load cap is at most 0.8 of what the clean wing gives at the
+  speed (`(CAS / V_s)²`); under 150 m/s CAS it holds the path no higher than level in afterburner
+  (Reduced and Manual stalled out of slow zooms); the pilot's g stress (now in `OwnInputs`) eases the
+  cap from 7 g at stress 0.3 to 5 g at 0.6 (it pulled 6.9 g for 12 s and blacked out under
+  `GEffects::Full`, the session BP1 flies).
+- **The way home.** The lead-in point is 6 km up the extended downwind line; the bot flies there at
+  140 m/s CAS, 2 g, descending at most 15°, to the circuit's height over the ground at the crosswind
+  corner as a height above MSL (the ground under the line falls towards the airfield, and holding a
+  height over it dived and gathered speed), but at least 300 m over the ground below; arriving away
+  from that height within 3 km, it rounds the point (2 km radius, the way it is already turning)
+  until the height is right; within 1.5 km and 150 m of it, it turns down the line and **hands over
+  to the tester's downwind leg once its track is within 30°**, the tester settling the height and the
+  speed over the 14 km to the base turn (with the airbrake when 8 m/s fast on the downwind and base
+  legs). A goal more than 120° behind is turned onto level, 90° at a time: the controller flies a
+  goal behind as a loop, and at the return's 2 g a slow loop climbed 2 km out of the circuit. The
+  join's height and speed tolerances, and the go-around, are gone.
+- The bot's own collision avoidance was tried and dropped: breaking early enough to clear the
+  bandit cost the head-on shot. The bandit avoids instead.
+
+**BP1 after this** (seeds 1 to 50, `rugged`, Recruit): Full 26, Standard 26, Reduced 38, Manual 36
+(BP2, Standard: Regular 38, Veteran 41). Nearly every failure is now "no kill": the bot wins on its
+head-on pass at the merge or not at all. After the merge it does not win the turning fight against a
+Recruit, its seeker almost never sees the bandit's tail (it launches about 1 missile per 50
+sorties), and under Full (60° of bank, 10°/s of flight-path rate) it cannot turn with the bandit at
+all. The plan's step 18 asks the owner at this point.

@@ -1,5 +1,5 @@
 //! The frames of the duel scripts (ADR-47, ADR-48): SORTIE (the bot playtester) and HOLD /
-//! `HOLD_FIRE` (straight and level; the missile button pressed once at the first lock). The core
+//! `HOLD_FIRE` (straight and level; the missile button pressed once at the first lock with the weapons armed). The core
 //! makes them in Ingest from the aircraft and the combat state, like the circuit tester's.
 
 use ai_pilot::{Airframe, BanditView, HoldCourse, OwnInputs, SortieOut, SortieTester};
@@ -73,6 +73,7 @@ pub fn own_inputs(slot: &AircraftSlot, c: &Combat) -> OwnInputs {
         rounds: c.player.gun.rounds,
         missiles: c.player.missiles_left,
         pipper_bf: c.cues.pipper_bf,
+        g_stress: slot.physio.stress,
     }
 }
 
@@ -139,6 +140,6 @@ pub fn hold_frame(
         t_s: sim_time(tick),
     };
     let controls = hold.step(&af);
-    let press = hold.fire(c.player.seeker.mode == SeekerMode::Locked);
+    let press = hold.fire(c.player.seeker.mode == SeekerMode::Locked && c.player.armed);
     encode(tick, &controls, &Presses::default(), false, press)
 }

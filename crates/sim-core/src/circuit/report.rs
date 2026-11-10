@@ -450,11 +450,14 @@ fn f64_le(b: &[u8], o: usize) -> f64 {
     ])
 }
 
-/// Reads one tick of a core into a sample. `None` without an aircraft or a tester.
+/// Reads one tick of a core into a sample. `None` without an aircraft or a tester (the circuit's,
+/// or the one the bot playtester takes off and lands with).
 #[must_use]
 pub fn sample_of(core: &SimCore) -> Option<Sample> {
     let slot = core.ownship().aircraft()?;
-    let tester = core.circuit_tester()?;
+    let tester = core
+        .circuit_tester()
+        .or_else(|| core.input().sortie().map(ai_pilot::SortieTester::inner))?;
     let model = core.services().aircraft.as_ref()?;
     let b = core.snapshot_bytes();
     let f32_at = |o: usize| f32_le(b, o);

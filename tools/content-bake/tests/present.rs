@@ -137,16 +137,17 @@ fn the_bundle_records_the_sim_pack_it_was_baked_with() {
 
 /// The sim pack's SHA-256 is part of the state hash, so a presentation file that reached it would
 /// move every determinism golden (ADR-43). This pins the pack: the presentation files must not
-/// change it. v0.1d (ADR-45, D2) added the weapons, the skills and the Kestrel's combat data, which
-/// moved it once; update it again only with a deliberate change to the sim content, and the
-/// goldens move with it (the one re-bless at the end of WP4; after that, the owner).
+/// change it. v0.1d (ADR-45, D2) added the weapons, the skills and the Kestrel's combat data, and
+/// WP4 tuned the Dart-1 for MS5 (`content/core/weapons/README.md`), which moved it; update it
+/// again only with a deliberate change to the sim content, and the goldens move with it (the one
+/// re-bless at the end of WP4; after that, the owner).
 #[test]
 fn the_sim_pack_hash_is_pinned() {
     let b = baked();
     let header = &b.cpack[content::cpack::header::CONTENT_HASH..][..32];
     assert_eq!(
         hex(header),
-        "986d0ce78a1e051763cc1247b00dfe9ee80a69ab08550e30a1c8f567a81c9ebe"
+        "3379f7b67fa93cd261b27b08b222e72531b902411ae0f6fdd0b6e9120c0439ab"
     );
     assert_eq!(b.cpack.len(), 7432);
 }

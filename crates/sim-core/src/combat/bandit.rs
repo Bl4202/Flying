@@ -70,6 +70,9 @@ pub struct Bandit {
     pub counters: Counters,
     /// The sequence number of its last frame.
     pub frame_seq: u32,
+    /// Its calibrated airspeed at the start of the tick, m/s (an observation for the gates,
+    /// never hashed).
+    pub cas_mps: f64,
 }
 
 impl Bandit {
@@ -98,6 +101,7 @@ impl Bandit {
             damaged_by_player_tick: None,
             counters: Counters::default(),
             frame_seq: 0,
+            cas_mps: 0.0,
         }
     }
 

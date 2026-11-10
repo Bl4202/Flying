@@ -59,6 +59,7 @@ fn apart() -> CombatSetup {
         brain: BrainKind::HoldCourse,
         bandit_active: false,
         gci: false,
+        unarmed: false,
     }
 }
 
@@ -345,6 +346,7 @@ fn every_hashed_number_moves_the_combat_hash_and_no_observation_does() {
     let changes: &[(&str, Mutate)] = &[
         ("rank", |c| c.rank = 3),
         ("gci", |c| c.gci = !c.gci),
+        ("unarmed", |c| c.unarmed = !c.unarmed),
         ("brain kind", |c| c.brain_kind = BrainKind::DefendOnly),
         ("activated", |c| c.activated = !c.activated),
         ("airborne", |c| c.airborne_ticks += 1),

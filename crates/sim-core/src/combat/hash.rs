@@ -63,6 +63,7 @@ impl Combat {
         h.write_u64(
             u64::from(self.rank)
                 | u64::from(self.gci) << 8
+                | u64::from(self.unarmed) << 12
                 | u64::from(self.brain_kind as u8) << 16
                 | u64::from(self.activated) << 24
                 | u64::from(self.airborne_ticks) << 32,

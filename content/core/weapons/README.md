@@ -42,8 +42,8 @@ v0.1d gates (ADR-45, MS2) are written against.
 |---|---|---|
 | `mass_kg`, `warhead.he_kg` | 85 kg, 9 kg | GDD 15.12 |
 | `motor` | 11 000 N for 2.5 s, 11.5 kg of propellant | *target* |
-| `aero` | 0.01227 m² (a 125 mm body), boost and coast drag tables, `cn_max` 12, `k_induced` 0.047 | *target* |
-| `autopilot` | first-order lag of 0.25 s; 30 g; no manoeuvre below 150 m/s | *target* |
+| `aero` | 0.01227 m² (a 125 mm body), boost and coast drag tables, `cn_max` 8, `k_induced` 0.047 | *target*; tuned in v0.1d (see the log) |
+| `autopilot` | first-order lag of 0.4 s; 30 g; no manoeuvre below 150 m/s | *target*; the lag tuned in v0.1d (see the log) |
 | `guidance` | proportional navigation, N' = 4 | GDD 15.5 (simple PN); the constant is a *target* |
 | `seeker` | rear-aspect IR; 4 deg caged field of view; 30 deg gimbal; locks a target of intensity 1 at 6 000 m (range scales with the square root of the intensity); sees the target only within 35 deg of its tail; 0.1 deg noise; 0.5 s of tone to lock | *target* |
 | `fuze` | proximity; arms after 300 m; triggers within 8 m | *target* |
@@ -65,3 +65,4 @@ last change; a change after that needs the owner.
 | Date | Change | Why |
 |---|---|---|
 | 2026-11-09 | GS-27 `dispersion_mrad` 1.5 → 0.5, read as the Gaussian σ of GDD 15.4.1 (the WP1 text had called it a uniform cone's half-angle) | GN3 (`AC-54.2`: ≥ 90 of 100 rounds from the pipper hit at 300 to 1 000 m). At 1 000 m, over 10 runs of 100 rounds per aspect: σ 1.5 gave 63 to 73 % on average; a uniform 1.5 mrad cone 86 to 97 % (worst run 81); σ 0.5 gives 96 to 100 % (worst run 94). The owner chose σ 0.5 (WP2). Before the one re-bless, so no extra re-bless |
+| 2026-11-09 | Dart-1 `cn_max` 12 → 8 and `autopilot.tau_s` 0.25 → 0.4 | MS5 (`fg sortie --sweep`): with the old values a defending Veteran was hit 100 % of the time at 1 km dead astern (it notices the missile at once and breaks at about 3.8 s to go, but the missile needs only about 16 g to follow, inside any `g_max` of the allowed 20 to 40). Each value alone left the 1 km cell at 100 %; together: holding target 100 % in every cell the seeker locks, defending Veteran 80 % at 1 km and 0 % at 2 and 3 km (the other combinations tried inside the ranges: `g_max` 20, `n_prime` 3, `cn_max` 9 and 10, `tau_s` 0.35, gave 1 km at 97 to 100 % or 0 %, or 52.5 %). Before the one re-bless, so no extra re-bless |

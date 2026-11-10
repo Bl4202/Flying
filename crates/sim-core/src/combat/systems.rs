@@ -74,6 +74,7 @@ impl System for CombatAi {
         perception::update(c, models, svc, pk.as_ref(), &bk, tick);
         let env = svc.flight_env();
         let tel = model.telemetry_light(&c.bandit.slot.state, &env, t);
+        c.bandit.cas_mps = tel.cas_mps;
         let p = perception::percept(
             c,
             models,
