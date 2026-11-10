@@ -125,6 +125,8 @@ function render(): RenderStats {
     gappedFrames: 1,
     snappedFrames: 0,
     contendedReads: 0,
+    liveBuffers: 0,
+    liveTextures: 0,
   };
 }
 

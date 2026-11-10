@@ -37,10 +37,11 @@ import {
   LOOKING_UP,
   makeSnapshot,
   NORTH,
+  quatFromColumns,
   type FixtureBody,
   type FixtureSnapshot,
 } from './snapshot-fixture.ts';
-import { OWNSHIP_FLAG2 } from '@flying/sim-bridge/layout';
+import { COMBAT_FLAG, OWNSHIP_FLAG2 } from '@flying/sim-bridge/layout';
 import { TerrainSet } from './terrain-levels.ts';
 import { makeTestPatch } from './terrain-test-patch.ts';
 
@@ -464,6 +465,61 @@ export async function runRendererContract(
         // From 45 m behind and 9 m above, the aircraft is a few dozen pixels across at this size.
         const model = countKey(px, CLASSIFY_KEYS.model);
         return model > 80 ? undefined : `${String(model)} model pixels`;
+      });
+
+      await check('the bandit draws its model where it is (classify view)', async () => {
+        const [w, h] = [480, 270];
+        renderer.resize(w, h);
+        renderer.setMesh('exterior', buildModelMesh(FIXTURE_MODEL));
+        // 50 m ahead and 10 m to the right, flying east: broadside on, a few hundred pixels. Off
+        // the axis, so a bandit drawn in the wrong place (or the ownship's place) is caught.
+        const [ahead, right] = [50, 10];
+        const east = quatFromColumns([1, 0, 0], [0, -1, 0], [0, 0, -1]);
+        const interp = new SnapshotInterpolator();
+        interp.push(
+          makeSnapshot({
+            publishMs: 1000,
+            ownship: { pos: [0, -6000, 1500], quat: NORTH },
+            combat: {
+              flags: COMBAT_FLAG.ACTIVE,
+              bandit: { pos: [right, -6000 + ahead, 1500], quat: east },
+            },
+          }),
+        );
+        const state = interp.sample(2000);
+        if (!state) return 'no scene state';
+        const terrain = patchAt(0);
+        upload(terrain);
+        renderer.render(
+          scene.build(state, {
+            aspect: w / h,
+            zRange: renderer.zRange,
+            timeS: 0,
+            terrain,
+            debugView: 'classify',
+            banditModel: new ModelRig(FIXTURE_MODEL),
+          }),
+        );
+        const px = await renderer.debugReadPixels();
+        renderer.setMesh('exterior', undefined);
+        renderer.resize(width, height);
+        let n = 0;
+        let sx = 0;
+        let sy = 0;
+        for (let i = 0; i < w * h; i++) {
+          if (!isKey(px, i * 4, CLASSIFY_KEYS.model)) continue;
+          n += 1;
+          sx += i % w;
+          sy += Math.floor(i / w);
+        }
+        // About 12 m by 2 m at 50 m: some 60 by 10 pixels, and its wing seen edge on.
+        if (n < 200) return `${String(n)} model pixels`;
+        const [cx, cy] = [sx / n, sy / n];
+        const wantX = (1 + right / ahead / (Math.tan(FOV_Y / 2) * (w / h))) * (w / 2);
+        return Math.abs(cx - wantX) < w * 0.03 && Math.abs(cy - h / 2) < h * 0.05
+          ? undefined
+          : `the model's pixels are centred at (${cx.toFixed(0)}, ${cy.toFixed(0)}), not ` +
+              `(${wantX.toFixed(0)}, ${String(h / 2)})`;
       });
 
       await check(

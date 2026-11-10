@@ -11,8 +11,19 @@
  * Positions blend in f64, orientations by normalised linear interpolation along the short arc.
  * It copes with having none, one, a stale newest, a gap of several ticks, and a body or the
  * ownship teleporting between snapshots (it snaps instead of sweeping across the map).
+ *
+ * The duel (snapshot v5, ADR-48) blends the same way where a thing is the same thing in both
+ * snapshots: the bandit (unless it respawned: `BD_SPAWN_SEQ` moved), the pipper point (while both
+ * have one), each missile (the same slot, in flight in both) and each tracer (the same round, by
+ * `TR_ID`). Everything else of the duel comes from the newest snapshot.
  */
-import { OWNSHIP_FLAG2, SNAPSHOT } from '@flying/sim-bridge/layout';
+import {
+  BANDIT_LIFE,
+  COMBAT_FLAG,
+  MISSILE_STATE,
+  OWNSHIP_FLAG2,
+  SNAPSHOT,
+} from '@flying/sim-bridge/layout';
 import { SnapshotReader } from '@flying/sim-bridge/snapshot';
 
 /** What the scene builder needs: the interpolated world, in BF. */
@@ -61,6 +72,52 @@ export interface SceneState {
   bodyCount: number;
   bodyPosBf: Float64Array;
   bodyQuat: Float32Array;
+
+  // --- The duel (all zero without combat). ---
+  /** `COMBAT_FLAG` bits, `SEEKER_MODE`, `LAUNCH_INHIBIT` and how long ago it was, seconds. */
+  combatFlags: number;
+  seeker: number;
+  inhibit: number;
+  inhibitAge: number;
+  /** Gun rounds and missiles left. */
+  rounds: number;
+  missilesLeft: number;
+  /** The designated target's range (m) and closure (m/s). */
+  tgtRange: number;
+  tgtClosure: number;
+  /** The player's health, 0 to 1. */
+  health: number;
+  /** The gunsight's aim point, BF metres (while `COMBAT_FLAG.PIPPER`). */
+  pipperBf: Float64Array;
+  /** `BANDIT_LIFE` and the spawn counter. */
+  banditLife: number;
+  banditSpawnSeq: number;
+  /** The bandit's reference point (BF, f64), attitude `[w, x, y, z]` and velocity (BF m/s). */
+  banditPosBf: Float64Array;
+  banditQuat: Float32Array;
+  banditVelBf: Float32Array;
+  /** Its surfaces and flap (radians), airbrake, gear and afterburner (0 to 1): its model's channels. */
+  banditElevatorRad: number;
+  banditAileronRad: number;
+  banditRudderRad: number;
+  banditFlapRad: number;
+  banditAirbrake: number;
+  banditGearPos: number;
+  banditAb: number;
+  /** Missiles in flight or bursting, packed: position (BF), velocity, `MISSILE_STATE`. */
+  missileCount: number;
+  missilePosBf: Float64Array;
+  missileVelBf: Float32Array;
+  missileState: Uint8Array;
+  /** Tracers, packed: position (BF) and velocity. */
+  tracerCount: number;
+  tracerPosBf: Float64Array;
+  tracerVelBf: Float32Array;
+  /** Explosions, packed: position (BF), age (s) and `EXPLOSION_KIND`. */
+  explosionCount: number;
+  explosionPosBf: Float64Array;
+  explosionAge: Float32Array;
+  explosionKind: Uint8Array;
 }
 
 export interface InterpStatus {
@@ -84,6 +141,11 @@ export interface InterpOptions {
 }
 
 const MAX_BODIES = SNAPSHOT.BODY_CAPACITY;
+const MISSILES = SNAPSHOT.MISSILE_CAPACITY;
+const TRACERS = SNAPSHOT.TRACER_CAPACITY;
+const EXPLOSIONS = SNAPSHOT.EXPLOSION_CAPACITY;
+/** Round pool slots a tracer id can name (`TR_ID` is a byte). */
+const TRACER_IDS = 256;
 
 export class SnapshotInterpolator {
   readonly delayMs: number;
@@ -121,6 +183,39 @@ export class SnapshotInterpolator {
     bodyCount: 0,
     bodyPosBf: new Float64Array(MAX_BODIES * 3),
     bodyQuat: new Float32Array(MAX_BODIES * 4),
+    combatFlags: 0,
+    seeker: 0,
+    inhibit: 0,
+    inhibitAge: 0,
+    rounds: 0,
+    missilesLeft: 0,
+    tgtRange: 0,
+    tgtClosure: 0,
+    health: 0,
+    pipperBf: new Float64Array(3),
+    banditLife: 0,
+    banditSpawnSeq: 0,
+    banditPosBf: new Float64Array(3),
+    banditQuat: new Float32Array([1, 0, 0, 0]),
+    banditVelBf: new Float32Array(3),
+    banditElevatorRad: 0,
+    banditAileronRad: 0,
+    banditRudderRad: 0,
+    banditFlapRad: 0,
+    banditAirbrake: 0,
+    banditGearPos: 0,
+    banditAb: 0,
+    missileCount: 0,
+    missilePosBf: new Float64Array(MISSILES * 3),
+    missileVelBf: new Float32Array(MISSILES * 3),
+    missileState: new Uint8Array(MISSILES),
+    tracerCount: 0,
+    tracerPosBf: new Float64Array(TRACERS * 3),
+    tracerVelBf: new Float32Array(TRACERS * 3),
+    explosionCount: 0,
+    explosionPosBf: new Float64Array(EXPLOSIONS * 3),
+    explosionAge: new Float32Array(EXPLOSIONS),
+    explosionKind: new Uint8Array(EXPLOSIONS),
   };
   readonly status: InterpStatus = { alpha: 1, stale: false, gapped: false, snapped: false };
 
@@ -140,6 +235,9 @@ export class SnapshotInterpolator {
   readonly #b4 = new Float32Array(4);
   readonly #aim = new Float32Array(2);
   readonly #surf = new Float32Array(3);
+  readonly #v3 = new Float32Array(3);
+  /** Where each round's tracer is in the older snapshot's list, by `TR_ID` (-1: not there). */
+  readonly #tracerAt = new Int16Array(TRACER_IDS).fill(-1);
 
   constructor(opts: InterpOptions = {}) {
     this.delayMs = opts.delayMs ?? 1000 / 60;
@@ -275,16 +373,135 @@ export class SnapshotInterpolator {
       s.bodyPosBf.set(this.#b3, i * 3);
       s.bodyQuat.set(this.#b4, i * 4);
     }
+
+    this.#combat(cur, prev, alpha);
     return s;
+  }
+
+  /** The duel's part of the state (see the file comment for what blends). */
+  #combat(cur: SnapshotReader, prev: SnapshotReader, alpha: number): void {
+    const s = this.state;
+    const st = this.status;
+    const blend = alpha < 1;
+    s.combatFlags = cur.combatFlags();
+    s.seeker = cur.seekerMode();
+    s.inhibit = cur.launchInhibit();
+    s.inhibitAge = cur.launchInhibitAge();
+    s.rounds = cur.gunRounds();
+    s.missilesLeft = cur.missilesLeft();
+    s.tgtRange = cur.targetRange();
+    s.tgtClosure = cur.targetClosure();
+    s.health = cur.playerHealth();
+
+    // The pipper point, while both snapshots have one.
+    cur.pipperPos(this.#b3);
+    if (
+      blend &&
+      (s.combatFlags & COMBAT_FLAG.PIPPER) !== 0 &&
+      (prev.combatFlags() & COMBAT_FLAG.PIPPER) !== 0
+    ) {
+      prev.pipperPos(this.#a3);
+      lerp3(s.pipperBf, 0, this.#a3, 0, this.#b3, 0, alpha);
+    } else {
+      s.pipperBf.set(this.#b3);
+    }
+
+    // The bandit: blended unless it respawned or jumped.
+    s.banditLife = cur.banditLife();
+    s.banditSpawnSeq = cur.banditSpawnSeq();
+    cur.banditPos(this.#b3);
+    cur.banditQuat(this.#b4);
+    cur.banditVel(s.banditVelBf);
+    const same =
+      blend &&
+      s.banditLife !== BANDIT_LIFE.ABSENT &&
+      prev.banditLife() !== BANDIT_LIFE.ABSENT &&
+      prev.banditSpawnSeq() === s.banditSpawnSeq;
+    if (same) {
+      prev.banditPos(this.#a3);
+      prev.banditQuat(this.#a4);
+    }
+    if (same && distance(this.#a3, this.#b3) <= this.teleportM) {
+      lerp3(s.banditPosBf, 0, this.#a3, 0, this.#b3, 0, alpha);
+      nlerp(s.banditQuat, 0, this.#a4, 0, this.#b4, 0, alpha);
+    } else {
+      if (same) st.snapped = true;
+      s.banditPosBf.set(this.#b3);
+      s.banditQuat.set(this.#b4);
+    }
+    cur.banditSurfaces(this.#surf);
+    s.banditElevatorRad = this.#surf[0] ?? 0;
+    s.banditAileronRad = this.#surf[1] ?? 0;
+    s.banditRudderRad = this.#surf[2] ?? 0;
+    s.banditFlapRad = cur.banditTef();
+    s.banditAirbrake = cur.banditAirbrake();
+    s.banditGearPos = cur.banditGearPos();
+    s.banditAb = cur.banditAbLevel();
+
+    // Missiles: a slot in flight in both snapshots blends.
+    let m = 0;
+    for (let i = 0; i < MISSILES; i++) {
+      const state = cur.missileState(i);
+      if (state === MISSILE_STATE.FREE) continue;
+      cur.missilePos(i, this.#b3);
+      cur.missileVel(i, this.#v3);
+      if (blend && prev.missileState(i) !== MISSILE_STATE.FREE) {
+        prev.missilePos(i, this.#a3);
+        if (distance(this.#a3, this.#b3) <= this.teleportM) {
+          lerp3(s.missilePosBf, m * 3, this.#a3, 0, this.#b3, 0, alpha);
+        } else {
+          s.missilePosBf.set(this.#b3, m * 3);
+        }
+      } else {
+        s.missilePosBf.set(this.#b3, m * 3);
+      }
+      s.missileVelBf.set(this.#v3, m * 3);
+      s.missileState[m] = state;
+      m += 1;
+    }
+    s.missileCount = m;
+
+    // Tracers: the same round in both snapshots blends.
+    const at = this.#tracerAt;
+    const prevCount = blend ? Math.min(prev.tracerCount(), TRACERS) : 0;
+    for (let i = 0; i < prevCount; i++) at[prev.tracerId(i)] = i;
+    const count = Math.min(cur.tracerCount(), TRACERS);
+    for (let i = 0; i < count; i++) {
+      cur.tracerPos(i, this.#b3);
+      cur.tracerVel(i, this.#v3);
+      const j = at[cur.tracerId(i)] ?? -1;
+      if (j >= 0) {
+        prev.tracerPos(j, this.#a3);
+        lerp3(s.tracerPosBf, i * 3, this.#a3, 0, this.#b3, 0, alpha);
+      } else {
+        s.tracerPosBf.set(this.#b3, i * 3);
+      }
+      s.tracerVelBf.set(this.#v3, i * 3);
+    }
+    s.tracerCount = count;
+    for (let i = 0; i < prevCount; i++) at[prev.tracerId(i)] = -1;
+
+    // Explosions, from the newest.
+    let x = 0;
+    for (let i = 0; i < EXPLOSIONS; i++) {
+      const kind = cur.explosionKind(i);
+      if (kind === 0) continue;
+      cur.explosionPos(i, this.#b3);
+      s.explosionPosBf.set(this.#b3, x * 3);
+      s.explosionAge[x] = cur.explosionAge(i);
+      s.explosionKind[x] = kind;
+      x += 1;
+    }
+    s.explosionCount = x;
   }
 }
 
 function distance(a: Float64Array, b: Float64Array): number {
-  return Math.hypot(
-    (a[0] ?? 0) - (b[0] ?? 0),
-    (a[1] ?? 0) - (b[1] ?? 0),
-    (a[2] ?? 0) - (b[2] ?? 0),
-  );
+  // Not Math.hypot, which boxes its arguments: this runs for every blended thing every frame.
+  const x = (a[0] ?? 0) - (b[0] ?? 0);
+  const y = (a[1] ?? 0) - (b[1] ?? 0);
+  const z = (a[2] ?? 0) - (b[2] ?? 0);
+  return Math.sqrt(x * x + y * y + z * z);
 }
 
 function lerp3(

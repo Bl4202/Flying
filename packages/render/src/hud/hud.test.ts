@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { quatRotate } from '@flying/sim-bridge/frame-math';
-import { WORLD } from '@flying/sim-bridge/layout';
+import { COMBAT_FLAG, SEEKER_MODE, WORLD } from '@flying/sim-bridge/layout';
 import { WARNING } from '@flying/sim-bridge';
 import { bodyToRender, FOV_Y, mul4, projection, viewRotation } from '../camera.ts';
 import { bytesPerCall } from '../test-support.ts';
@@ -104,6 +104,23 @@ describe('the font covers everything the HUD can write (U1)', () => {
           brakeR: rand(),
           assist: 1 + Math.floor(rand() * 4),
         },
+        // Half the states are a duel, with every flag, seeker mode and refusal in turn (HU4).
+        ...(n % 2 === 0
+          ? {}
+          : {
+              combat: {
+                combatFlags: Math.floor(rand() * 0x1000),
+                seeker: Math.floor(rand() * 4),
+                inhibit: Math.floor(rand() * 8),
+                inhibitAge: rand() * 3,
+                rounds: Math.floor(rand() * 151),
+                missilesLeft: Math.floor(rand() * 3),
+                tgtRange: rand() * 25_000,
+                tgtClosure: (rand() - 0.5) * 600,
+                pipperBf: [(rand() - 0.5) * 3000, (rand() - 0.5) * 3000, rand() * 20_000],
+                banditPosBf: [(rand() - 0.5) * 3e4, (rand() - 0.5) * 3e4, rand() * 20_000],
+              },
+            }),
       };
       build(hud, s, { declutter: (n % 3) as 0 | 1 | 2 });
       expect(hud.graph.missing, `state ${String(n)}`).toBe(0);
@@ -130,6 +147,19 @@ describe('the font covers everything the HUD can write (U1)', () => {
       t.fuel,
       t.fuelFlow,
       t.endurance,
+      t.gun,
+      t.srm,
+      t.arm,
+      t.safe,
+      t.tone,
+      t.lock,
+      t.shoot,
+      t.inRange,
+      t.hit,
+      t.splash,
+      ...t.inhibit,
+      t.rangeLabel,
+      t.closureLabel,
       'G',
       'M',
       '0123456789-.',
@@ -532,6 +562,8 @@ describe('a whole frame', () => {
 
   it('builds in well under 0.3 ms on average (AC-54.3) and makes almost no garbage (U3)', async () => {
     const hud = new Hud(p.hud, p.cockpit, p.font);
+    // In a duel (HU4), with every weapon symbol up: pipper, target box, locked seeker, status.
+    const fwd: [number, number, number] = [Math.sin(1) * 0.98, Math.cos(1) * 0.98, 0.15];
     const i = input({
       heading: 1,
       pitch: 0.15,
@@ -539,6 +571,21 @@ describe('a whole frame', () => {
       pos: [500, -4000, 900],
       warnings: WARNING.STALL | WARNING.G,
       status: { cas: 150, altitude: 900, agl: 400, nz: 3, gearPos: 1, assist: 2 },
+      combat: {
+        combatFlags:
+          COMBAT_FLAG.ARMED |
+          COMBAT_FLAG.TARGET |
+          COMBAT_FLAG.PIPPER |
+          COMBAT_FLAG.SHOOT_GUN |
+          COMBAT_FLAG.IN_RANGE |
+          COMBAT_FLAG.HIT_RECENT,
+        seeker: SEEKER_MODE.LOCKED,
+        rounds: 87,
+        tgtRange: 812.4,
+        tgtClosure: 41.2,
+        pipperBf: [500 + fwd[0] * 800, -4000 + fwd[1] * 800, 900 + fwd[2] * 800 + 3.5],
+        banditPosBf: [500 + fwd[0] * 812, -4000 + fwd[1] * 812, 900 + fwd[2] * 812 + 6],
+      },
     });
     const r = rot(i.quatBf);
     const o = options({ eyeBf: i.posBf });

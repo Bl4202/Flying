@@ -238,7 +238,7 @@ describe('renderPresentation', () => {
   it('collects everything for the Kestrel and nothing for an unknown aircraft', () => {
     const bundle = parsePresentBundle(fixture());
     const p = renderPresentation(bundle, 'core:ac/kestrel');
-    expect(p?.hud.layers.length).toBe(13);
+    expect(p?.hud.layers.length).toBe(18);
     expect(p?.model.parts.length).toBe(12);
     expect(p?.cockpit.canopyBows.length).toBe(4);
     expect(p?.font.glyphs.size).toBe(45);

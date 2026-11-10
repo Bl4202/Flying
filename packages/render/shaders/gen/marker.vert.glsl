@@ -93,22 +93,25 @@ void main() {
     vec4 tint = _p2vs_location4;
     uint index = (uint(gl_InstanceID) + naga_vs_first_instance);
     VsOut out_ = VsOut(vec4(0.0), vec3(0.0), vec3(0.0), 0.0, 0.0);
-    vec3 _e9 = qrot(quat, (pos * pos_scale.w));
-    vec3 pos_rel = (pos_scale.xyz + _e9);
-    mat4x4 _e15 = _group_0_binding_0_vs.view_proj;
-    out_.clip = (_e15 * vec4(pos_rel, 1.0));
-    vec3 _e20 = qrot(quat, normal);
-    out_.normal = _e20;
+    float s = pos_scale.w;
+    bool streak = (tint.w > 1.5);
+    vec3 scale = (streak ? vec3(s, (s * 0.03), (s * 0.03)) : vec3(s));
+    vec3 _e19 = qrot(quat, (pos * scale));
+    vec3 pos_rel = (pos_scale.xyz + _e19);
+    mat4x4 _e25 = _group_0_binding_0_vs.view_proj;
+    out_.clip = (_e25 * vec4(pos_rel, 1.0));
+    vec3 _e30 = qrot(quat, normal);
+    out_.normal = _e30;
     vec3 hue = (vec3((float(index) * 2.399963)) + vec3(0.0, 2.094395, 4.18879));
     out_.tint = ((tint.w > 0.5) ? tint.xyz : (vec3(0.55) + (0.45 * sin(hue))));
     out_.distance_m = length(pos_scale.xyz);
     out_.cue = tint.w;
-    VsOut _e47 = out_;
-    gl_Position = _e47.clip;
-    _vs2fs_location0 = _e47.normal;
-    _vs2fs_location1 = _e47.tint;
-    _vs2fs_location2 = _e47.distance_m;
-    _vs2fs_location3 = _e47.cue;
+    VsOut _e57 = out_;
+    gl_Position = _e57.clip;
+    _vs2fs_location0 = _e57.normal;
+    _vs2fs_location1 = _e57.tint;
+    _vs2fs_location2 = _e57.distance_m;
+    _vs2fs_location3 = _e57.cue;
     return;
 }
 

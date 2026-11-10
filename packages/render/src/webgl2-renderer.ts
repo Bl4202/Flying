@@ -11,6 +11,7 @@
  */
 import { TERRAIN_LEVEL_COUNT } from '@flying/sim-bridge/terrain-levels';
 import type { ZRange } from './camera.ts';
+import { GpuTally, type GpuResources } from './gpu-tally.ts';
 import {
   buildMarkerMesh,
   MARKER_INSTANCE_FLOATS,
@@ -154,6 +155,8 @@ export class WebGl2Renderer implements Renderer {
   readonly #shaders: ShaderSources;
   readonly #clip: ClipControlExt | null;
   readonly #lost: ((reason: string) => void)[] = [];
+  /** Every buffer and renderbuffer made here, counted (the soak's L5). */
+  readonly #tally = new GpuTally();
   readonly #maxSamples: number;
   #res: Resources | undefined;
   /** The terrain levels as last uploaded, to upload again if the context is restored. */
@@ -190,6 +193,9 @@ export class WebGl2Renderer implements Renderer {
     canvas.addEventListener('webglcontextlost', (event) => {
       event.preventDefault(); // ask the browser to try to restore it
       this.#contextLost = true;
+      // Every GL object went with the context; the restore makes them again.
+      this.#tally.buffers = 0;
+      this.#tally.textures = 0;
       for (const l of this.#lost) l('WebGL2 context lost');
     });
     canvas.addEventListener('webglcontextrestored', () => {
@@ -237,12 +243,12 @@ export class WebGl2Renderer implements Renderer {
     };
     const skyProgram = link(gl, this.#shaders.skyGlsl, 'sky');
     const hudProgram = link(gl, this.#shaders.hudGlsl, 'hud');
-    const hudUbo = need(gl.createBuffer(), 'the HUD uniform buffer');
+    const hudUbo = need(this.#made('buffers', gl.createBuffer()), 'the HUD uniform buffer');
     gl.bindBuffer(gl.UNIFORM_BUFFER, hudUbo);
     gl.bufferData(gl.UNIFORM_BUFFER, HUD_UNIFORM_BYTES, gl.DYNAMIC_DRAW);
     // The HUD's segments: one instance each, two vec4s.
     const hudVao = need(gl.createVertexArray(), 'the HUD VAO');
-    const hudVbo = need(gl.createBuffer(), 'the HUD segment buffer');
+    const hudVbo = need(this.#made('buffers', gl.createBuffer()), 'the HUD segment buffer');
     gl.bindVertexArray(hudVao);
     gl.bindBuffer(gl.ARRAY_BUFFER, hudVbo);
     gl.bufferData(gl.ARRAY_BUFFER, MAX_SEGMENTS * SEGMENT_FLOATS * 4, gl.DYNAMIC_DRAW);
@@ -254,14 +260,14 @@ export class WebGl2Renderer implements Renderer {
     gl.vertexAttribDivisor(1, 1);
     gl.bindVertexArray(null);
     const meshProgram = link(gl, this.#shaders.meshGlsl, 'aircraft mesh');
-    const modelUbo = need(gl.createBuffer(), 'the model uniform buffer');
+    const modelUbo = need(this.#made('buffers', gl.createBuffer()), 'the model uniform buffer');
     gl.bindBuffer(gl.UNIFORM_BUFFER, modelUbo);
     gl.bufferData(gl.UNIFORM_BUFFER, MODEL_UNIFORM_BYTES, gl.DYNAMIC_DRAW);
     const terrainProgram = link(gl, this.#shaders.terrainGlsl, 'terrain');
     const markerProgram = link(gl, this.#shaders.markerGlsl, 'marker');
     const fxProgram = link(gl, this.#shaders.fxGlsl, 'screen fx');
 
-    const ubo = need(gl.createBuffer(), 'the uniform buffer');
+    const ubo = need(this.#made('buffers', gl.createBuffer()), 'the uniform buffer');
     gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
     gl.bufferData(gl.UNIFORM_BUFFER, FRAME_UNIFORM_BYTES, gl.DYNAMIC_DRAW);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ubo);
@@ -270,9 +276,12 @@ export class WebGl2Renderer implements Renderer {
     const levels: LevelGl[] = [];
     for (let level = 0; level < TERRAIN_LEVEL_COUNT; level++) {
       const vao = need(gl.createVertexArray(), 'a terrain VAO');
-      const vbo = need(gl.createBuffer(), 'a terrain vertex buffer');
-      const ibo = need(gl.createBuffer(), 'a terrain index buffer');
-      const levelUbo = need(gl.createBuffer(), 'a terrain level uniform buffer');
+      const vbo = need(this.#made('buffers', gl.createBuffer()), 'a terrain vertex buffer');
+      const ibo = need(this.#made('buffers', gl.createBuffer()), 'a terrain index buffer');
+      const levelUbo = need(
+        this.#made('buffers', gl.createBuffer()),
+        'a terrain level uniform buffer',
+      );
       gl.bindVertexArray(vao);
       gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
       gl.enableVertexAttribArray(0);
@@ -289,8 +298,11 @@ export class WebGl2Renderer implements Renderer {
 
     // Markers: a static mesh and a per-instance buffer.
     const markerVao = need(gl.createVertexArray(), 'the marker VAO');
-    const markerVbo = need(gl.createBuffer(), 'the marker vertex buffer');
-    const instanceVbo = need(gl.createBuffer(), 'the marker instance buffer');
+    const markerVbo = need(this.#made('buffers', gl.createBuffer()), 'the marker vertex buffer');
+    const instanceVbo = need(
+      this.#made('buffers', gl.createBuffer()),
+      'the marker instance buffer',
+    );
     gl.bindVertexArray(markerVao);
     gl.bindBuffer(gl.ARRAY_BUFFER, markerVbo);
     gl.bufferData(gl.ARRAY_BUFFER, buildMarkerMesh(), gl.STATIC_DRAW);
@@ -365,15 +377,15 @@ export class WebGl2Renderer implements Renderer {
     const gl = this.#gl;
     const old = this.#meshGl.get(slot);
     if (old && !this.#contextLost) {
-      gl.deleteBuffer(old.vbo);
-      gl.deleteBuffer(old.ibo);
+      this.#deleteBuffer(old.vbo);
+      this.#deleteBuffer(old.ibo);
       gl.deleteVertexArray(old.vao);
     }
     this.#meshGl.delete(slot);
     if (mesh === undefined || !this.#res || this.#contextLost) return;
     const vao = gl.createVertexArray();
-    const vbo = gl.createBuffer();
-    const ibo = gl.createBuffer();
+    const vbo = this.#made('buffers', gl.createBuffer());
+    const ibo = this.#made('buffers', gl.createBuffer());
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
     gl.bufferData(gl.ARRAY_BUFFER, mesh.vertices, gl.STATIC_DRAW);
@@ -420,12 +432,12 @@ export class WebGl2Renderer implements Renderer {
     }
     if (m) {
       gl.deleteFramebuffer(m.fbo);
-      gl.deleteRenderbuffer(m.colour);
-      gl.deleteRenderbuffer(m.depth);
+      this.#deleteRenderbuffer(m.colour);
+      this.#deleteRenderbuffer(m.depth);
     }
     const fbo = gl.createFramebuffer();
-    const colour = gl.createRenderbuffer();
-    const depth = gl.createRenderbuffer();
+    const colour = this.#made('textures', gl.createRenderbuffer());
+    const depth = this.#made('textures', gl.createRenderbuffer());
     gl.bindRenderbuffer(gl.RENDERBUFFER, colour);
     gl.renderbufferStorageMultisample(
       gl.RENDERBUFFER,
@@ -538,6 +550,16 @@ export class WebGl2Renderer implements Renderer {
         gl.drawElements(gl.TRIANGLES, interior.indexCount, gl.UNSIGNED_SHORT, 0);
       }
     }
+    // The bandit: the same exterior, canopy and all, its block uploaded over the aircraft's.
+    const banditMesh = frame.bandit ? this.#meshGl.get('exterior') : undefined;
+    if (banditMesh) {
+      gl.bindBuffer(gl.UNIFORM_BUFFER, res.modelUbo);
+      gl.bufferSubData(gl.UNIFORM_BUFFER, 0, frame.banditUniform);
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, 2, res.modelUbo);
+      gl.useProgram(res.meshProgram);
+      gl.bindVertexArray(banditMesh.vao);
+      gl.drawElements(gl.TRIANGLES, banditMesh.indexCount, gl.UNSIGNED_SHORT, 0);
+    }
     if (frame.instanceCount > 0) {
       gl.bindBuffer(gl.ARRAY_BUFFER, res.instanceVbo);
       gl.bufferSubData(
@@ -638,14 +660,34 @@ export class WebGl2Renderer implements Renderer {
     this.#lost.push(listener);
   }
 
+  resources(): GpuResources {
+    return this.#tally.snapshot();
+  }
+
+  /** `obj`, counted as one more live `kind`. */
+  #made<T>(kind: keyof GpuResources, obj: T): T {
+    this.#tally.glMade(kind, obj);
+    return obj;
+  }
+
+  #deleteBuffer(b: WebGLBuffer | null): void {
+    this.#gl.deleteBuffer(b);
+    this.#tally.glDeleted('buffers', b);
+  }
+
+  #deleteRenderbuffer(r: WebGLRenderbuffer | null): void {
+    this.#gl.deleteRenderbuffer(r);
+    this.#tally.glDeleted('textures', r);
+  }
+
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
     const res = this.#res;
     if (res && !this.#contextLost) {
       const gl = this.#gl;
-      gl.deleteBuffer(res.hudUbo);
-      gl.deleteBuffer(res.hudVbo);
+      this.#deleteBuffer(res.hudUbo);
+      this.#deleteBuffer(res.hudVbo);
       gl.deleteVertexArray(res.hudVao);
       for (const p of [
         res.hudProgram,
@@ -657,26 +699,26 @@ export class WebGl2Renderer implements Renderer {
       ]) {
         gl.deleteProgram(p);
       }
-      gl.deleteBuffer(res.modelUbo);
+      this.#deleteBuffer(res.modelUbo);
       for (const m of this.#meshGl.values()) {
-        gl.deleteBuffer(m.vbo);
-        gl.deleteBuffer(m.ibo);
+        this.#deleteBuffer(m.vbo);
+        this.#deleteBuffer(m.ibo);
         gl.deleteVertexArray(m.vao);
       }
       gl.deleteVertexArray(res.emptyVao);
-      for (const b of [res.ubo, res.markerVbo, res.instanceVbo]) gl.deleteBuffer(b);
+      for (const b of [res.ubo, res.markerVbo, res.instanceVbo]) this.#deleteBuffer(b);
       for (const slot of res.levels) {
-        gl.deleteBuffer(slot.vbo);
-        gl.deleteBuffer(slot.ibo);
-        gl.deleteBuffer(slot.ubo);
+        this.#deleteBuffer(slot.vbo);
+        this.#deleteBuffer(slot.ibo);
+        this.#deleteBuffer(slot.ubo);
         gl.deleteVertexArray(slot.vao);
       }
       gl.deleteVertexArray(res.markerVao);
       const m = this.#msaa;
       if (m) {
         gl.deleteFramebuffer(m.fbo);
-        gl.deleteRenderbuffer(m.colour);
-        gl.deleteRenderbuffer(m.depth);
+        this.#deleteRenderbuffer(m.colour);
+        this.#deleteRenderbuffer(m.depth);
       }
     }
     this.#res = undefined;

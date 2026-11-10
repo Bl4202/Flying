@@ -7,7 +7,8 @@
   `packages/render`, `packages/input`, `packages/sim-bridge`, `packages/ui`, `packages/app-shell`
 
 This ADR is written in parts as the work packages land. It holds the camera and view-input part (WP4),
-the exterior-model and cockpit part (WP5) and the HUD part (WP6, which amends ADR-20).
+the exterior-model and cockpit part (WP5) and the HUD part (WP6, which amends ADR-20). Amendment 1
+(v0.1d) adds the duel's symbols, streak markers and the bandit's model.
 
 ## Context
 
@@ -181,3 +182,54 @@ not inline, about 4 KB a frame (240 KB a second), which a test bounds, measured 
 - Joystick hat look, gamepad look and chord bindings are not in v0.1c (cut list).
 - Terrain beyond the finest levels the renderer holds is not known to the clamp (`NaN`): over the
   coarse levels the camera is clamped to the coarse surface, which is what is drawn there.
+
+## Amendment 1 (2026-11-10, v0.1d): the duel's symbols, streak markers and the second model
+
+- **Five more `hud/1` element types** (ADR-45 HU1 to HU4), drawn by the same segment pipeline and
+  stroke font, and only while the core says a duel is running (`COMBAT_FLAG.ACTIVE`):
+  - `gun_reticle {pipper_mrad, ring_mrad, ring_max_m, shoot_m}`: while the core has a gun solution
+    (`PIPPER`), a pipper dot and a ring of radius `ring_mrad` around it, at the direction from the eye
+    to the interpolated aim point (`C_PIPPER_BF`, HU2: within 0.05 mrad). The ring's arc is
+    `range / ring_max_m` of a turn; `SHOOT` is written under it while the core sets `SHOOT_GUN`.
+  - `target_box {size_mrad, locator_radius_mrad, show_within_m}`: while the core has a target
+    (`TARGET`) and the bandit is alive and within `show_within_m`. In front of the eye and inside the TFOV, a square of `size_mrad` on it,
+    with `R` and the range in km (one decimal) below and `VC` and the closure in knots beside;
+    otherwise an arrowhead on the `locator_radius_mrad` circle pointing at it, with the range.
+  - `seeker {circle_mrad, diamond_mrad}`: SEARCH and TONE draw a circle of radius `circle_mrad`
+    caged at the boresight (TONE adds a second circle just outside it); LOCKED adds a
+    `diamond_mrad` diamond on the bandit.
+  - `weapon_status {at_mrad}`: `GUN <rounds>  SRM <missiles>`, then `ARM` or `SAFE`, `TONE` or
+    `LOCK`, then `SHOOT` (`SHOOT_MISSILE`) or `IN RNG` (`IN_RANGE`), or for 1.5 s after a refused
+    launch the reason (`SAFE`, `EMPTY`, `NO LOCK`, `TOO CLOSE`, `G LIMIT`, `AOA LIMIT`, `SLOW`).
+  - `kill_cue {at_mrad, hit_s, splash_s}`: `HIT` for `hit_s` and `SPLASH` for `splash_s`, timed by the
+    HUD from the rising edge of the core's `HIT_RECENT` and `KILL_RECENT` latches, so the data sets
+    how long each shows (0.3 s and 2.0 s in `kestrel.json`) whatever the latches' own lengths.
+  The HUD state gains the duel's registers (`HS` 42 to 59): the flags, seeker, inhibit and its age,
+  stores, range and closure, and the pipper's and bandit's directions as seen from the eye (a world
+  point is taken from the eye in f64 and into body axes, so it is collimated like everything else).
+  Their words come from the app's strings (`hud.*`); the font covers them all, and the HUD's
+  garbage bound holds with a duel in every other state of the sweep.
+- **Streak markers.** The marker shader reads `tint.w`: 0 is a body (coloured by its index), 1 a flat
+  dart (the cues and the missiles), 2 a **streak**: the dart scaled along its length only, 3 per cent
+  as wide as it is long, flat colour, no fog. Tracers are 12 m streaks along their velocity;
+  explosions are four streaks each (up, down, and both ways along a horizontal turned 0.7 rad more for
+  each explosion), growing as the square root of the age to 15 m (40 m for an aircraft) over 0.6 s and
+  then gone. Missiles are 3 m white darts along their velocity while boosting or coasting; a missile
+  that has burst is not drawn (its explosion is). The instance buffer gains 4 + 48 + 8 × 4 = 84 slots,
+  enough with every body, both cues and every combat slot full.
+- **The second model.** The bandit is the exterior mesh drawn a second time with its own model
+  uniform (its own rig: surfaces, gear, airbrake, afterburner, from the snapshot), canopy and all, while
+  it exists (alive or a falling wreck). WebGPU keeps a second uniform buffer and bind group; WebGL2
+  writes the bandit's uniform into the model buffer between the two draws. A renderer-contract case
+  draws it broadside 50 m ahead and 10 m to the right in the classify view and finds its pixels
+  centred where the projection puts it.
+- **Interpolation.** The bandit, the pipper point, each missile (the same slot in flight in both
+  snapshots) and each tracer (the same round id in both) blend like the ownship; the bandit snaps when
+  its spawn number changes, and the bandit and the missiles also snap when they moved further than the
+  teleport distance. Everything else, explosions included, is the newest snapshot's.
+- **GPU counters.** Both backends create their buffers and textures through one tally and report the
+  live counts in `RenderStats` (`liveBuffers`, `liveTextures`; WebGL2's renderbuffers count as
+  textures), for the soak's leak gate L5 (ADR-45).
+- **Cost.** A duel frame (the bandit's rig, a missile, 24 tracers, an explosion) builds with about 160
+  bytes of boxed numbers, as a plain frame does, and the interpolation that feeds it about 30; both are
+  bounded by a test.

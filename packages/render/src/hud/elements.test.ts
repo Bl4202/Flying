@@ -19,9 +19,9 @@ describe('the layout the Kestrel carries (GDD 54.13)', () => {
     expect(hud.eyeBoxMm).toEqual([120, 80, 160]);
     expect(hud.textMrad).toBe(12);
   });
-  it('lists thirteen layers, each type once', () => {
-    expect(hud.layers).toHaveLength(13);
-    expect(new Set(hud.layers.map((l) => l.type)).size).toBe(13);
+  it('lists eighteen layers (five for the duel), each type once', () => {
+    expect(hud.layers).toHaveLength(18);
+    expect(new Set(hud.layers.map((l) => l.type)).size).toBe(18);
   });
 });
 

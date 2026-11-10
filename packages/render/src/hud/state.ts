@@ -14,7 +14,7 @@
  * - The HUD plane is the body-fixed tangent plane `(u, v) = (tan az, tan el)`, right and up
  *   positive: the body direction `(1, u, -v)`.
  */
-import { WORLD, OWNSHIP_FLAG2 } from '@flying/sim-bridge/layout';
+import { BANDIT_LIFE, COMBAT_FLAG, WORLD, OWNSHIP_FLAG2 } from '@flying/sim-bridge/layout';
 import type { AircraftStatus } from '@flying/sim-bridge';
 
 /** Indices into `HudState.v`. */
@@ -67,9 +67,37 @@ export const HS = {
   TIME_S: 40,
   /** 1 if the aircraft is on the ground, 0 in the air. */
   ON_GROUND: 41,
+  // The duel (ADR-41 amendment; all zero without one). `COMBAT_FLAG` bits, `SEEKER_MODE`,
+  // `LAUNCH_INHIBIT` and its age (s), gun rounds and missiles left.
+  COMBAT_FLAGS: 42,
+  SEEKER: 43,
+  INHIBIT: 44,
+  INHIBIT_AGE: 45,
+  ROUNDS: 46,
+  MISSILES: 47,
+  /** The designated target's range, m, and closure, knots. */
+  TGT_RANGE_M: 48,
+  TGT_CLOSURE_KN: 49,
+  /** The pipper point seen from the eye, in the HUD plane (mrad); 1 if it is ahead. */
+  PIP_U: 50,
+  PIP_V: 51,
+  PIP_AHEAD: 52,
+  /** 1 while the bandit is alive; where it is seen from the eye (mrad), 1 if ahead. */
+  BANDIT: 53,
+  BANDIT_U: 54,
+  BANDIT_V: 55,
+  BANDIT_AHEAD: 56,
+  /** The bandit's direction round the boresight, radians from right towards up (any direction, ahead or not). */
+  BANDIT_ANGLE: 57,
+  /** Seconds since HIT and SPLASH last started (large when they never have). */
+  HIT_AGE: 58,
+  SPLASH_AGE: 59,
 } as const;
 
-export const HUD_STATE_SIZE = 42;
+export const HUD_STATE_SIZE = 60;
+
+/** An age that reads as "long ago". */
+const NEVER_S = 1e9;
 
 const KN_PER_MPS = 1.943_844_492;
 const FT_PER_M = 3.280_839_895;
@@ -87,6 +115,27 @@ export interface HudInput {
   warnings: number;
   /** Seconds, for flashing symbols. */
   timeS: number;
+  /** The eye, BF metres (the camera's): symbols on things in the world are directions from it. Absent: `posBf`. */
+  eyeBf?: ArrayLike<number>;
+  /** The duel; absent (or no `COMBAT_FLAG.ACTIVE`) in free flight. `SceneState` is one. */
+  combat?: HudCombatInput;
+}
+
+/** What the HUD reads of the duel (the interpolated scene state carries it). */
+export interface HudCombatInput {
+  combatFlags: number;
+  seeker: number;
+  inhibit: number;
+  inhibitAge: number;
+  rounds: number;
+  missilesLeft: number;
+  /** m and m/s. */
+  tgtRange: number;
+  tgtClosure: number;
+  /** BF metres (f64). */
+  pipperBf: ArrayLike<number>;
+  banditLife: number;
+  banditPosBf: ArrayLike<number>;
 }
 
 export class HudState {
@@ -96,6 +145,8 @@ export class HudState {
   /** The body-to-BF rotation (row by row) and a vector to turn into body axes: scratch, no garbage. */
   readonly #rot = new Float64Array(9);
   readonly #vec = new Float64Array(3);
+  /** When HIT and SPLASH last started (s), and whether their flags were set last frame. */
+  readonly #cue = Float64Array.of(-NEVER_S, -NEVER_S, 0, 0);
 
   /** Register `i` (an `HS` index). */
   at(i: number): number {
@@ -237,6 +288,74 @@ export class HudState {
     v[HS.ASSIST] = s.assist;
     v[HS.WARNINGS] = i.warnings;
     v[HS.TIME_S] = i.timeS;
+    this.#combat(i);
+  }
+
+  /** The duel's registers (see `HS`). */
+  #combat(i: HudInput): void {
+    const v = this.v;
+    const c = i.combat;
+    const flags = c === undefined ? 0 : c.combatFlags;
+    v[HS.COMBAT_FLAGS] = flags;
+    v[HS.SEEKER] = c?.seeker ?? 0;
+    v[HS.INHIBIT] = c?.inhibit ?? 0;
+    v[HS.INHIBIT_AGE] = c?.inhibitAge ?? 0;
+    v[HS.ROUNDS] = c?.rounds ?? 0;
+    v[HS.MISSILES] = c?.missilesLeft ?? 0;
+    v[HS.TGT_RANGE_M] = c?.tgtRange ?? 0;
+    v[HS.TGT_CLOSURE_KN] = (c?.tgtClosure ?? 0) * KN_PER_MPS;
+    const eye = i.eyeBf ?? i.posBf;
+    v[HS.PIP_AHEAD] = 0;
+    v[HS.BANDIT] = 0;
+    v[HS.BANDIT_AHEAD] = 0;
+    if (c !== undefined && (flags & COMBAT_FLAG.PIPPER) !== 0) {
+      this.#seen(c.pipperBf, eye);
+      v[HS.PIP_AHEAD] = this.#place(HS.PIP_U) ? 1 : 0;
+    }
+    if (c !== undefined && c.banditLife === BANDIT_LIFE.ALIVE) {
+      v[HS.BANDIT] = 1;
+      this.#seen(c.banditPosBf, eye);
+      const vec = this.#vec;
+      v[HS.BANDIT_ANGLE] = Math.atan2(-(vec[2] as number), vec[1] as number);
+      v[HS.BANDIT_AHEAD] = this.#place(HS.BANDIT_U) ? 1 : 0;
+    }
+    // HIT and SPLASH run from the rising edges of the core's latches.
+    const t = i.timeS;
+    const cue = this.#cue;
+    const hit = (flags & COMBAT_FLAG.HIT_RECENT) !== 0 ? 1 : 0;
+    const kill = (flags & COMBAT_FLAG.KILL_RECENT) !== 0 ? 1 : 0;
+    if (hit === 1 && cue[2] === 0) cue[0] = t;
+    if (kill === 1 && cue[3] === 0) cue[1] = t;
+    cue[2] = hit;
+    cue[3] = kill;
+    v[HS.HIT_AGE] = t - (cue[0] as number);
+    v[HS.SPLASH_AGE] = t - (cue[1] as number);
+  }
+
+  /** The direction from `eye` to `point` (both BF, subtracted in f64), into the scratch vector in body axes. */
+  #seen(point: ArrayLike<number>, eye: ArrayLike<number>): void {
+    const vec = this.#vec;
+    const x = (point[0] ?? 0) - (eye[0] ?? 0);
+    const y = (point[1] ?? 0) - (eye[1] ?? 0);
+    const z = (point[2] ?? 0) - (eye[2] ?? 0);
+    const r = this.#rot;
+    vec[0] = (r[0] as number) * x + (r[3] as number) * y + (r[6] as number) * z;
+    vec[1] = (r[1] as number) * x + (r[4] as number) * y + (r[7] as number) * z;
+    vec[2] = (r[2] as number) * x + (r[5] as number) * y + (r[8] as number) * z;
+  }
+
+  /** The scratch body direction in the HUD plane at `v[at]`, `v[at + 1]` (mrad); false if not ahead. */
+  #place(at: number): boolean {
+    const vec = this.#vec;
+    const bx = vec[0] as number;
+    if (!(bx > 1e-6)) {
+      this.v[at] = 0;
+      this.v[at + 1] = 0;
+      return false;
+    }
+    this.v[at] = ((vec[1] as number) / bx) * 1000;
+    this.v[at + 1] = (-(vec[2] as number) / bx) * 1000;
+    return true;
   }
 
   /** The scratch vector (BF) into body axes at `v[at..at+3]`: R transposed times it. */

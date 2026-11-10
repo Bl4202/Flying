@@ -22,7 +22,15 @@
  * (threshold centre in patch-local east and south, length, width; only the finest level has one).
  */
 import { BF_TO_RENDER, quatMul, quatRotate } from '@flying/sim-bridge/frame-math';
-import { AIRFIELD, OWNSHIP_FLAG2, SNAPSHOT, TERRAIN } from '@flying/sim-bridge/layout';
+import {
+  AIRFIELD,
+  BANDIT_LIFE,
+  EXPLOSION_KIND,
+  MISSILE_STATE,
+  OWNSHIP_FLAG2,
+  SNAPSHOT,
+  TERRAIN,
+} from '@flying/sim-bridge/layout';
 import { TERRAIN_LEVEL_COUNT } from '@flying/sim-bridge/terrain-levels';
 import {
   FOV_Y,
@@ -36,7 +44,7 @@ import {
 } from './camera.ts';
 import type { CameraPose } from './camera-rig.ts';
 import { MODEL_UNIFORM_FLOATS } from './model-mesh.ts';
-import type { ModelRig } from './model-rig.ts';
+import type { ModelRig, ModelState } from './model-rig.ts';
 import { MARKER_INSTANCE_FLOATS, MARKER_SIZE_M } from './markers.ts';
 import type { SceneState } from './interp.ts';
 import { eyeGeometry, globeFloorM, newEyeGeometry } from './sky.ts';
@@ -118,8 +126,29 @@ const CUE_AIM_SIZE_M = 70;
 const CUE_NOSE_TINT = [0.95, 0.95, 0.95] as const;
 const CUE_AIM_TINT = [1.0, 0.72, 0.1] as const;
 
-/** Most marker instances a frame can hold: every body, and the cues. */
-export const MARKER_INSTANCE_CAPACITY = SNAPSHOT.BODY_CAPACITY + CUE_COUNT;
+/** The duel's markers (ADR-41 amendment): four missiles, 48 tracers, four spikes per explosion. */
+export const COMBAT_MARKERS =
+  SNAPSHOT.MISSILE_CAPACITY + SNAPSHOT.TRACER_CAPACITY + SNAPSHOT.EXPLOSION_CAPACITY * 4;
+/** Most marker instances a frame can hold: every body, the cues and the duel's. */
+export const MARKER_INSTANCE_CAPACITY = SNAPSHOT.BODY_CAPACITY + CUE_COUNT + COMBAT_MARKERS;
+
+/** A marker's tint `w`: 1 a flat colour (cues, missiles), 2 a flat streak (tracers, spikes). */
+export const TINT_FLAT = 1;
+export const TINT_STREAK = 2;
+/** Missiles: flat white darts, metres long. */
+const MISSILE_SIZE_M = 3;
+const MISSILE_TINT = [0.92, 0.92, 0.92] as const;
+/** Tracers: warm streaks, metres long, along the round's velocity. */
+const TRACER_SIZE_M = 12;
+const TRACER_TINT = [1.0, 0.85, 0.4] as const;
+/** Explosions: four orange spikes that grow for this long (seconds) and are then gone. */
+const EXPLOSION_GROW_S = 0.6;
+const EXPLOSION_TINT = [1.0, 0.55, 0.15] as const;
+/** Spike length, metres: a missile's burst and a ground impact, and an aircraft's. */
+const EXPLOSION_SMALL_M = 15;
+const EXPLOSION_AIRCRAFT_M = 40;
+/** The horizontal spikes of explosion `i` point this many radians times `i` round from north. */
+const EXPLOSION_TURN_RAD = 0.7;
 
 /** The pilot-effect strength below which, and the stress or red-out below which, nothing is drawn. */
 const FX_GREY_FROM = 0.35;
@@ -138,6 +167,9 @@ export interface FrameData {
   modelUniform: Float32Array;
   /** Draw the aircraft's exterior. */
   model: boolean;
+  /** The bandit's part matrices and glow, when `bandit` is set; draw its exterior (canopy and all). */
+  banditUniform: Float32Array;
+  bandit: boolean;
   /** Draw the terrain without its skirts (the seeded `no-skirts` fault: the seam test must fail). */
   noSkirts: boolean;
   /** Draw it without its canopy (the cockpit view looks out through where it is). */
@@ -165,6 +197,8 @@ export class SceneBuilder {
     sky: true,
     modelUniform: new Float32Array(MODEL_UNIFORM_FLOATS),
     model: false,
+    banditUniform: new Float32Array(MODEL_UNIFORM_FLOATS),
+    bandit: false,
     noSkirts: false,
     hideCanopy: false,
     cockpit: false,
@@ -186,6 +220,20 @@ export class SceneBuilder {
   /** The eye (BF) and field of view of the frame being built. */
   #eyeBf: ArrayLike<number> = new Float64Array(3);
   #fovY = FOV_Y;
+  /** A marker's direction (render axes) and size, for the helpers below. */
+  readonly #dir = new Float64Array(4);
+  /** The bandit as its model rig reads it: the scene state's bandit fields, refilled each frame. */
+  readonly #bandit: ModelState = {
+    ownshipPosBf: new Float64Array(3),
+    ownshipQuat: new Float32Array(4),
+    elevatorRad: 0,
+    aileronRad: 0,
+    rudderRad: 0,
+    flapRad: 0,
+    airbrake: 0,
+    gearPos: 0,
+    abLevel: 0,
+  };
 
   /**
    * Fills (and returns, for reuse next frame) the frame data for `state`.
@@ -219,6 +267,8 @@ export class SceneBuilder {
       fovY?: number;
       /** Draws the aircraft: its exterior in the chase view, the cockpit and the exterior without its canopy in the cockpit view. */
       model?: ModelRig;
+      /** Draws the bandit's exterior, while there is one (the same model, its own rig). */
+      banditModel?: ModelRig;
     },
   ): FrameData {
     const f = this.#frame;
@@ -242,6 +292,20 @@ export class SceneBuilder {
     f.model = opts.model !== undefined;
     f.hideCanopy = f.cockpit = f.model && cam?.mode === 'cockpit';
     opts.model?.update(f.modelUniform, state, this.#eyeBf);
+    f.bandit = opts.banditModel !== undefined && state.banditLife !== BANDIT_LIFE.ABSENT;
+    if (f.bandit && opts.banditModel !== undefined) {
+      const b = this.#bandit;
+      b.ownshipPosBf = state.banditPosBf;
+      b.ownshipQuat = state.banditQuat;
+      b.elevatorRad = state.banditElevatorRad;
+      b.aileronRad = state.banditAileronRad;
+      b.rudderRad = state.banditRudderRad;
+      b.flapRad = state.banditFlapRad;
+      b.airbrake = state.banditAirbrake;
+      b.gearPos = state.banditGearPos;
+      b.abLevel = state.banditAb;
+      opts.banditModel.update(f.banditUniform, b, this.#eyeBf);
+    }
     this.#frameBlock(f.uniform, state, opts);
     this.#levelBlocks(f, opts);
     f.fx = f.uniform[FRAME_AT.FX + 2] !== 0 && this.#fxActive(state);
@@ -376,6 +440,94 @@ export class SceneBuilder {
     if ((state.ownshipFlags2 & OWNSHIP_FLAG2.MOUSE_AIM) !== 0) {
       this.#cues(f, state);
     }
+    this.#combat(f, state);
+  }
+
+  /**
+   * Appends the duel's markers after the cues: the missiles in flight (white darts along their
+   * velocity), the tracers (streaks along theirs) and, for 0.6 s, four growing spikes per
+   * explosion (up, down, and both ways along a horizontal turned 0.7 rad more for each explosion).
+   * Directions and sizes go through `#dir` rather than as arguments: a fractional number passed to
+   * a call V8 does not inline is boxed, and this runs for every marker of every frame.
+   */
+  #combat(f: FrameData, state: SceneState): void {
+    const d = this.#dir;
+    for (let i = 0; i < state.missileCount; i++) {
+      const st = state.missileState[i];
+      if (st !== MISSILE_STATE.BOOST && st !== MISSILE_STATE.COAST) continue;
+      relativeToEye(
+        f.instances,
+        f.instanceCount * MARKER_INSTANCE_FLOATS,
+        state.missilePosBf,
+        i * 3,
+        this.#eyeBf,
+      );
+      bfToRender(d, state.missileVelBf, i * 3);
+      d[3] = MISSILE_SIZE_M;
+      this.#marker(f);
+      this.#tint(f, MISSILE_TINT, TINT_FLAT);
+    }
+    for (let i = 0; i < state.tracerCount; i++) {
+      relativeToEye(
+        f.instances,
+        f.instanceCount * MARKER_INSTANCE_FLOATS,
+        state.tracerPosBf,
+        i * 3,
+        this.#eyeBf,
+      );
+      bfToRender(d, state.tracerVelBf, i * 3);
+      d[3] = TRACER_SIZE_M;
+      this.#marker(f);
+      this.#tint(f, TRACER_TINT, TINT_STREAK);
+    }
+    for (let i = 0; i < state.explosionCount; i++) {
+      const age = state.explosionAge[i] ?? 0;
+      if (!(age < EXPLOSION_GROW_S)) continue;
+      const full =
+        state.explosionKind[i] === EXPLOSION_KIND.AIRCRAFT
+          ? EXPLOSION_AIRCRAFT_M
+          : EXPLOSION_SMALL_M;
+      const len = full * Math.sqrt(Math.max(age, 0) / EXPLOSION_GROW_S);
+      if (!(len > 0)) continue;
+      const az = i * EXPLOSION_TURN_RAD;
+      const he = Math.sin(az);
+      const hs = -Math.cos(az);
+      for (let k = 0; k < 4; k++) {
+        // Up, down, then both ways along the horizontal.
+        d[0] = k < 2 ? 0 : k === 2 ? he : -he;
+        d[1] = k === 0 ? 1 : k === 1 ? -1 : 0;
+        d[2] = k < 2 ? 0 : k === 2 ? hs : -hs;
+        d[3] = len;
+        const at = f.instanceCount * MARKER_INSTANCE_FLOATS;
+        relativeToEye(f.instances, at, state.explosionPosBf, i * 3, this.#eyeBf);
+        // The streak is centred on its position: put the centre half its length out.
+        f.instances[at] = (f.instances[at] ?? 0) + d[0] * len * 0.5;
+        f.instances[at + 1] = (f.instances[at + 1] ?? 0) + d[1] * len * 0.5;
+        f.instances[at + 2] = (f.instances[at + 2] ?? 0) + d[2] * len * 0.5;
+        this.#marker(f);
+        this.#tint(f, EXPLOSION_TINT, TINT_STREAK);
+      }
+    }
+  }
+
+  /**
+   * The size and orientation of the instance at `f.instanceCount` (its position already written),
+   * from `#dir`: the shortest turn from the dart's nose (body x) to the direction, and the size.
+   */
+  #marker(f: FrameData): void {
+    const at = f.instanceCount * MARKER_INSTANCE_FLOATS;
+    f.instances[at + 3] = this.#dir[3] ?? 0;
+    turnFromNose(f.instances, at + 4, this.#dir);
+  }
+
+  /** The tint of the instance at `f.instanceCount`, and on to the next. */
+  #tint(f: FrameData, rgb: readonly [number, number, number], w: number): void {
+    const at = f.instanceCount * MARKER_INSTANCE_FLOATS;
+    f.instances[at + 8] = rgb[0];
+    f.instances[at + 9] = rgb[1];
+    f.instances[at + 10] = rgb[2];
+    f.instances[at + 11] = w;
+    f.instanceCount += 1;
   }
 
   /** Appends the nose and mouse-aim markers, 1.5 km out along their directions. */
@@ -409,27 +561,54 @@ export class SceneBuilder {
     f.instances[at + 1] = dir[1] * CUE_DISTANCE_M;
     f.instances[at + 2] = dir[2] * CUE_DISTANCE_M;
     f.instances[at + 3] = sizeM;
-    // The shortest turn from the dart's nose (body x) to the direction: axis = x cross d.
-    const w = 1 + dir[0];
-    if (w < 1e-6) {
-      f.instances[at + 4] = 0;
-      f.instances[at + 5] = 1;
-      f.instances[at + 6] = 0;
-      f.instances[at + 7] = 0;
-    } else {
-      const x = 0;
-      const y = -dir[2];
-      const z = dir[1];
-      const inv = 1 / Math.hypot(x, y, z, w);
-      f.instances[at + 4] = x * inv;
-      f.instances[at + 5] = y * inv;
-      f.instances[at + 6] = z * inv;
-      f.instances[at + 7] = w * inv;
-    }
-    f.instances[at + 8] = tint[0];
-    f.instances[at + 9] = tint[1];
-    f.instances[at + 10] = tint[2];
-    f.instances[at + 11] = 1;
-    f.instanceCount += 1;
+    const d = this.#dir;
+    d[0] = dir[0];
+    d[1] = dir[1];
+    d[2] = dir[2];
+    turnFromNose(f.instances, at + 4, d);
+    this.#tint(f, tint, TINT_FLAT);
   }
+}
+
+/** A BF vector (east, north, up) at `v[at]` into render axes (east, up, south) in `out[0..3]`. */
+function bfToRender(out: Float64Array, v: ArrayLike<number>, at: number): void {
+  out[0] = v[at] ?? 0;
+  out[1] = v[at + 2] ?? 0;
+  out[2] = -(v[at + 1] ?? 0);
+}
+
+/**
+ * Writes `(x, y, z, w)` at `out[at]`: the shortest turn taking body +x (the dart's nose) to the
+ * direction `dir[0..3]` (any length; none points it along +x). Axis `x × d`, from the half-way
+ * vector. Makes no arrays.
+ */
+export function turnFromNose(out: Float32Array, at: number, dir: ArrayLike<number>): void {
+  const dx = dir[0] ?? 0;
+  const dy = dir[1] ?? 0;
+  const dz = dir[2] ?? 0;
+  // Not Math.hypot: V8 boxes its arguments, and this runs for every marker of every frame.
+  const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (!(len > 0)) {
+    out[at] = 0;
+    out[at + 1] = 0;
+    out[at + 2] = 0;
+    out[at + 3] = 1;
+    return;
+  }
+  const w = 1 + dx / len;
+  if (w < 1e-6) {
+    // Straight back: half a turn about the up axis.
+    out[at] = 0;
+    out[at + 1] = 1;
+    out[at + 2] = 0;
+    out[at + 3] = 0;
+    return;
+  }
+  const y = -dz / len;
+  const z = dy / len;
+  const inv = 1 / Math.sqrt(y * y + z * z + w * w);
+  out[at] = 0;
+  out[at + 1] = y * inv;
+  out[at + 2] = z * inv;
+  out[at + 3] = w * inv;
 }

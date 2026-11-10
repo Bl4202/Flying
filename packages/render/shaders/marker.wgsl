@@ -4,7 +4,9 @@
 // point). The mesh is in body axes (x forward, y right, z down); each instance gives its
 // eye-relative position, a scale, its orientation as a quaternion (x, y, z, w) taking body axes to
 // render axes, and a tint. A tint with w = 0 means "a colour of its own by index" (bodies); with
-// w = 1 it is the flat colour to draw (a cue: unlit, not fogged, so it reads the same at any range).
+// w = 1 it is the flat colour to draw (a cue or a missile: unlit, not fogged, so it reads the same
+// at any range); with w = 2 it is flat too and the dart is drawn as a streak, a needle 3 % as wide
+// as it is long (tracers and explosion spikes; ALGO: ADR-41 amendment).
 
 struct VsOut {
   @builtin(position) clip : vec4<f32>,
@@ -25,10 +27,13 @@ fn vs_main(
   @location(1) normal    : vec3<f32>,  // body axes
   @location(2) pos_scale : vec4<f32>,  // xyz: eye-relative position in render axes, w: size in metres
   @location(3) quat      : vec4<f32>,
-  @location(4) tint      : vec4<f32>,  // rgb: flat colour; w: 1 to use it, 0 to colour by index
+  @location(4) tint      : vec4<f32>,  // rgb: flat colour; w: 1 to use it, 2 a streak, 0 by index
   @builtin(instance_index) index : u32,
 ) -> VsOut {
-  let pos_rel = pos_scale.xyz + qrot(quat, pos * pos_scale.w);
+  let s = pos_scale.w;
+  let streak = tint.w > 1.5;
+  let scale = select(vec3<f32>(s), vec3<f32>(s, s * 0.03, s * 0.03), streak);
+  let pos_rel = pos_scale.xyz + qrot(quat, pos * scale);
   var out : VsOut;
   out.clip = frame.view_proj * vec4<f32>(pos_rel, 1.0);
   out.normal = qrot(quat, normal);

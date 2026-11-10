@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { AIRFIELD, OWNSHIP_FLAG2 } from '@flying/sim-bridge/layout';
+import {
+  AIRFIELD,
+  BANDIT_LIFE,
+  COMBAT_FLAG,
+  EXPLOSION_KIND,
+  MISSILE_STATE,
+  OWNSHIP_FLAG2,
+  SNAPSHOT,
+} from '@flying/sim-bridge/layout';
 import {
   airfieldShifted,
   CUE_COUNT,
@@ -12,12 +20,16 @@ import {
   MAX_PATCH_INSTANCES,
   SceneBuilder,
   TEST_AIRFIELD,
+  TINT_FLAT,
+  TINT_STREAK,
   type LevelSet,
   type LevelSource,
 } from './scene.ts';
 import { SnapshotInterpolator } from './interp.ts';
+import { FIXTURE_MODEL } from './model-fixture.ts';
+import { ModelRig } from './model-rig.ts';
 import { MARKER_INSTANCE_FLOATS, MARKER_SIZE_M } from './markers.ts';
-import { makeSnapshot, NORTH } from './snapshot-fixture.ts';
+import { makeSnapshot, NORTH, type FixtureCombat } from './snapshot-fixture.ts';
 
 /** No terrain levels at all. */
 const NO_TERRAIN: LevelSet = { mesh: () => undefined };
@@ -30,6 +42,17 @@ function levelZero(originBf: [number, number, number], spacingM = 250): LevelSet
 
 /** Element `i` of `a`, or NaN (which fails any comparison) if there is none. */
 const at = (a: ArrayLike<number>, i: number): number => a[i] ?? Number.NaN;
+
+/** `v` turned by the unit quaternion `q`, given as (x, y, z, w) the way the shader takes it. */
+const qrot = (q: number[], v: [number, number, number]): number[] => {
+  const [x = 0, y = 0, z = 0, w = 1] = q;
+  const t = [2 * (y * v[2] - z * v[1]), 2 * (z * v[0] - x * v[2]), 2 * (x * v[1] - y * v[0])];
+  return [
+    v[0] + w * (t[0] ?? 0) + (y * (t[2] ?? 0) - z * (t[1] ?? 0)),
+    v[1] + w * (t[1] ?? 0) + (z * (t[0] ?? 0) - x * (t[2] ?? 0)),
+    v[2] + w * (t[2] ?? 0) + (x * (t[1] ?? 0) - y * (t[0] ?? 0)),
+  ];
+};
 
 function world(extra: Parameters<typeof makeSnapshot>[0]) {
   const i = new SnapshotInterpolator();
@@ -321,15 +344,6 @@ describe('SceneBuilder', () => {
   });
 
   describe('the cue markers', () => {
-    const qrot = (q: number[], v: [number, number, number]): number[] => {
-      const [x = 0, y = 0, z = 0, w = 1] = q;
-      const t = [2 * (y * v[2] - z * v[1]), 2 * (z * v[0] - x * v[2]), 2 * (x * v[1] - y * v[0])];
-      return [
-        v[0] + w * (t[0] ?? 0) + (y * (t[2] ?? 0) - z * (t[1] ?? 0)),
-        v[1] + w * (t[1] ?? 0) + (z * (t[0] ?? 0) - x * (t[2] ?? 0)),
-        v[2] + w * (t[2] ?? 0) + (x * (t[1] ?? 0) - y * (t[0] ?? 0)),
-      ];
-    };
     const build = (aim: [number, number], flags2: number = OWNSHIP_FLAG2.MOUSE_AIM, bodies = 0) => {
       const f = new SceneBuilder().build(
         world({
@@ -408,6 +422,157 @@ describe('SceneBuilder', () => {
       const f = build([0.1, 0.1], OWNSHIP_FLAG2.MOUSE_AIM, 32);
       expect(f.instances.length).toBe(MARKER_INSTANCE_CAPACITY * MARKER_INSTANCE_FLOATS);
       expect(f.instanceCount).toBeLessThanOrEqual(MARKER_INSTANCE_CAPACITY);
+    });
+  });
+
+  describe("the duel's markers", () => {
+    const v3 = (x: number, y: number, z: number): [number, number, number] => [x, y, z];
+    const build = (combat: FixtureCombat, opts: { bodies?: number; bandit?: boolean } = {}) =>
+      new SceneBuilder().build(
+        world({
+          ownship: { pos: [0, 0, 1000], quat: NORTH },
+          bodies: Array.from({ length: opts.bodies ?? 0 }, (_, i) => ({ pos: v3(i, 500, 1000) })),
+          combat: { flags: COMBAT_FLAG.ACTIVE, ...combat },
+        }),
+        {
+          aspect: 1,
+          zRange: '0to1',
+          timeS: 0,
+          terrain: NO_TERRAIN,
+          ...(opts.bandit ? { banditModel: new ModelRig(FIXTURE_MODEL) } : {}),
+        },
+      );
+    const inst = (f: ReturnType<typeof build>, i: number): number[] =>
+      Array.from(
+        f.instances.subarray(i * MARKER_INSTANCE_FLOATS, (i + 1) * MARKER_INSTANCE_FLOATS),
+      );
+    /** Where the instance's dart points (body x turned by its quaternion), in render axes. */
+    const nose = (m: number[]): number[] =>
+      qrot(m.slice(4, 8), [1, 0, 0]).map((x) => Math.round(x * 1e4) / 1e4 + 0);
+    const round = (xs: number[], digits = 3): number[] =>
+      xs.map((x) => Math.round(x * 10 ** digits) / 10 ** digits + 0);
+
+    it('are a dart per missile in flight, a streak per tracer and four spikes per young explosion, after the bodies', () => {
+      const f = build(
+        {
+          missileSlots: [
+            { pos: v3(0, 1000, 1000), vel: v3(0, 600, 0), state: MISSILE_STATE.BOOST },
+            { pos: v3(0, 1100, 1000), vel: v3(0, 600, 0), state: MISSILE_STATE.COAST },
+            // A missile that has burst is drawn by its explosion, not as a dart.
+            { pos: v3(0, 1200, 1000), vel: v3(0, 600, 0), state: MISSILE_STATE.BURST },
+          ],
+          tracers: [0, 1, 2].map((id) => ({ pos: v3(id, 300, 1000), vel: v3(1000, 0, 0), id })),
+          explosions: [
+            { pos: v3(0, 2000, 1000), age: 0.3, kind: EXPLOSION_KIND.AIRCRAFT },
+            // Older than its growth: gone.
+            { pos: v3(0, 2000, 1000), age: 0.7, kind: EXPLOSION_KIND.MISSILE },
+          ],
+        },
+        { bodies: 1 },
+      );
+      expect(f.instanceCount).toBe(1 + 2 + 3 + 4);
+      // The body keeps its index-coloured look; the rest are tinted.
+      expect(inst(f, 0)[11]).toBe(0);
+    });
+
+    it('point a white dart along each missile, where it is', () => {
+      const f = build({
+        missileSlots: [{ pos: v3(0, 1000, 1000), vel: v3(0, 600, 0), state: MISSILE_STATE.BOOST }],
+      });
+      const m = inst(f, 0);
+      // BF north of the eye is render -z; flying north, its nose points along -z too.
+      expect(round(m.slice(0, 4))).toEqual([0, 0, -1000, 3]);
+      expect(nose(m)).toEqual([0, 0, -1]);
+      expect(round(m.slice(8, 11))).toEqual([0.92, 0.92, 0.92]);
+      expect(m[11]).toBe(TINT_FLAT);
+    });
+
+    it('draw each tracer as a streak along its velocity', () => {
+      const f = build({ tracers: [{ pos: v3(0, 300, 1100), vel: v3(0, 0, 900), id: 5 }] });
+      const m = inst(f, 0);
+      expect(round(m.slice(0, 4))).toEqual([0, 100, -300, 12]);
+      // Climbing: BF up is render +y.
+      expect(nose(m)).toEqual([0, 1, 0]);
+      expect(m[11]).toBe(TINT_STREAK);
+      expect(round(m.slice(8, 11))).toEqual([1, 0.85, 0.4]);
+    });
+
+    it("grow an explosion's spikes out from its centre: up, down and both ways along a horizontal", () => {
+      const f = build({
+        explosions: [
+          { pos: v3(0, 2000, 1000), age: 0.15, kind: EXPLOSION_KIND.MISSILE },
+          { pos: v3(0, 2000, 1000), age: 0.3, kind: EXPLOSION_KIND.AIRCRAFT },
+        ],
+      });
+      expect(f.instanceCount).toBe(8);
+      // A quarter of the way through its growth a missile's burst is half its 15 m (the square
+      // root of the age); halfway, an aircraft's is 40 m times the root of a half.
+      const small = 15 * Math.sqrt(0.25);
+      const big = 40 * Math.sqrt(0.5);
+      for (let k = 0; k < 8; k++) {
+        const m = inst(f, k);
+        const len = k < 4 ? small : big;
+        expect(m[3]).toBeCloseTo(len, 4);
+        expect(m[11]).toBe(TINT_STREAK);
+        const dir = nose(m);
+        // Each spike is centred half its length out from the burst, along its direction.
+        const centre = [0, 0, -2000];
+        dir.forEach((d, axis) => {
+          expect(m[axis]).toBeCloseTo((centre[axis] ?? 0) + d * len * 0.5, 2);
+        });
+        if (k % 4 === 0) expect(dir).toEqual([0, 1, 0]);
+        if (k % 4 === 1) expect(dir).toEqual([0, -1, 0]);
+        if (k % 4 >= 2) expect(dir[1]).toBe(0);
+      }
+      // The second burst's horizontal is turned from the first's, so neighbours do not look alike.
+      expect(nose(inst(f, 2))).not.toEqual(nose(inst(f, 6)));
+    });
+
+    it("draw the bandit's model only with a rig for it, and only while it exists", () => {
+      const here = { pos: v3(0, 120, 1000), quat: NORTH };
+      expect(build({ bandit: here }).bandit).toBe(false);
+      expect(
+        build({ bandit: { ...here, life: BANDIT_LIFE.ABSENT } }, { bandit: true }).bandit,
+      ).toBe(false);
+      const f = build({ bandit: here }, { bandit: true });
+      expect(f.bandit).toBe(true);
+      expect(f.banditUniform.some((x) => x !== 0)).toBe(true);
+      // A wreck still falls, so it is drawn too.
+      expect(build({ bandit: { ...here, life: BANDIT_LIFE.WRECK } }, { bandit: true }).bandit).toBe(
+        true,
+      );
+    });
+
+    it('fit in the instance buffer with every body, both cues and every combat slot full', () => {
+      const f = new SceneBuilder().build(
+        world({
+          ownship: { pos: [0, 0, 1000], quat: NORTH, flags2: OWNSHIP_FLAG2.MOUSE_AIM, aim: [0, 0] },
+          bodies: Array.from({ length: SNAPSHOT.BODY_CAPACITY }, (_, i) => ({
+            pos: v3(i, 500, 1000),
+          })),
+          combat: {
+            flags: COMBAT_FLAG.ACTIVE,
+            missileSlots: Array.from({ length: SNAPSHOT.MISSILE_CAPACITY }, (_, i) => ({
+              pos: v3(i, 900, 1000),
+              vel: v3(0, 600, 0),
+              state: MISSILE_STATE.BOOST,
+            })),
+            tracers: Array.from({ length: SNAPSHOT.TRACER_CAPACITY }, (_, i) => ({
+              pos: v3(i, 300, 1000),
+              vel: v3(0, 1000, 0),
+              id: i,
+            })),
+            explosions: Array.from({ length: SNAPSHOT.EXPLOSION_CAPACITY }, (_, i) => ({
+              pos: v3(i * 10, 2000, 1000),
+              age: 0.1,
+              kind: EXPLOSION_KIND.AIRCRAFT,
+            })),
+          },
+        }),
+        { aspect: 1, zRange: '0to1', timeS: 0, terrain: NO_TERRAIN },
+      );
+      expect(f.instanceCount).toBe(MARKER_INSTANCE_CAPACITY);
+      expect(f.instances.length).toBe(MARKER_INSTANCE_CAPACITY * MARKER_INSTANCE_FLOATS);
     });
   });
 });
