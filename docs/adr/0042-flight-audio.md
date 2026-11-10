@@ -112,3 +112,36 @@ over the block. The arithmetic per sample is the same, and the output is bit-ide
 kernel's. A block now makes 33 bytes (two boxed numbers at block rate). A7 measures this in plain Node by the
 sampling heap profiler, in a child process, at most 64 bytes a block. Rule for the next voice: no call per sample
 that returns a number; write a block function that keeps its state in locals.
+
+## Amendment 2 (2026-11-10, v0.1d): the duel's sounds
+
+The decision stands: the duel's sounds are synthesised in the same kernel, from numbers in the profile's new
+optional `weapons` block (`audio_profile/1`; the baker checks `gun.rate_hz` against the gun's rpm / 60).
+
+- **Voices.** On the aircraft bus: the gun, a pulse per round at `rate_hz` (`pulse_ms` of noise band-passed at
+  `crack_hz`, falling linearly, and a sine at `body_hz` dying away in about 12 ms), its first pulse on the press;
+  the bandit's gun, the same pulses low-passed at `lowpass_hz`, 6 dB quieter per doubling of distance beyond
+  `ref_distance_m`; the launch, noise band-passed between `low_hz` and `high_hz` decaying with the time constant
+  `decay_s`; a hit taken, a click band-passed at `band_hz` lasting `length_ms`; an explosion, a thump at
+  `thump_hz` and low-passed noise decaying with `decay_s`, 6 dB quieter per doubling beyond `ref_distance_m`
+  (an unknown distance is heard at the reference). On the warnings bus: the seeker's growl in SEARCH with a
+  signal over 0.3 and in TONE, its first three odd harmonics at `base_hz + span_hz × clamp((signal − 0.3) /
+  3.7, 0, 1)`, amplitude-modulated at `am_hz`; the lock tone, a sine at `freq_hz`, while LOCKED (it replaces
+  the growl).
+- **Levels.** The duel's levels are relative to the master, as the warning tones' are: the aircraft-bus voices
+  take the aircraft volume, the master and the duck, but not the profile's calibration offset (which lifts the
+  engine's low data levels to the loudness target) and not the canopy (they are close and loud). AU5's
+  60-second combat fixture measures −15.1 LUFS in the cockpit and −17.6 in chase, at −1.7 dBTP.
+- **Events by counters.** Eight k-rate parameters follow the old fourteen: `gunFiring`, `enemyGunDist`,
+  `seeker`, `signal`, and the session's `launches`, `hitsTaken`, `explosions` with `explosionDist`. A
+  one-shot voice starts at the block where its counter rises; the first values after a reset, and a counter
+  that falls (a new session), are adopted silently. A counter passed as a 32-bit float is exact to 2^24. The
+  page reads the bandit's range and the newest explosion's from `CombatStatus` (`banditRange`,
+  `explosionRange`, worked out from the snapshot); a wreck keeps the counters, so its own explosion is heard.
+- **Cost.** The duel's voices draw their own noise, so the flight voices are bit-identical with or without
+  them, and they do no per-sample work while none is sounding. Their levels are worked out once at
+  construction: a decibel conversion per block returned boxed numbers (87 bytes a block) until it was moved
+  out. A block still makes 33 bytes in every state (A7, AU4), and the loudest state with both guns and the
+  growl costs 34 µs a quantum (A6).
+- **Leak count.** `WebAudioBackend.liveNodes` counts the audio nodes made and not yet disconnected (the soak's
+  L6, ADR-45).

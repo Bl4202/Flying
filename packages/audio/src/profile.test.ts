@@ -57,6 +57,37 @@ describe('the Kestrel audio profile', () => {
   });
 });
 
+describe("the Kestrel's weapon sounds", () => {
+  const p = audioProfileFor(parsePresentBundle(fixture()), 'core:ac/kestrel');
+  const w = p?.weapons;
+
+  it('are in the profile, the gun at its rate of fire (1 700 rounds a minute)', () => {
+    expect(w?.gun.rateHz).toBeCloseTo(1700 / 60, 4);
+    expect(w?.gun.pulseMs).toBe(14);
+    expect(w?.enemyGun.refDistanceM).toBe(150);
+    expect(w?.launch.highHz).toBeGreaterThan(w?.launch.lowHz ?? 99_999);
+    expect(w?.growl).toEqual({ baseHz: 420, spanHz: 520, amHz: 22, levelDb: -18 });
+    expect(w?.lockTone).toEqual({ freqHz: 1320, levelDb: -16 });
+    expect(w?.hit.lengthMs).toBe(60);
+    expect(w?.explosion.refDistanceM).toBe(500);
+  });
+
+  it('are optional: a profile without them parses, with none', () => {
+    const k = kestrel();
+    delete k['weapons'];
+    expect(parseAudioProfile(new Slice(k)).weapons).toBeUndefined();
+  });
+
+  it('name the value that is wrong', () => {
+    const k = kestrel();
+    ((k['weapons'] as Json)['gun'] as Json)['pulse_ms'] = 0;
+    expect(pointerOf(() => parseAudioProfile(new Slice(k)))).toBe('/weapons/gun/pulse_ms');
+    const m = kestrel();
+    delete (m['weapons'] as Json)['lock_tone'];
+    expect(pointerOf(() => parseAudioProfile(new Slice(m)))).toBe('/weapons');
+  });
+});
+
 describe('parseAudioProfile errors', () => {
   it('names where a wrong value is', () => {
     const bad = (edit: (p: Json) => void): string => {

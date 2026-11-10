@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { newAircraftStatus, OWNSHIP_FLAG, WARNING } from '@flying/sim-bridge';
+import {
+  COMBAT_COUNTER,
+  COMBAT_FLAG,
+  newAircraftStatus,
+  newCombatStatus,
+  OWNSHIP_FLAG,
+  WARNING,
+} from '@flying/sim-bridge';
 import { audioBackendContract } from './audio-backend.contract.ts';
 import { P, PARAM_NAMES, PARAM_RANGE } from './dsp/flight-dsp.ts';
 import { kestrelProfile } from './test-support/fixtures.ts';
@@ -311,6 +318,41 @@ describe('WebAudioBackend', () => {
     expect(node()).toBeUndefined();
     await backend.resume();
     expect(backend.state).toBe('closed');
+    expect(backend.liveNodes).toBe(0);
+  });
+
+  it('counts the nodes it holds: the graph, a cue until its notes end, none after close (L6)', async () => {
+    const { backend, ctx } = setup();
+    await backend.whenReady();
+    // The master, the UI bus, the level meter and the worklet.
+    expect(backend.liveNodes).toBe(4);
+    await backend.resume();
+    const made = ctx.oscillators.length;
+    backend.cue('warning');
+    // Two notes, an oscillator and an envelope each; the fake ends a note as soon as it is stopped.
+    expect(ctx.oscillators.length - made).toBe(2);
+    expect(backend.liveNodes).toBe(4);
+    await backend.close();
+    expect(backend.liveNodes).toBe(0);
+  });
+
+  it("passes the duel's state on with the aircraft's", async () => {
+    const { backend, clock, param } = setup();
+    await backend.whenReady();
+    const combat = newCombatStatus();
+    combat.flags = COMBAT_FLAG.ACTIVE | COMBAT_FLAG.GUN_FIRING;
+    combat.counters[COMBAT_COUNTER.EXPLOSIONS] = 3;
+    combat.explosionRange = 750;
+    clock.ms += 100;
+    backend.update(status(), combat);
+    expect(param(P.GUN_FIRING)).toBe(1);
+    expect(param(P.EXPLOSIONS)).toBe(3);
+    expect(param(P.EXPLOSION_DIST_M)).toBe(750);
+    // Refilled in place and passed again: read when passed on.
+    combat.flags = COMBAT_FLAG.ACTIVE;
+    clock.ms += 100;
+    backend.update(status(), combat);
+    expect(param(P.GUN_FIRING)).toBe(0);
   });
 
   it('reads the output level and the audio clock', async () => {

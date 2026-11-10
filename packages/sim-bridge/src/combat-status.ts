@@ -4,6 +4,7 @@
  * do it every animation frame and the Sim Worker four times a second without making garbage. All
  * zero without combat.
  */
+import { SNAPSHOT } from './layout.gen.ts';
 import type { SnapshotReader } from './snapshot.ts';
 
 /** Indices into `CombatStatus.counters` (the snapshot's `C_ROUNDS_FIRED` onward, in order). */
@@ -61,6 +62,10 @@ export interface CombatStatus {
   banditVelBf: Float32Array;
   /** The bandit's health, 0 to 1. */
   banditHealth: number;
+  /** How far the bandit is from the ownship, m (0 without one): what the sound of its gun needs. */
+  banditRange: number;
+  /** How far the newest explosion showing is from the ownship, m (0 without one). */
+  explosionRange: number;
 }
 
 /** An all-zero status. */
@@ -87,7 +92,20 @@ export function newCombatStatus(): CombatStatus {
     banditPosBf: new Float64Array(3),
     banditVelBf: new Float32Array(3),
     banditHealth: 0,
+    banditRange: 0,
+    explosionRange: 0,
   };
+}
+
+/** Scratch for the ranges: the ownship's position and another point's (one thread reads at a time). */
+const OWN = new Float64Array(3);
+const AT = new Float64Array(3);
+
+function rangeFrom(own: Float64Array, at: Float64Array): number {
+  const x = (at[0] as number) - (own[0] as number);
+  const y = (at[1] as number) - (own[1] as number);
+  const z = (at[2] as number) - (own[2] as number);
+  return Math.sqrt(x * x + y * y + z * z);
 }
 
 /** Fills `out` from a snapshot. Makes no garbage. */
@@ -115,4 +133,18 @@ export function readCombatStatus(reader: SnapshotReader, out: CombatStatus): voi
   reader.banditPos(out.banditPosBf);
   reader.banditVel(out.banditVelBf);
   out.banditHealth = reader.banditHealth();
+  reader.ownshipPos(OWN);
+  out.banditRange = out.banditLife === 0 ? 0 : rangeFrom(OWN, out.banditPosBf);
+  // The newest explosion is the youngest in use.
+  let youngest = Number.POSITIVE_INFINITY;
+  let range = 0;
+  for (let i = 0; i < SNAPSHOT.EXPLOSION_CAPACITY; i++) {
+    if (reader.explosionKind(i) === 0) continue;
+    const age = reader.explosionAge(i);
+    if (!(age < youngest)) continue;
+    youngest = age;
+    reader.explosionPos(i, AT);
+    range = rangeFrom(OWN, AT);
+  }
+  out.explosionRange = range;
 }

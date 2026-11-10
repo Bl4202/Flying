@@ -86,6 +86,15 @@
       "level_db": -16
     }
   },
+  "weapons": {
+    "gun": { "rate_hz": 28.33333, "level_db": -8, "body_hz": 90, "crack_hz": 2400, "pulse_ms": 14 },
+    "enemy_gun": { "level_db": -14, "lowpass_hz": 1200, "ref_distance_m": 150 },
+    "launch": { "level_db": -10, "low_hz": 900, "high_hz": 4200, "decay_s": 0.8 },
+    "growl": { "base_hz": 420, "span_hz": 520, "am_hz": 22, "level_db": -18 },
+    "lock_tone": { "freq_hz": 1320, "level_db": -16 },
+    "hit": { "level_db": -12, "band_hz": 2000, "length_ms": 60 },
+    "explosion": { "level_db": -6, "thump_hz": 55, "decay_s": 0.7, "ref_distance_m": 500 }
+  },
   "mix": {
     "duck_db": -6,
     "level_offset_db": 19.9,

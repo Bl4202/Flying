@@ -46,7 +46,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-39](0039-v0-1c-gates.md) | v0.1c gates: screenshots, cameras, HUD, audio, frame rate and app flow | Accepted |
 | [ADR-40](0040-custom-renderer-stays.md) | The renderer stays custom; sky, terrain levels and quality presets | Accepted |
 | [ADR-41](0041-cameras-hud-and-models.md) | Cameras, view input, the HUD and the procedural aircraft (amendment 1: the duel's symbols, streak markers, the bandit's model) | Accepted |
-| [ADR-42](0042-flight-audio.md) | Flight audio: synthesis in an AudioWorklet | Accepted |
+| [ADR-42](0042-flight-audio.md) | Flight audio: synthesis in an AudioWorklet (amendment 2: the duel's sounds) | Accepted |
 | [ADR-43](0043-arenas-abi-v4-and-the-presentation-bundle.md) | Test arenas, session reset (ABI v4), snapshot v4 and the presentation bundle | Accepted |
 | [ADR-44](0044-app-flow-settings-pwa.md) | Application flow, first run, the main menu, settings v2, the PWA and offline | Accepted |
 | [ADR-45](0045-v0-1d-gates.md) | v0.1d gates: weapons, the bandit, the bot playtester, the soak, the debrief and G1 for a solo project | Proposed |

@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { WARNING } from '@flying/sim-bridge';
+import { SEEKER_MODE, WARNING } from '@flying/sim-bridge';
 import { levelDb, peakFrequency, render } from '../test-support/analysis.ts';
 import { kestrelProfile } from '../test-support/fixtures.ts';
 import { FlightDsp, MAX_BLOCK, P, rpmFor, softLimit, TONE } from './flight-dsp.ts';
@@ -517,6 +517,11 @@ describe('A6: the cost of a render quantum', () => {
     dsp.params[P.WARNINGS] = WARNING.STALL;
     dsp.params[P.GROUND_SPEED] = 60;
     dsp.params[P.ON_GROUND] = 1;
+    // And the duel at its busiest: both guns and the growl.
+    dsp.params[P.GUN_FIRING] = 1;
+    dsp.params[P.ENEMY_GUN_DIST_M] = 300;
+    dsp.params[P.SEEKER] = SEEKER_MODE.TONE;
+    dsp.params[P.SIGNAL] = 2;
     const l = new Float32Array(128);
     const r = new Float32Array(128);
     for (let i = 0; i < 4000; i++) dsp.process(l, r, 128);

@@ -655,7 +655,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       },
       onStatus: (status, observation) => {
         controls?.pump.observe(observation);
-        audio.update(status);
+        audio.update(status, feed?.combat);
         if (!appliedStart && controls && menus) {
           // The mouse aim starts from where the nose points, so wait for the first snapshot.
           appliedStart = true;

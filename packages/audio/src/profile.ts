@@ -93,6 +93,54 @@ export interface MixProfile {
   readonly chaseOffsetDb: number;
 }
 
+/**
+ * The duel's sounds (ADR-42 amendment 1). Their levels are relative to the master, like the warning
+ * tones': the gun, enemy gun, launch, hit and explosion go on the aircraft bus, the seeker's growl
+ * and lock tone on the warnings bus.
+ */
+export interface WeaponsProfile {
+  /** The own gun: a pulse per round, `rateHz` a second (the baker checks it against the gun's rpm). */
+  readonly gun: {
+    readonly rateHz: number;
+    readonly levelDb: number;
+    /** The decaying sine of each pulse. */
+    readonly bodyHz: number;
+    /** The band-passed noise of each pulse, and how long it lasts. */
+    readonly crackHz: number;
+    readonly pulseMs: number;
+  };
+  /** The bandit's gun: the same pulses, low-passed, falling 6 dB per doubling of distance. */
+  readonly enemyGun: {
+    readonly levelDb: number;
+    readonly lowpassHz: number;
+    readonly refDistanceM: number;
+  };
+  /** A missile leaving the rail: band-passed noise, decaying. */
+  readonly launch: {
+    readonly levelDb: number;
+    readonly lowHz: number;
+    readonly highHz: number;
+    readonly decayS: number;
+  };
+  /** The seeker's growl: its pitch rises with the signal. */
+  readonly growl: {
+    readonly baseHz: number;
+    readonly spanHz: number;
+    readonly amHz: number;
+    readonly levelDb: number;
+  };
+  readonly lockTone: { readonly freqHz: number; readonly levelDb: number };
+  /** A hit taken: a short band-passed click. */
+  readonly hit: { readonly levelDb: number; readonly bandHz: number; readonly lengthMs: number };
+  /** A thump and noise, falling 6 dB per doubling of distance beyond the reference. */
+  readonly explosion: {
+    readonly levelDb: number;
+    readonly thumpHz: number;
+    readonly decayS: number;
+    readonly refDistanceM: number;
+  };
+}
+
 export interface AudioProfile {
   readonly id: string;
   readonly aircraft: string;
@@ -101,6 +149,8 @@ export interface AudioProfile {
   readonly cockpit: CockpitProfile;
   readonly warnings: WarningProfile;
   readonly mix: MixProfile;
+  /** The duel's sounds; without them the duel is silent apart from the aircraft. */
+  readonly weapons?: WeaponsProfile;
 }
 
 const DB = [-120, 60] as const;
@@ -117,8 +167,57 @@ function chime(s: Slice): Chime {
   return { freqHz: hz(s, 'freq_hz'), repeatS: s.n('repeat_s', 0.01), levelDb: db(s, 'level_db') };
 }
 
+function parseWeapons(s: Slice): WeaponsProfile {
+  const gun = s.at('gun');
+  const enemy = s.at('enemy_gun');
+  const launch = s.at('launch');
+  const growl = s.at('growl');
+  const lock = s.at('lock_tone');
+  const hit = s.at('hit');
+  const boom = s.at('explosion');
+  return {
+    gun: {
+      rateHz: gun.n('rate_hz', 1, 200),
+      levelDb: db(gun, 'level_db'),
+      bodyHz: hz(gun, 'body_hz'),
+      crackHz: hz(gun, 'crack_hz'),
+      pulseMs: gun.n('pulse_ms', 1, 100),
+    },
+    enemyGun: {
+      levelDb: db(enemy, 'level_db'),
+      lowpassHz: hz(enemy, 'lowpass_hz'),
+      refDistanceM: enemy.n('ref_distance_m', 1),
+    },
+    launch: {
+      levelDb: db(launch, 'level_db'),
+      lowHz: hz(launch, 'low_hz'),
+      highHz: hz(launch, 'high_hz'),
+      decayS: launch.n('decay_s', 0.01, 10),
+    },
+    growl: {
+      baseHz: hz(growl, 'base_hz'),
+      spanHz: growl.n('span_hz', 0, HZ[1]),
+      amHz: growl.n('am_hz', 0, 200),
+      levelDb: db(growl, 'level_db'),
+    },
+    lockTone: { freqHz: hz(lock, 'freq_hz'), levelDb: db(lock, 'level_db') },
+    hit: {
+      levelDb: db(hit, 'level_db'),
+      bandHz: hz(hit, 'band_hz'),
+      lengthMs: hit.n('length_ms', 1, 1000),
+    },
+    explosion: {
+      levelDb: db(boom, 'level_db'),
+      thumpHz: hz(boom, 'thump_hz'),
+      decayS: boom.n('decay_s', 0.01, 10),
+      refDistanceM: boom.n('ref_distance_m', 1),
+    },
+  };
+}
+
 /** Reads an `audio_profile/1` slice. */
 export function parseAudioProfile(s: Slice): AudioProfile {
+  const weapons = s.opt('weapons');
   const e = s.at('engine');
   const rpmByCore = e
     .at('rpm_by_core')
@@ -195,6 +294,7 @@ export function parseAudioProfile(s: Slice): AudioProfile {
       levelOffsetDb: db(mix, 'level_offset_db'),
       chaseOffsetDb: db(mix, 'chase_offset_db'),
     },
+    ...(weapons === undefined ? {} : { weapons: parseWeapons(weapons) }),
   };
 }
 
