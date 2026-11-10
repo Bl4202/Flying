@@ -20,7 +20,9 @@
  * | `arena` | `rugged` (default) or `plain`: the procedural test arena |
  * | `fly` | `1`: skip the first run and the main menu and start flying at once (`perf` and `script` imply it) |
  * | `camera` | `cockpit` or `chase`: the camera a sortie starts in, in place of the player's setting |
- * | `script` | `circuit`: the virtual tester flies the circuit instead of the player (a test aid) |
+ * | `script` | `circuit`: the virtual tester flies the circuit; `sortie`: the bot flies a duel's sortie (take-off, fight, landing) instead of the player (test aids) |
+ * | `scenario` | `free` or `duel`: free flight or a duel, in place of the player's setting; `merge`: a duel with the bandit 3 km ahead (a test aid; forces `spawn=air`) |
+ * | `skill` | `1`, `2` or `3`: the duel's bandit (Recruit, Regular, Veteran), in place of the player's setting |
  * | `res` | `WxH`, for example `1920x1080`: fixes the drawing buffer's size (perf and screenshot runs) |
  * | `quality` | `low`, `medium` or `high`: the graphics preset, in place of the one chosen (a test aid) |
  * | `view` | `classify`: draws flat key colours instead of the picture, so a test can tell from a pixel what drew it |
@@ -34,6 +36,8 @@ export type GEffectsChoice = 'off' | 'reduced' | 'full';
 export type ArenaChoice = 'rugged' | 'plain';
 export type QualityChoice = 'low' | 'medium' | 'high';
 export type FaultChoice = 'flat-earth' | 'no-skirts' | 'hud-body-axes';
+export type ScenarioChoice = 'free' | 'duel' | 'merge';
+export type ScriptChoice = 'circuit' | 'sortie';
 
 /** Limits of `res`, pixels. */
 export const RES_MIN = { width: 160, height: 90 } as const;
@@ -68,7 +72,11 @@ export interface Flags {
   fly: boolean;
   /** The camera a sortie starts in, if the URL says; otherwise the player's setting. */
   camera: 'cockpit' | 'chase' | undefined;
-  script: false | 'circuit';
+  script: false | ScriptChoice;
+  /** Free flight or a duel, if the URL says (`merge` is the duel's test start, 3 km apart). */
+  scenario: ScenarioChoice | undefined;
+  /** The duel's bandit, 1 Recruit to 3 Veteran, if the URL says. */
+  skill: 1 | 2 | 3 | undefined;
   /** A fixed drawing-buffer size in pixels, if the URL says. */
   res: { width: number; height: number } | undefined;
   /** The graphics preset, if the URL says. */
@@ -108,6 +116,8 @@ const KNOWN = new Set([
   'quality',
   'fault',
   'view',
+  'scenario',
+  'skill',
 ]);
 
 const size = (r: { width: number; height: number }): string =>
@@ -133,6 +143,8 @@ export function defaultFlags(): Flags {
     fly: false,
     camera: undefined,
     script: false,
+    scenario: undefined,
+    skill: undefined,
     res: undefined,
     quality: undefined,
     fault: undefined,
@@ -273,10 +285,26 @@ export function parseFlags(search: string): Flags {
   }
 
   const script = params.get('script');
-  if (script === 'circuit') {
-    flags.script = 'circuit';
+  if (script === 'circuit' || script === 'sortie') {
+    flags.script = script;
   } else if (script !== null) {
-    bad('script', script, 'circuit');
+    bad('script', script, 'circuit or sortie');
+  }
+
+  const scenario = params.get('scenario');
+  if (scenario === 'free' || scenario === 'duel' || scenario === 'merge') {
+    flags.scenario = scenario;
+    // The merge starts both aircraft in the air, 3 km apart.
+    if (scenario === 'merge') flags.spawn = 'air';
+  } else if (scenario !== null) {
+    bad('scenario', scenario, 'free, duel or merge');
+  }
+
+  const skill = params.get('skill');
+  if (skill === '1' || skill === '2' || skill === '3') {
+    flags.skill = Number(skill) as 1 | 2 | 3;
+  } else if (skill !== null) {
+    bad('skill', skill, '1, 2 or 3');
   }
 
   const res = params.get('res');

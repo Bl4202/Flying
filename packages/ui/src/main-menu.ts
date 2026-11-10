@@ -1,6 +1,8 @@
 /**
- * The main menu (GDD 53, ADR-44): where a visit starts after the first run. Fly begins a sortie in
- * the chosen arena under the chosen flight assist; Settings opens the settings screen. When the
+ * The main menu (GDD 53, ADR-44, ADR-49): where a visit starts after the first run. Fly begins a
+ * sortie in the chosen arena under the chosen flight assist, in free flight or a dogfight against the
+ * chosen bandit (the bandit is offered only for a dogfight); Settings opens the settings screen and
+ * Statistics the statistics. When the
  * browser offers to install the game, a new build is waiting, or the browser is keeping sound off
  * until the player does something, a row for it appears here and nowhere else, so nothing of the
  * kind is ever put over a flight.
@@ -8,7 +10,7 @@
  * The menu builds its DOM when it opens and removes it when it closes. Every control is a native
  * button: Tab moves between them (and wraps), Enter and Space press them.
  */
-import { ARENA, ASSIST_LEVEL } from '@flying/sim-bridge';
+import { ARENA, ASSIST_LEVEL, SCENARIO } from '@flying/sim-bridge';
 import { h } from './dom.ts';
 import { Form, trapTab, type Choice } from './form.ts';
 import type { Settings, SettingsPatch } from './settings.ts';
@@ -25,6 +27,7 @@ export interface MainMenuDeps {
   onChange(patch: SettingsPatch): void;
   onFly(): void;
   onSettings(): void;
+  onStatistics(): void;
   /** The build, for the footer. */
   build: string;
   /** Offered where the browser can install the game. */
@@ -39,6 +42,15 @@ const ARENAS: Choice<number>[] = [
   { value: ARENA.RUGGED, label: 'menu.arena.rugged', preview: 'menu.arena.rugged.preview' },
   { value: ARENA.PLAIN, label: 'menu.arena.plain', preview: 'menu.arena.plain.preview' },
 ];
+const MODES: Choice<number>[] = [
+  { value: SCENARIO.FREE, label: 'menu.mode.free', preview: 'menu.mode.free.preview' },
+  { value: SCENARIO.DUEL, label: 'menu.mode.duel', preview: 'menu.mode.duel.preview' },
+];
+const BANDITS: Choice<number>[] = [
+  { value: 1, label: 'menu.bandit.1', preview: 'menu.bandit.1.preview' },
+  { value: 2, label: 'menu.bandit.2', preview: 'menu.bandit.2.preview' },
+  { value: 3, label: 'menu.bandit.3', preview: 'menu.bandit.3.preview' },
+];
 const ASSISTS: Choice<number>[] = [
   { value: ASSIST_LEVEL.FULL, label: 'assist.full', preview: 'assist.full.preview' },
   { value: ASSIST_LEVEL.STANDARD, label: 'assist.standard', preview: 'assist.standard.preview' },
@@ -52,6 +64,8 @@ export class MainMenu {
   #panel: HTMLElement | undefined;
   #form: Form | undefined;
   #rows: { row: HTMLElement; source: OptionalRow }[] = [];
+  /** The bandit's choice, shown only for a dogfight. */
+  #bandit: HTMLElement | undefined;
 
   constructor(root: HTMLElement, deps: MainMenuDeps) {
     this.#root = root;
@@ -82,6 +96,7 @@ export class MainMenu {
     this.#panel = undefined;
     this.#form = undefined;
     this.#rows = [];
+    this.#bandit = undefined;
   }
 
   destroy(): void {
@@ -92,6 +107,7 @@ export class MainMenu {
   refresh(): void {
     this.#form?.refresh();
     for (const { row, source } of this.#rows) row.hidden = !source.available();
+    if (this.#bandit) this.#bandit.hidden = this.#d.settings().scenario === SCENARIO.FREE;
   }
 
   #build(): HTMLElement {
@@ -126,6 +142,18 @@ export class MainMenu {
       return row;
     };
 
+    const bandit = form.group(
+      'bandit',
+      'menu.bandit',
+      BANDITS,
+      () => settings().banditSkill,
+      (banditSkill) => {
+        this.#d.onChange({ banditSkill });
+      },
+    );
+    bandit.hidden = settings().scenario === SCENARIO.FREE;
+    this.#bandit = bandit;
+
     const rows = [
       optional('update', this.#d.update, 'menu.update'),
       optional('install', this.#d.install, 'menu.install'),
@@ -154,6 +182,17 @@ export class MainMenu {
         },
       ),
       form.group(
+        'mode',
+        'menu.mode',
+        MODES,
+        () => settings().scenario,
+        (scenario) => {
+          this.#d.onChange({ scenario });
+          this.refresh();
+        },
+      ),
+      bandit,
+      form.group(
         'assist',
         'menu.assist',
         ASSISTS,
@@ -168,6 +207,9 @@ export class MainMenu {
         { class: 'actions' },
         form.button('settings', 'menu.settings', () => {
           this.#d.onSettings();
+        }),
+        form.button('statistics', 'menu.statistics', () => {
+          this.#d.onStatistics();
         }),
       ),
       h(doc, 'p', {

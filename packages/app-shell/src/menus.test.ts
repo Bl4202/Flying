@@ -47,6 +47,7 @@ async function setup(overrides: SettingsOverrides = {}) {
     synced: 0,
     patches: [] as unknown[],
     mainMenu: 0,
+    endSortie: 0,
     profiles: [] as string[],
   };
   const menus = new MenuController({
@@ -67,6 +68,9 @@ async function setup(overrides: SettingsOverrides = {}) {
     },
     onMainMenu: () => {
       log.mainMenu += 1;
+    },
+    onEndSortie: () => {
+      log.endSortie += 1;
     },
     onProfile: (p) => log.profiles.push(p.id),
     onSettings: (patch) => log.patches.push(patch),
@@ -240,6 +244,20 @@ describe('MenuController', () => {
     expect(r.log.synced).toBe(0);
     expect(r.pump.context).toBe('menu');
     expect(r.root.querySelector('[data-testid="pause-menu"]')).toBeNull();
+  });
+
+  it('ends the sortie from the pause menu, closing it without letting the simulation run', async () => {
+    const r = await setup();
+    r.menus.openPause();
+    r.id('pause-end-sortie').click();
+    expect(r.log.endSortie).toBe(1);
+    // The app answers with the debrief, which first closes the pause menu quietly.
+    r.menus.closeForDebrief();
+    expect(r.menus.current).toBeNull();
+    expect(r.log.holds).toEqual([true]);
+    expect(r.pump.context).toBe('menu');
+    expect(r.root.querySelector('[data-testid="pause-menu"]')).toBeNull();
+    expect(r.log.menus.at(-1)).toBeNull();
   });
 
   it('leaves for the main menu from the editor too', async () => {

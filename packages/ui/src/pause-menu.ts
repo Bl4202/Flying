@@ -23,6 +23,8 @@ export interface PauseMenuDeps {
   /** Open the binding editor. */
   onControls(): void;
   onRespawn(): void;
+  /** End the sortie and show its debrief. Omit it where there is no debrief (a scripted run). */
+  onEndSortie?: () => void;
   /** Leave the sortie for the main menu. Omit it where there is no main menu (a scripted run). */
   onMainMenu?: () => void;
   /** Whether automatic ground-collision avoidance exists; if not, its option is left out. */
@@ -332,18 +334,25 @@ export class PauseMenu {
         }),
       ),
     );
+    const onEndSortie = this.#d.onEndSortie;
     const onMainMenu = this.#d.onMainMenu;
-    if (onMainMenu !== undefined) {
-      parts.push(
-        h(
-          doc,
-          'div',
-          { class: 'actions' },
+    if (onEndSortie !== undefined || onMainMenu !== undefined) {
+      const leave: HTMLElement[] = [];
+      if (onEndSortie !== undefined) {
+        leave.push(
+          button('pause-end-sortie', 'pause.end-sortie', () => {
+            onEndSortie();
+          }),
+        );
+      }
+      if (onMainMenu !== undefined) {
+        leave.push(
           button('pause-main-menu', 'pause.main-menu', () => {
             onMainMenu();
           }),
-        ),
-      );
+        );
+      }
+      parts.push(h(doc, 'div', { class: 'actions' }, ...leave));
     }
 
     return h(

@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   type AircraftStatus,
   ASSIST_LEVEL,
+  BANDIT_AI,
+  COMBAT_FLAG,
+  type CombatStatus,
   FCS_MODE,
   newAircraftStatus,
   newCombatStatus,
@@ -196,7 +199,7 @@ describe('buildOverlayRows', () => {
     expect(get('pitch')).toBe('0.0° / 0.0°');
     expect(get('tas')).toBe('180.0 m/s / 300 kn · M 0.550');
     expect(get('alpha')).toBe('2.9° / -0.1°');
-    expect(get('nz')).toBe('1.02 g');
+    expect(get('nz')).toBe('1.02 g · –');
     expect(get('throttle')).toBe('0.90 AB 2 · 101.5 kN');
     expect(get('fuel')).toBe('1860 kg / 10260 kg');
     expect(get('surfaces')).toBe('e -2.9 a 0.6 r 0.0°');
@@ -238,13 +241,30 @@ describe('buildOverlayRows', () => {
     ).toBe('117 kn · gear 50% · flaps LDG · airbrake 100% · brakes 100/25% · AGL 123 m');
   });
 
-  it('shows the g state: the lagged g first, then the stress and the red-out', () => {
+  it('shows the load factor, then the g state: the lagged g, the stress and the red-out', () => {
     const get = (f: AircraftStatus | undefined) =>
-      buildOverlayRows(model({ flight: f })).find((r) => r.id === 'g')?.value;
-    expect(get(undefined)).toBe('–');
+      buildOverlayRows(model({ flight: f })).find((r) => r.id === 'nz')?.value;
+    expect(get(undefined)).toBe('1.02 g · –');
     expect(get(flight({ gLagged: 7.5, gStress: 0.42, redout: 0 }))).toBe(
-      '7.50 g · S 0.42 · R 0.00',
+      '1.02 g · lagged 7.50 g · S 0.42 · R 0.00',
     );
+    expect(buildOverlayRows(model()).some((r) => r.id === 'g')).toBe(false);
+  });
+
+  it('shows the duel: what the bandit does, the range, both healths and the stores', () => {
+    const get = (c: CombatStatus | undefined) =>
+      buildOverlayRows(model({ combat: c })).find((r) => r.id === 'combat')?.value;
+    expect(get(undefined)).toBe('–');
+    const c = newCombatStatus();
+    expect(get(c)).toBe('–');
+    c.flags = COMBAT_FLAG.ACTIVE;
+    c.banditAi = BANDIT_AI.DEFEND_GUN;
+    c.tgtRange = 2345;
+    c.banditHealth = 0.4;
+    c.health = 1;
+    c.rounds = 120;
+    c.missiles = 2;
+    expect(get(c)).toBe('defend gun · R 2.3 km · hp 40/100 · 120 rds · 2 srm');
   });
 
   it('shows the control latency split three ways, and the old input age', () => {

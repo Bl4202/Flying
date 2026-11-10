@@ -64,6 +64,23 @@ describe('parseFlags', () => {
     });
   });
 
+  it("reads the duel's flags; the merge starts in the air", () => {
+    expect(parseFlags('scenario=duel&skill=2&script=sortie')).toMatchObject({
+      scenario: 'duel',
+      skill: 2,
+      script: 'sortie',
+      spawn: undefined,
+    });
+    expect(parseFlags('scenario=free').scenario).toBe('free');
+    expect(parseFlags('scenario=merge&spawn=runway')).toMatchObject({
+      scenario: 'merge',
+      spawn: 'air',
+    });
+    const bad = parseFlags('scenario=war&skill=4');
+    expect([bad.scenario, bad.skill]).toEqual([undefined, undefined]);
+    expect(bad.warnings).toHaveLength(2);
+  });
+
   it('ignores bad values, keeps the default, and says so', () => {
     const f = parseFlags(
       'debug=yes&renderer=vulkan&flags=transfer,bogus&compat=2&seconds=0&bench=slow&perf=ps9&selftest=2&spawn=moon&assist=auto&g=huge&script=bot',

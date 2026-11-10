@@ -7,13 +7,16 @@
  * frame; a seqlock read does not disturb the renderer's. With the message channel the renderer
  * owns the only end of the channel, so the page takes the status the sim reports with its 4 Hz
  * stats. The duel's status (weapons, target, bandit; ADR-48) comes the same two ways, from the
- * same snapshot read.
+ * same snapshot read, and so does the simulation's tick (the mission recorder's clock). The duel's
+ * events come only from the shared channel: each new one is handed to `onEvent` once.
  */
 import type { PumpObservation } from '@flying/input';
 import {
   type AircraftStatus,
+  type CombatEventView,
   type CombatStatus,
   CONTENDED,
+  EventCursor,
   newAircraftStatus,
   newCombatStatus,
   readAircraftStatus,
@@ -30,6 +33,10 @@ export interface StatusFeedDeps {
   reported: () => AircraftStatus | undefined;
   /** The duel's status from the same stats (the message channel); absent: none. */
   reportedCombat?: () => CombatStatus | undefined;
+  /** The tick of those stats (the message channel). */
+  reportedTick?: () => number | undefined;
+  /** Each new combat event, once, oldest first (the shared channel only). */
+  onEvent?: (event: CombatEventView) => void;
   requestFrame: (callback: () => void) => number;
   cancelFrame: (id: number) => void;
   /** Called with the new status whenever it has been read afresh. */
@@ -50,6 +57,8 @@ export class StatusFeed {
     noseAzRad: 0,
     noseElRad: 0,
   };
+  readonly #cursor = new EventCursor();
+  #tick = 0;
   #have = false;
   #lastPublication = 0;
   #frame: number | undefined;
@@ -67,6 +76,12 @@ export class StatusFeed {
   get combat(): CombatStatus | undefined {
     if (this.#d.source === undefined) return this.#d.reportedCombat?.();
     return this.#have ? this.#combat : undefined;
+  }
+
+  /** The simulation's tick as of the newest status (0 before the first). */
+  get tick(): number {
+    if (this.#d.source === undefined) return this.#d.reportedTick?.() ?? 0;
+    return this.#tick;
   }
 
   start(): void {
@@ -96,6 +111,9 @@ export class StatusFeed {
         this.#lastPublication = n;
         readAircraftStatus(this.#reader, this.#own);
         readCombatStatus(this.#reader, this.#combat);
+        this.#tick = this.#reader.tick();
+        const onEvent = this.#d.onEvent;
+        if (onEvent !== undefined) this.#cursor.drain(this.#reader, onEvent);
         this.#have = true;
       }
       status = this.#have ? this.#own : undefined;

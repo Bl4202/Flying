@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { memoryKv, type Kv } from '@flying/platform-web';
-import { ARENA, ASSIST_LEVEL, G_EFFECTS, SPAWN_KIND } from '@flying/sim-bridge';
+import { ARENA, ASSIST_LEVEL, G_EFFECTS, SCENARIO, SPAWN_KIND } from '@flying/sim-bridge';
 import {
   applySettingsPatch,
   DEFAULT_SETTINGS,
@@ -37,6 +37,8 @@ describe('parseSettings', () => {
       gEffects: G_EFFECTS.FULL,
       gfxStrength: 100,
       arena: ARENA.RUGGED,
+      scenario: SCENARIO.FREE,
+      banditSkill: 1,
       mouseMode: 'off',
       mouseSensitivity: 1,
       autoGcas: false,
@@ -77,6 +79,8 @@ describe('parseSettings', () => {
       gfxStrength: 40,
       spawn: 1,
       arena: 1,
+      scenario: 1,
+      banditSkill: 2,
       mouseMode: 'stick',
       mouseSensitivity: 2.5,
       mouseSpring: 0.4,
@@ -191,6 +195,8 @@ describe('export and import (F2)', () => {
   const custom: Settings = applySettingsPatch(DEFAULT_SETTINGS, {
     assist: 3,
     arena: 1,
+    scenario: SCENARIO.DUEL,
+    banditSkill: 3,
     camera: 'chase',
     fovDeg: 88.5,
     mouseSensitivity: 1.35,
@@ -251,6 +257,26 @@ describe('export and import (F2)', () => {
       ]);
       expect(r.problems.every((p) => p.message.length > 0)).toBe(true);
     }
+  });
+
+  it('reads a v0.1c settings/2 entry without the duel fields at their defaults', () => {
+    const v01c = JSON.parse(exportSettings(custom)) as Record<string, unknown>;
+    delete v01c['scenario'];
+    delete v01c['banditSkill'];
+    const s = parseSettings(v01c);
+    expect([s.scenario, s.banditSkill]).toEqual([SCENARIO.FREE, 1]);
+    expect(s.assist).toBe(3);
+    const r = importSettings(JSON.stringify(v01c));
+    expect(r.ok && [r.settings.scenario, r.settings.banditSkill]).toEqual([SCENARIO.FREE, 1]);
+  });
+
+  it('refuses a scenario the menus do not offer and a skill out of range', () => {
+    const r = importSettings(
+      JSON.stringify({ version: 2, scenario: SCENARIO.DUEL_MERGE, banditSkill: 0 }),
+    );
+    expect(!r.ok && r.problems.map((p) => p.pointer)).toEqual(['/scenario', '/banditSkill']);
+    const s = parseSettings({ scenario: SCENARIO.DUEL_MERGE, banditSkill: 4 });
+    expect([s.scenario, s.banditSkill]).toEqual([SCENARIO.FREE, 1]);
   });
 
   it('refuses text that is not settings', () => {

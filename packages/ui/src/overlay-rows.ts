@@ -5,6 +5,8 @@
 import type { RenderStats } from '@flying/render/messages';
 import {
   type AircraftStatus,
+  COMBAT_FLAG,
+  type CombatStatus,
   OWNSHIP_FLAG,
   OWNSHIP_FLAG2,
   quatRotate,
@@ -36,6 +38,27 @@ export interface OverlayModel {
   flight: AircraftStatus | undefined;
   /** Control latency, split by where the time goes (ADR-33), or undefined before it is measured. */
   latency: ControlLatency | undefined;
+  /** The duel's newest status, if there is a feed (all zero without a duel). */
+  combat?: CombatStatus | undefined;
+}
+
+/** The bandit's `BANDIT_AI` states, by number. */
+const BANDIT_AI_NAMES = [
+  'patrol',
+  'intercept',
+  'pursue',
+  'gun',
+  'defend gun',
+  'defend missile',
+  'extend',
+  'recover',
+  'return',
+  'wreck',
+] as const;
+
+/** The duel in one line: what the bandit is doing, the range, both healths, and the stores. */
+function combatText(c: CombatStatus): string {
+  return `${BANDIT_AI_NAMES[c.banditAi] ?? String(c.banditAi)} · R ${fixed(c.tgtRange / 1000, 1, ' km')} · hp ${fixed(c.banditHealth * 100, 0)}/${fixed(c.health * 100, 0)} · ${String(c.rounds)} rds · ${String(c.missiles)} srm`;
 }
 
 /**
@@ -266,7 +289,13 @@ export function buildOverlayRows(m: OverlayModel): OverlayRow[] {
       label('alpha'),
       `${fixed(o.alpha * DEG, 1, '°')} / ${fixed(o.beta * DEG, 1, '°')}`,
     );
-    add('nz', label('nz'), fixed(o.nz, 2, ' g'));
+    // The load factor leads (`input.spec.ts` reads it), then the g the pilot feels: lagged, the
+    // stress and the red-out.
+    add(
+      'nz',
+      label('nz'),
+      `${fixed(o.nz, 2, ' g')} · ${f === undefined ? DASH : `lagged ${fixed(f.gLagged, 2, ' g')} · S ${fixed(f.gStress, 2)} · R ${fixed(f.redout, 2)}`}`,
+    );
     add(
       'throttle',
       label('throttle'),
@@ -283,12 +312,11 @@ export function buildOverlayRows(m: OverlayModel): OverlayRow[] {
 
   add('assist', 'Assist', f === undefined ? DASH : assistText(f));
   add('ground', 'Ground', f === undefined ? DASH : groundText(f));
+  const c = m.combat;
   add(
-    'g',
-    'G state',
-    f === undefined
-      ? DASH
-      : `${fixed(f.gLagged, 2, ' g')} · S ${fixed(f.gStress, 2)} · R ${fixed(f.redout, 2)}`,
+    'combat',
+    'Combat',
+    c === undefined || (c.flags & COMBAT_FLAG.ACTIVE) === 0 ? DASH : combatText(c),
   );
 
   const profile = s?.profile ?? null;

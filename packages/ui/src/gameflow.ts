@@ -20,8 +20,8 @@
  */
 import type { CompatCode, Verdict } from './compat.ts';
 
-/** The menu open over the flight, if any. */
-export type DemoMenu = null | 'pause' | 'controls';
+/** The menu open over the flight, if any (the debrief and the questionnaire hold it too). */
+export type DemoMenu = null | 'pause' | 'controls' | 'debrief' | 'feel';
 
 /** Where the game goes once the compat check is through. */
 export type StartTarget = 'first-run' | 'menu' | 'fly';
@@ -37,8 +37,8 @@ export const FIRST_RUN_STEPS = [
 ] as const;
 export type FirstRunStep = (typeof FIRST_RUN_STEPS)[number];
 
-/** What the main menu shows: the home screen or the settings. */
-export type MenuScreen = 'home' | 'settings';
+/** What the main menu shows: the home screen, the settings or the statistics. */
+export type MenuScreen = 'home' | 'settings' | 'statistics';
 
 export type FlowState =
   | { name: 'BOOT' }

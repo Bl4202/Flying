@@ -29,13 +29,15 @@ import {
 } from '@flying/platform-web';
 import {
   type AircraftStatus,
+  type CombatStatus,
   makeInputChannel,
   makeSnapshotChannel,
   openInputSink,
   openSnapshotSource,
   type SimStats,
 } from '@flying/sim-bridge';
-import { INPUT_SCRIPT } from '@flying/sim-bridge/layout';
+import { INPUT_SCRIPT, SCENARIO } from '@flying/sim-bridge/layout';
+import type { SessionConfig } from '@flying/sim-bridge/sim-handle';
 import { createWakeWord, SimClient } from '@flying/sim-host';
 import {
   browserMachineEnv,
@@ -51,15 +53,20 @@ import renderWorkerUrl from '@flying/render/render.worker?worker&url';
 import {
   ControlsStore,
   DebugOverlay,
+  feelAnswer,
   installOverlayHotkey,
+  MissionRecorder,
+  StatsStore,
   t,
   ToastHost,
   WarningStrip,
   type CompatReport,
+  type DebriefNumbers,
   type DemoMenu,
   type FatalSource,
   type FlowEvent,
   type FlowState,
+  type MissionResult,
   type OverlayModel,
   type Settings,
   type SettingsPatch,
@@ -68,6 +75,7 @@ import {
   type StringKey,
 } from '@flying/ui';
 import { FlightControls } from './controls.ts';
+import { DebriefFlow } from './debrief-flow.ts';
 import { MenuController } from './menus.ts';
 import { loadPresentation } from './presentation.ts';
 import {
@@ -171,7 +179,37 @@ export interface TestHooks {
   };
   /** Why the aircraft's presentation could not be loaded, if it could not. */
   presentationError(): string | undefined;
+  /** A copy of the duel's newest status (undefined before the first snapshot). */
+  combat(): CombatStatus | undefined;
+  /** The open debrief's numbers, or null when none is open. */
+  debrief(): DebriefNumbers | null;
+  /** One sample of what the soak watches for leaks (ADR-45 L1 to L7). */
+  memory(): Promise<MemorySample>;
 }
+
+/** What the soak samples (ADR-45): memory, GPU and audio resources, faults, and progress. */
+export interface MemorySample {
+  /** The page's JavaScript memory, bytes, and how it was measured. */
+  jsBytes: number;
+  jsSource: 'uasm' | 'heap';
+  /** The simulation's WebAssembly memory, bytes. */
+  wasmBytes: number;
+  liveBuffers: number;
+  liveTextures: number;
+  liveAudioNodes: number;
+  /** Times the simulation fell silent for a second or more. */
+  silences: number;
+  workerErrors: number;
+  deviceLosses: number;
+  /** Workers running: the Sim Worker, and the Render Worker unless drawing is on the main thread. */
+  workers: number;
+  simHz: number;
+  /** Debriefs opened since the page loaded. */
+  sorties: number;
+}
+
+/** The simulation's tick, ms: it runs at a fixed 60 Hz. */
+const TICK_MS = 1000 / 60;
 
 export interface TestAudio {
   kind: string;
@@ -244,9 +282,22 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   const settings = ctx.settings;
   const controlsStore = new ControlsStore(ctx.kv);
   await controlsStore.load();
+  // The statistics and the feel answers (ADR-49), and the recorder of the mission being flown.
+  const statsStore = new StatsStore(ctx.kv);
+  await statsStore.load();
+  const recorder = new MissionRecorder();
   /** A scripted pilot flies (a performance run, or the circuit): the devices are left alone. */
   const scripted = ctx.perf || flags.script !== false;
   const session = sessionFromFlags(flags, ctx.scenario ?? ctx.perf, settings.value);
+  /** The pilot the URL puts in the seat instead of the player, if any. */
+  const urlScript =
+    flags.script === 'circuit'
+      ? INPUT_SCRIPT.CIRCUIT
+      : flags.script === 'sortie'
+        ? INPUT_SCRIPT.SORTIE
+        : INPUT_SCRIPT.NONE;
+  /** The scenario being flown: a duel's sortie ends in its debrief. */
+  let scenarioNow = session.scenario;
   /** The run measures the sound too: its context is resumed, and the status feed drives it. */
   const soundOn = ctx.scenario?.view?.audio === true;
   const overrides = scripted ? {} : sessionOverrides(session, settings.value);
@@ -263,6 +314,9 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   let readyEvents = 0;
   /** Graphics devices lost since the page opened, for a performance run's gate. */
   let deviceLosses = 0;
+  /** Times the simulation fell silent, and worker errors, since the page opened (the soak's L7). */
+  let silences = 0;
+  let workerErrors = 0;
   const longTasks = countLongTasks();
 
   const onRenderEvent = (event: RenderEvent): void => {
@@ -281,6 +335,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
         toasts.show(t('toast.renderer-lost', { reason: event.reason }), 'warn');
         break;
       case 'error':
+        workerErrors += 1;
         ctx.fail('render-worker', codeOf(event.message, 'SYS-107'), event.message);
         break;
       default:
@@ -309,13 +364,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
         threadsInitialPages: __THREADS_INITIAL_PAGES__,
         contentUrl: coreContentUrl,
         seed: SEED,
-        script: ctx.scenario
-          ? ctx.scenario.script
-          : ctx.perf
-            ? INPUT_SCRIPT.ERRATIC
-            : flags.script === 'circuit'
-              ? INPUT_SCRIPT.CIRCUIT
-              : INPUT_SCRIPT.NONE,
+        script: ctx.scenario ? ctx.scenario.script : ctx.perf ? INPUT_SCRIPT.ERRATIC : urlScript,
         session,
         snapshot: snapshots.sink,
         input: inputs.source,
@@ -329,6 +378,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
         latestSim = stats;
       },
       onError: (message) => {
+        workerErrors += 1;
         ctx.fail('sim-worker', codeOf(message, 'SYS-032'), message);
       },
     }),
@@ -394,6 +444,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   const onAction = (id: ActionId): void => {
     if (id === 'system.pause') {
       if (screens?.active === true) screens.escape();
+      else if (debriefFlow.isOpen) debriefFlow.escape();
       else if (flying) menus?.toggle();
     } else if (id === 'flight.mouse_mode' && controls && menus) {
       const mode = controls.pump.mouseMode;
@@ -442,11 +493,15 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     if (flying) return;
     // What the menu shows is what flies: the settings with the URL's (until the player changed them)
     // laid over them, so the URL flags are not applied a second time over the player's choices.
+    // Without the menus (a scripted pilot flying again) the URL is all there is.
     const now = menus?.settings() ?? settings.value;
-    sim.configure(
-      sessionFromFlags(defaultFlags(), false, now),
-      flags.script === 'circuit' ? INPUT_SCRIPT.CIRCUIT : INPUT_SCRIPT.NONE,
-    );
+    const next =
+      menus === undefined
+        ? sessionFromFlags(flags, false, settings.value)
+        : sessionFromFlags(defaultFlags(), false, now);
+    sim.configure(next, urlScript);
+    scenarioNow = next.scenario;
+    beginMission(next);
     if (controls) {
       controls.pump.newSortie();
       controls.applySettings(now);
@@ -466,9 +521,14 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     controls?.syncMouseLock();
   };
 
-  /** The pause menu's Main menu: the sortie is over, the core goes back to idle, the menu shows. */
-  const toMainMenu = (): void => {
+  /**
+   * The pause menu's (or the debrief's) Main menu: the sortie is over and its mission recorded, the
+   * core goes back to idle, and the menu shows (unless the player is flying again at once).
+   */
+  const toMainMenu = (show = true): void => {
     if (!flying) return;
+    finishMission();
+    debriefFlow.close();
     flying = false;
     paused = false;
     menuHold = false;
@@ -476,7 +536,77 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     sim.reset();
     controls?.pump.setContext('menu');
     controls?.releaseMouse();
-    screens?.show(ctx.flow.dispatch({ type: 'main-menu' }));
+    const state = ctx.flow.dispatch({ type: 'main-menu' });
+    if (show) screens?.show(state);
+  };
+
+  // ---- the mission: recorded from Fly to its end, counted once, and debriefed (ADR-49) -------
+  /** A performance run is a measurement, not a mission. */
+  const recording = !ctx.perf;
+  const beginMission = (s: SessionConfig): void => {
+    if (recording) recorder.begin(s, __BUILD_ID__);
+  };
+  /** Counts a result; a failed write is tried once more (it can only ever count once). */
+  const aggregate = (result: MissionResult): void => {
+    void statsStore.aggregate(result).catch(() =>
+      statsStore.aggregate(result).catch(() => {
+        toasts.show(t('toast.stats-failed'), 'warn');
+      }),
+    );
+  };
+  /** Ends the mission being recorded, if one is, and counts it. */
+  const finishMission = (): MissionResult | undefined => {
+    if (!recorder.active) return undefined;
+    const result = recorder.finish();
+    aggregate(result);
+    return result;
+  };
+  const debriefFlow = new DebriefFlow({
+    root: roots.menu,
+    hold: () => {
+      menuHold = true;
+      syncHold();
+      controls?.pump.setContext('menu');
+      controls?.releaseMouse();
+    },
+    setMenu: (menu) => {
+      ctx.flow.dispatch({ type: 'menu', menu });
+    },
+    onFlyAgain: () => {
+      flyAgain();
+    },
+    onMainMenu: () => {
+      toMainMenu();
+    },
+    onRated: (ratings, result) => {
+      const answer = feelAnswer(ratings, {
+        build: __BUILD_ID__,
+        assist: result.assist,
+        skill: result.skill,
+        missionId: result.mission_id,
+      });
+      void statsStore.addFeel(answer).then(
+        () => {
+          toasts.show(t('feel.saved'));
+        },
+        () => {
+          toasts.show(t('toast.stats-failed'), 'warn');
+        },
+      );
+    },
+  });
+  /** The sortie is over (End sortie, or a duel's stop on the runway): its debrief. */
+  const endSortie = (): void => {
+    if (!flying || debriefFlow.isOpen) return;
+    const result = finishMission();
+    if (result === undefined) return;
+    menus?.closeForDebrief();
+    debriefFlow.open(result);
+  };
+  /** The debrief's Fly again: the same mission afresh, without the main menu in between. */
+  const flyAgain = (): void => {
+    toMainMenu(false);
+    fly();
   };
 
   /** Applies every setting to the parts that read them (an import, a reset). */
@@ -501,7 +631,9 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
         toasts.show(t('toast.mouse-raw'), 'warn');
       },
       onPointerLost: () => {
-        if (menus && !menus.isOpen && c.pump.mouseMode !== 'off') menus.openPause();
+        if (menus && !menus.isOpen && !debriefFlow.isOpen && c.pump.mouseMode !== 'off') {
+          menus.openPause();
+        }
       },
     });
     controls = c;
@@ -526,7 +658,10 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       syncMouseLock: () => {
         c.syncMouseLock();
       },
-      onMainMenu: toMainMenu,
+      onMainMenu: () => {
+        toMainMenu();
+      },
+      onEndSortie: endSortie,
       onProfile: (profile) => {
         c.useProfile(profile);
       },
@@ -577,6 +712,13 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       onFly: fly,
       save: downloadText,
       info: { storage: settings.backend, build: __BUILD_ID__ },
+      statistics: {
+        stats: () => statsStore.stats,
+        feel: () => statsStore.feel,
+        exportText: () => statsStore.export(),
+        onImport: (text) => statsStore.import(text),
+        onClear: () => statsStore.clear(),
+      },
       ...(audio.kind === 'webaudio'
         ? {
             audio: {
@@ -649,13 +791,23 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       source: modes.snapshotChannel === 'shared' ? openSnapshotSource(snapshots.source) : undefined,
       reported: () => latestSim?.status,
       reportedCombat: () => latestSim?.combat,
+      reportedTick: () => latestSim?.tick,
+      onEvent: (event) => {
+        if (flying) recorder.onEvent(event);
+      },
       requestFrame: (callback) => requestAnimationFrame(callback),
       cancelFrame: (id) => {
         cancelAnimationFrame(id);
       },
       onStatus: (status, observation) => {
         controls?.pump.observe(observation);
-        audio.update(status, feed?.combat);
+        const combat = feed?.combat;
+        audio.update(status, combat);
+        if (flying && recorder.active) {
+          recorder.update(status, combat, (feed?.tick ?? 0) * TICK_MS);
+          // A duel's sortie that ends with a stop on the runway ends in its debrief.
+          if (scenarioNow !== SCENARIO.FREE && recorder.sortieEnded()) endSortie();
+        }
         if (!appliedStart && controls && menus) {
           // The mouse aim starts from where the nose points, so wait for the first snapshot.
           appliedStart = true;
@@ -720,6 +872,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
       : undefined,
     benchmark: ctx.benchmarkSummary,
     flight: feed?.status ?? latestSim?.status,
+    combat: feed?.combat ?? latestSim?.combat,
     latency:
       latestSim === undefined
         ? undefined
@@ -760,6 +913,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     lastReportAt: () => sim.lastStatsAt,
     now: monotonicMs,
     onSilent: (seconds) => {
+      silences += 1;
       toasts.show(t('toast.sim-silent', { seconds }), 'warn');
     },
   });
@@ -779,8 +933,12 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     if (screens?.menu.isOpen === true) screens.menu.refresh();
   }, 500);
 
-  if (flying) sim.start();
-  else screens?.show(ctx.flow.state());
+  if (flying) {
+    beginMission(session);
+    sim.start();
+  } else {
+    screens?.show(ctx.flow.state());
+  }
   if (flags.debug !== false) overlay.show();
   // Tests (and the curious) can tell that everything is wired and the loop is going.
   roots.stage.dataset['state'] = 'running';
@@ -844,11 +1002,49 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
         freeLook: view.state.freeLook,
       }),
       presentationError: () => loaded.error,
+      combat: () => {
+        const c = feed?.combat ?? latestSim?.combat;
+        return c === undefined ? undefined : structuredClone(c);
+      },
+      debrief: () => debriefFlow.numbers,
+      memory: async () => {
+        const perf = performance as unknown as {
+          measureUserAgentSpecificMemory?: () => Promise<{ bytes: number }>;
+          memory?: { usedJSHeapSize: number };
+        };
+        let jsBytes = perf.memory?.usedJSHeapSize ?? 0;
+        let jsSource: MemorySample['jsSource'] = 'heap';
+        if (crossOriginIsolated && typeof perf.measureUserAgentSpecificMemory === 'function') {
+          try {
+            jsBytes = (await perf.measureUserAgentSpecificMemory()).bytes;
+            jsSource = 'uasm';
+          } catch {
+            // Not allowed here after all: the heap figure stands.
+          }
+        }
+        return {
+          jsBytes,
+          jsSource,
+          wasmBytes: latestSim?.wasmBytes ?? 0,
+          liveBuffers: latestRender?.liveBuffers ?? 0,
+          liveTextures: latestRender?.liveTextures ?? 0,
+          liveAudioNodes: audio instanceof WebAudioBackend ? audio.liveNodes : 0,
+          silences,
+          workerErrors,
+          deviceLosses,
+          workers: render.host === 'worker' ? 2 : 1,
+          simHz: latestSim?.hz ?? 0,
+          sorties: debriefFlow.opened,
+        };
+      },
     };
     (window as unknown as { __flying?: TestHooks }).__flying = hooks;
   }
 
   const stop = (): void => {
+    // The mission ends with the page: counted if the store can still write.
+    finishMission();
+    debriefFlow.destroy();
     delete roots.stage.dataset['state'];
     window.clearInterval(watchdog);
     window.clearInterval(padWatch);

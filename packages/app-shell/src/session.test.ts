@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS } from '@flying/ui';
 import { sessionFromFlags, sessionOverrides } from './session.ts';
 
 const flags = (over: Partial<Flags>): Flags => ({ ...defaultFlags(), ...over });
-/** Free flight: the scenario every session flown from the menu has until the duel joins it (WP5). */
+/** Free flight: no bandit. */
 const FREE = { scenario: SCENARIO.FREE, skill: 0 };
 
 describe('sessionFromFlags', () => {
@@ -73,6 +73,48 @@ describe('sessionFromFlags', () => {
       arena: ARENA.RUGGED,
       ...FREE,
     });
+  });
+});
+
+describe('the duel in the session', () => {
+  const base = {
+    spawn: SPAWN_KIND.RUNWAY,
+    assist: ASSIST_LEVEL.STANDARD,
+    gEffects: G_EFFECTS.FULL,
+    arena: ARENA.RUGGED,
+  };
+
+  it("takes the player's mode and bandit, the URL's over them, and no bandit in free flight", () => {
+    const duel = { ...base, scenario: SCENARIO.DUEL, banditSkill: 3 };
+    expect(sessionFromFlags(defaultFlags(), false, duel)).toMatchObject({
+      scenario: SCENARIO.DUEL,
+      skill: 3,
+    });
+    expect(sessionFromFlags(flags({ skill: 2 }), false, duel)).toMatchObject({ skill: 2 });
+    expect(sessionFromFlags(flags({ scenario: 'free', skill: 2 }), false, duel)).toMatchObject({
+      scenario: SCENARIO.FREE,
+      skill: 0,
+    });
+    expect(
+      sessionFromFlags(flags({ scenario: 'duel' }), false, { ...base, scenario: SCENARIO.FREE }),
+    ).toMatchObject({ scenario: SCENARIO.DUEL, skill: 1 });
+  });
+
+  it('flies the merge (the test start) from the air', () => {
+    const f = flags({ scenario: 'merge', spawn: 'air', skill: 2 });
+    expect(sessionFromFlags(f, false, { ...base, scenario: 0, banditSkill: 1 })).toMatchObject({
+      spawn: SPAWN_KIND.AIR,
+      scenario: SCENARIO.DUEL_MERGE,
+      skill: 2,
+    });
+  });
+
+  it("lists the mode and the bandit the URL chose, but not free flight's missing bandit", () => {
+    const stored = { ...DEFAULT_SETTINGS };
+    const duel = sessionFromFlags(flags({ scenario: 'duel', skill: 2 }), false, stored);
+    expect(sessionOverrides(duel, stored)).toEqual({ scenario: SCENARIO.DUEL, banditSkill: 2 });
+    const free = sessionFromFlags(defaultFlags(), false, { ...stored, banditSkill: 3 });
+    expect(sessionOverrides(free, { ...stored, banditSkill: 3 })).toEqual({});
   });
 });
 
