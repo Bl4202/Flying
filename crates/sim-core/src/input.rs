@@ -239,23 +239,42 @@ impl InputState {
         }
     }
 
+    /// The bot playtester, when that is the script.
+    #[must_use]
+    pub fn sortie(&self) -> Option<&ai_pilot::SortieTester> {
+        match self.script.as_ref() {
+            Some(Script::Sortie(t)) => Some(t),
+            _ => None,
+        }
+    }
+
+    /// The script whose frames the core makes from the aircraft (circuit, sortie, hold), if any.
+    pub fn core_script_mut(&mut self) -> Option<&mut Script> {
+        self.script
+            .as_mut()
+            .filter(|s| matches!(s, Script::Circuit(_) | Script::Sortie(_) | Script::Hold(_)))
+    }
+
     /// Start of a tick's Ingest: forget last tick's press edges, run the script, then apply
     /// everything queued by the host, in order.
     pub fn ingest(&mut self, tick: u64) {
         self.ingest_with(tick, None);
     }
 
-    /// As [`Self::ingest`], with the frame the circuit tester wrote this tick (the tester needs
-    /// the aircraft, which the input state does not know, so the core makes the frame).
+    /// As [`Self::ingest`], with the frame the core's script (the circuit tester, the bot, the
+    /// hold pilot) wrote this tick: they need the aircraft, which the input state does not know,
+    /// so the core makes the frame.
     pub fn ingest_with(&mut self, tick: u64, circuit: Option<InputFrame>) {
         self.edges = 0;
         if let Some(script) = self.script.as_mut() {
             let frame = match script {
                 Script::Erratic(pilot) => pilot.next_frame(tick),
                 Script::Flight60 => flight60_frame(tick),
-                Script::Circuit(_) => circuit.unwrap_or_else(|| {
-                    InputFrame::neutral(u32::try_from((tick + 1) & 0xFFFF_FFFF).unwrap_or(0))
-                }),
+                Script::Circuit(_) | Script::Sortie(_) | Script::Hold(_) => {
+                    circuit.unwrap_or_else(|| {
+                        InputFrame::neutral(u32::try_from((tick + 1) & 0xFFFF_FFFF).unwrap_or(0))
+                    })
+                }
             };
             // Exercise the real wire path: encode, then decode what a host would have sent.
             let mut wire = [0_u8; FRAME_BYTES];
@@ -434,6 +453,18 @@ impl InputState {
                     h.write_u64(w);
                 }
             }
+            Some(Script::Sortie(t)) => {
+                h.write_u64(4);
+                for w in t.words() {
+                    h.write_u64(w);
+                }
+            }
+            Some(Script::Hold(p)) => {
+                h.write_u64(5);
+                for w in p.words() {
+                    h.write_u64(w);
+                }
+            }
             None => h.write_u64(0),
         }
     }
@@ -449,6 +480,12 @@ pub enum Script {
     /// The virtual tester (ADR-33): take-off, a circuit and a landing. Its frames are made by the
     /// core from the aircraft's state ([`InputState::circuit_mut`]).
     Circuit(Box<fcs::tester::Tester>),
+    /// The bot playtester (ADR-47): take-off, kill the bandit, land. Duels only; its frames are
+    /// made by the core from the aircraft and the combat state.
+    Sortie(Box<ai_pilot::SortieTester>),
+    /// Straight and level at what it found (HOLD), and with `fire_once` the missile button pressed
+    /// at the first lock (`HOLD_FIRE`). Duels only.
+    Hold(ai_pilot::HoldCourse),
 }
 
 /// Length of the Flight60 script, ticks (60 s).

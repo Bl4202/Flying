@@ -17,6 +17,7 @@ import {
   HASH_KIND,
   INPUT_FRAME,
   INPUT_SCRIPT,
+  SCENARIO,
   SPAWN_KIND,
   TERRAIN,
 } from './layout.gen.ts';
@@ -52,18 +53,24 @@ const ERRATIC_SESSION = {
   assist: ASSIST_LEVEL.STANDARD,
   gEffects: G_EFFECTS.FULL,
   arena: ARENA.RUGGED,
+  scenario: SCENARIO.FREE,
+  skill: 0,
 };
 const FLIGHT60_SESSION = {
   spawn: SPAWN_KIND.AIR,
   assist: ASSIST_LEVEL.MANUAL,
   gEffects: G_EFFECTS.OFF,
   arena: ARENA.RUGGED,
+  scenario: SCENARIO.FREE,
+  skill: 0,
 };
 const CIRCUIT_SESSION = {
   spawn: SPAWN_KIND.RUNWAY,
   assist: ASSIST_LEVEL.STANDARD,
   gEffects: G_EFFECTS.FULL,
   arena: ARENA.RUGGED,
+  scenario: SCENARIO.FREE,
+  skill: 0,
 };
 
 async function load(variant: 'single' | 'threads', hostNow?: () => number): Promise<SimHandle> {

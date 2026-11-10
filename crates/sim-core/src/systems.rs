@@ -4,6 +4,11 @@
 use flight::aircraft::AircraftModel;
 use flight::gear::{CrashCause, GroundEvents};
 
+use crate::combat::systems::{
+    BanditDynamics, CombatAi, CombatCollision, CombatLifecycle, CombatWeapons,
+};
+use crate::combat::view::CombatView;
+use crate::input::Script;
 use crate::layout::{button, core_state, crash_cause, spawn_request};
 use crate::ownship::{AircraftSlot, Ownship, OwnshipView, RESPAWN_TICKS};
 use crate::pilot;
@@ -27,21 +32,31 @@ impl System for Ingest {
     }
     fn run(&mut self, ctx: &mut TickCtx<'_>) {
         let w = &mut *ctx.world;
-        let mut circuit = None;
+        let mut made = None;
         if let Ownship::Aircraft(slot) = &w.ownship {
             // A scripted pilot has no throttle lever to synchronise: it acknowledges every spawn.
             w.input.set_script_spawn_ack(slot.spawn_seq);
-            if let (Some(model), Some(fcs_model), Some(tester)) = (
+            if let (Some(model), Some(fcs_model), Some(script)) = (
                 ctx.svc.aircraft.as_ref(),
                 ctx.svc.fcs.as_ref(),
-                w.input.circuit_mut(),
+                w.input.core_script_mut(),
             ) {
-                circuit = Some(crate::circuit::frame(
-                    tester, slot, model, fcs_model, ctx.svc, ctx.tick,
-                ));
+                let (svc, tick) = (ctx.svc, ctx.tick);
+                made = match (script, w.combat.as_deref()) {
+                    (Script::Circuit(tester), _) => Some(crate::circuit::frame(
+                        tester, slot, model, fcs_model, svc, tick,
+                    )),
+                    (Script::Sortie(bot), Some(c)) => Some(crate::combat::sortie::frame(
+                        bot, slot, c, model, fcs_model, svc, tick,
+                    )),
+                    (Script::Hold(hold), Some(c)) => Some(crate::combat::sortie::hold_frame(
+                        hold, slot, c, model, fcs_model, svc, tick,
+                    )),
+                    _ => None,
+                };
             }
         }
-        w.input.ingest_with(ctx.tick, circuit);
+        w.input.ingest_with(ctx.tick, made);
     }
 }
 
@@ -206,6 +221,16 @@ pub(crate) fn publish(world: &mut World, svc: &Services, ticks_done: u64, core_s
 /// lifecycle changes, which are not part of the replay.
 pub(crate) fn write_snapshot(world: &mut World, svc: &Services, ticks_done: u64, core_state: u32) {
     let ownship = OwnshipView::of(&world.ownship, svc, sim_time(ticks_done));
+    let combat = match (
+        world.combat.as_deref(),
+        svc.combat.as_ref(),
+        svc.aircraft.as_ref(),
+    ) {
+        (Some(c), Some(models), Some(model)) => {
+            Some(CombatView::of(c, models, model, svc, ticks_done))
+        }
+        _ => None,
+    };
     world.snapshot.write(&SnapshotSource {
         tick: ticks_done,
         core_state,
@@ -213,6 +238,7 @@ pub(crate) fn write_snapshot(world: &mut World, svc: &Services, ticks_done: u64,
         input_t_ms: world.input.last_applied_t_ms(),
         ownship: &ownship,
         probe: &world.probe,
+        combat: combat.as_ref(),
     });
     world.counters.snapshots = world.counters.snapshots.wrapping_add(1);
 }
@@ -222,9 +248,14 @@ pub(crate) fn write_snapshot(world: &mut World, svc: &Services, ticks_done: u64,
 pub fn default_schedule() -> Schedule {
     let mut s = Schedule::new();
     s.add(Box::new(Ingest));
+    s.add(Box::new(CombatAi));
     s.add(Box::new(OwnshipDynamics));
     s.add(Box::new(ProbeDynamics));
+    s.add(Box::new(BanditDynamics));
+    s.add(Box::new(CombatWeapons));
     s.add(Box::new(TerrainContact));
+    s.add(Box::new(CombatCollision));
+    s.add(Box::new(CombatLifecycle));
     s.add(Box::new(PublishSnapshot));
     s
 }

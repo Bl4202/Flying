@@ -8,6 +8,7 @@ use flight::atmosphere::NonStandardDay;
 use flight::env::FlightEnv;
 use flight::surface::{SurfaceKind, SurfaceSample};
 
+use crate::combat::CombatModels;
 use crate::math::DVec3;
 use crate::seams::geo::{GeoService, ProceduralGeo, SurfaceClass};
 use crate::seams::los::{LosService, OpenSky};
@@ -37,6 +38,9 @@ pub struct Services {
     /// The control laws of that aircraft, built from the gains its entry refers to (ADR-34).
     /// `Some` exactly when `aircraft` is.
     pub fcs: Option<FcsModel>,
+    /// The aircraft's combat data and the AI skills (ADR-48): `Some` when the aircraft has a gun,
+    /// rails with a missile, a signature and damage data. A duel needs it.
+    pub combat: Option<CombatModels>,
 }
 
 impl Services {
@@ -53,6 +57,7 @@ impl Services {
             registry: Registry::empty(),
             aircraft: None,
             fcs: None,
+            combat: None,
         }
     }
 

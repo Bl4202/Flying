@@ -3,9 +3,10 @@
  * JSON-lines format as `fg hash`, so the determinism check can compare native and WASM (ADR-10).
  *
  * Usage: node wasm-hash.ts --variant single|threads --seed HEX --at T1,T2,... [--dir wasm-out]
- *                           [--script none|erratic|flight60|circuit] [--content PATH.cpack]
- *                           [--spawn runway|air] [--assist full|standard|reduced|manual]
- *                           [--g off|reduced|full] [--arena rugged|plain]
+ *                           [--script none|erratic|flight60|circuit|sortie|hold|hold-fire]
+ *                           [--content PATH.cpack] [--spawn runway|air]
+ *                           [--assist full|standard|reduced|manual] [--g off|reduced|full]
+ *                           [--arena rugged|plain] [--scenario free|duel|merge] [--skill 1|2|3]
  */
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -14,6 +15,7 @@ import {
   ASSIST_LEVEL,
   G_EFFECTS,
   INPUT_SCRIPT,
+  SCENARIO,
   SPAWN_KIND,
 } from '@flying/sim-bridge/layout';
 import {
@@ -55,10 +57,13 @@ const scripts: Record<string, number> = {
   erratic: INPUT_SCRIPT.ERRATIC,
   flight60: INPUT_SCRIPT.FLIGHT60,
   circuit: INPUT_SCRIPT.CIRCUIT,
+  sortie: INPUT_SCRIPT.SORTIE,
+  hold: INPUT_SCRIPT.HOLD,
+  'hold-fire': INPUT_SCRIPT.HOLD_FIRE,
 };
 const script = scripts[scriptText];
 if (script === undefined) {
-  console.error('--script none|erratic|flight60|circuit');
+  console.error(`--script ${Object.keys(scripts).join('|')}`);
   process.exit(2);
 }
 const contentPath = arg('content');
@@ -92,6 +97,12 @@ const session: SessionConfig = {
     DEFAULT_SESSION.gEffects,
   ),
   arena: choose('arena', { rugged: ARENA.RUGGED, plain: ARENA.PLAIN }, DEFAULT_SESSION.arena),
+  scenario: choose(
+    'scenario',
+    { free: SCENARIO.FREE, duel: SCENARIO.DUEL, merge: SCENARIO.DUEL_MERGE },
+    DEFAULT_SESSION.scenario,
+  ),
+  skill: choose('skill', { '1': 1, '2': 2, '3': 3 }, DEFAULT_SESSION.skill),
 };
 
 // Same order as `fg hash`: content first (only an idle core takes it), then the session, then the

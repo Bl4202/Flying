@@ -44,6 +44,8 @@ export function sessionFromFlags(
     assist: flags.assist === undefined ? base.assist : ASSISTS[flags.assist],
     gEffects: flags.g === undefined ? base.gEffects : G_DIALS[flags.g],
     arena: flags.arena === undefined ? (base.arena ?? DEFAULT_SESSION.arena) : ARENAS[flags.arena],
+    scenario: DEFAULT_SESSION.scenario,
+    skill: DEFAULT_SESSION.skill,
   };
 }
 

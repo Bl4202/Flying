@@ -147,7 +147,7 @@ impl Ownship {
 
 /// Every integrated number of the aircraft, in a fixed order. Derived quantities (air data,
 /// forces, mass properties) are not state and are not hashed.
-fn hash_aircraft(a: &AircraftSlot, h: &mut StateHasher) {
+pub(crate) fn hash_aircraft(a: &AircraftSlot, h: &mut StateHasher) {
     // ALGO: a tag so an aircraft never hashes like a spectator ("AIRCRAFT" in ASCII).
     h.write_u64(0x5446_4152_4352_4941);
     let s = &a.state;

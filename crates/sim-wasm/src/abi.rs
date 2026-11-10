@@ -100,6 +100,13 @@ pub fn with_profile<R>(f: impl FnOnce(&[u8]) -> R) -> Option<R> {
     with_core(|c| f(c.profile_bytes()))
 }
 
+/// Runs `f` on the newest snapshot, or returns `None` before `fg_init`: the native view of what
+/// [`fg_snapshot_ptr`] points at.
+#[doc(hidden)]
+pub fn with_snapshot<R>(f: impl FnOnce(&[u8]) -> R) -> Option<R> {
+    with_core(|c| f(c.snapshot_bytes()))
+}
+
 fn join(lo: u32, hi: u32) -> u64 {
     u64::from(lo) | (u64::from(hi) << 32)
 }
@@ -221,12 +228,23 @@ pub extern "C" fn fg_resume() -> u32 {
 }
 
 /// Sets the session while the core is idle: `spawn` (`spawn_kind`), `assist` (`assist_level`),
-/// `g_effects` (`g_effects`) and `arena` (`arena`). Returns a `config_status`; a refused session
-/// changes nothing. A new arena rebuilds the world, so it may allocate.
+/// `g_effects` (`g_effects`), `arena` (`arena`), `scenario` (`scenario`) and the bandit's `skill`
+/// rank (0 for free flight, 1 to 3 in a duel). Returns a `config_status`; a refused session
+/// changes nothing (a duel is refused without combat content). A new arena rebuilds the world, so
+/// it may allocate.
 #[unsafe(no_mangle)]
-pub extern "C" fn fg_configure(spawn: u32, assist: u32, g_effects: u32, arena: u32) -> u32 {
+pub extern "C" fn fg_configure(
+    spawn: u32,
+    assist: u32,
+    g_effects: u32,
+    arena: u32,
+    scenario: u32,
+    skill: u32,
+) -> u32 {
     with_core(|c| {
-        let Ok(session) = SessionConfig::from_codes(spawn, assist, g_effects, arena) else {
+        let Ok(session) =
+            SessionConfig::from_codes(spawn, assist, g_effects, arena, scenario, skill)
+        else {
             return config_status::INVALID as u32;
         };
         match c.configure(session) {
@@ -412,14 +430,12 @@ mod tests {
             join(fg_state_hash_lo(), fg_state_hash_hi()),
             SimCore::new(seed).state_hash()
         );
-        assert_eq!(fg_configure(0, 2, 2, 0), config_status::OK as u32);
+        assert_eq!(fg_configure(0, 2, 2, 0, 0, 0), config_status::OK as u32);
     }
 
-    // One test only: the exports share a process-wide global.
-    #[test]
-    fn the_abi_drives_the_core_end_to_end() {
-        // Before init everything is inert.
-        assert_eq!(fg_abi_version(), 4);
+    /// Before init everything is inert.
+    fn check_before_init() {
+        assert_eq!(fg_abi_version(), 5);
         assert_eq!(fg_core_state(), core_state::NONE as u32);
         assert_eq!(
             (
@@ -431,10 +447,19 @@ mod tests {
             (0, 0, 0, 0)
         );
         assert_eq!(fg_load_content(10), content_status::NO_CORE as u32);
-        assert_eq!(fg_configure(0, 2, 2, 0), config_status::NO_CORE as u32);
+        assert_eq!(
+            fg_configure(0, 2, 2, 0, 0, 0),
+            config_status::NO_CORE as u32
+        );
         assert_eq!(fg_reset(), config_status::NO_CORE as u32);
         assert_eq!(fg_push_inputs(1), 0);
         assert_eq!(fg_terrain_fill(0.0, 0.0, 100.0), 0);
+    }
+
+    // One test only: the exports share a process-wide global.
+    #[test]
+    fn the_abi_drives_the_core_end_to_end() {
+        check_before_init();
 
         // Init leaves the core idle; stepping does nothing until start.
         let seed = 0x1234_5678_9ABC_DEF0_u64;
@@ -459,16 +484,31 @@ mod tests {
             lo(fresh.subsystem_hashes().content)
         });
 
-        // The session: refused when out of range, accepted while idle, refused once started.
-        assert_eq!(fg_configure(9, 2, 2, 0), config_status::INVALID as u32);
-        assert_eq!(fg_configure(0, 0, 2, 0), config_status::INVALID as u32);
-        assert_eq!(fg_configure(0, 2, 2, 7), config_status::INVALID as u32);
-        assert_eq!(fg_configure(1, 4, 0, 1), config_status::OK as u32);
+        // The session: refused when out of range (a duel too, without combat content), accepted
+        // while idle, refused once started.
+        for bad in [
+            [9, 2, 2, 0, 0, 0],
+            [0, 0, 2, 0, 0, 0],
+            [0, 2, 2, 7, 0, 0],
+            [0, 2, 2, 0, 0, 1],
+            [0, 2, 2, 0, 1, 2],
+            [0, 2, 2, 0, 3, 1],
+        ] {
+            let [s, a, g, r, sc, k] = bad;
+            assert_eq!(
+                fg_configure(s, a, g, r, sc, k),
+                config_status::INVALID as u32
+            );
+        }
+        assert_eq!(fg_configure(1, 4, 0, 1, 0, 0), config_status::OK as u32);
         assert_eq!(snapshot()[snap::O_ARENA], 1, "the snapshot names the arena");
 
         // Lifecycle through the ABI.
         assert_eq!(fg_start(), 1);
-        assert_eq!(fg_configure(0, 2, 2, 0), config_status::NOT_IDLE as u32);
+        assert_eq!(
+            fg_configure(0, 2, 2, 0, 0, 0),
+            config_status::NOT_IDLE as u32
+        );
         assert_eq!(fg_start(), 0, "already running");
         assert_eq!(fg_core_state(), core_state::RUNNING as u32);
         assert_eq!(fg_load_content(1), content_status::NOT_IDLE as u32);

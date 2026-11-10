@@ -32,10 +32,10 @@ macro_rules! layouts {
 layouts! {
     /// Interface version of the exported C ABI and of these layouts.
     abi {
-        VERSION = 4,
+        VERSION = 5,
         // Frames the host can hand over per `fg_push_inputs` call.
         INPUT_BATCH = 8,
-        SNAPSHOT_LAYOUT_VERSION = 4,
+        SNAPSHOT_LAYOUT_VERSION = 5,
     }
 
     /// `InputFrame`, 96 bytes (GDD 58.2). `T_MS` is the host time of the source event (the key
@@ -96,6 +96,10 @@ layouts! {
         TRIM_RESET = 9,
         // Up, take-off, landing, up.
         FLAPS_CYCLE = 10,
+        // The gun fires while held (v0.1d).
+        FIRE_GUN = 11,
+        // A missile is launched (or refused) on the press.
+        FIRE_MISSILE = 12,
     }
 
     /// Bits of `InputFrame.flags`.
@@ -210,6 +214,10 @@ layouts! {
         // The centre of gravity went through the ground.
         TUNNELLING = 4,
         NUMERICAL = 5,
+        // Destroyed by the bandit's gun (v0.1d).
+        SHOT_DOWN = 6,
+        // Collided with the bandit.
+        COLLISION = 7,
     }
 
     /// The test airfield, so the renderer can mark the runway where the sim put it. Distances in
@@ -238,9 +246,15 @@ layouts! {
     /// factor since the last spawn, the positive load limit for the configuration the aircraft is
     /// in, and the angle of attack at which the stall warning starts. Every one is derived at
     /// publication from hashed state, so none is hashed itself.
+    ///
+    /// v5 (ADR-48) appends the combat block after the probe bodies: the player's weapons and cues
+    /// (`C_*`, `combat_flag` bits in `C_FLAGS`), one bandit (`BD_*`), four missiles (`MS_*`
+    /// within each `MISSILE_STRIDE` entry), up to 48 tracers (`TR_*`), eight explosions (`XP_*`)
+    /// and a ring of the last 32 combat events (`EV_*`, sequence-numbered; `C_EVENT_SEQ` is the
+    /// newest). All zero without combat. It is derived at publication and none of it is hashed.
     snapshot {
         MAGIC = 0x4E53_4746,
-        VERSION = 4,
+        VERSION = 5,
         HEADER_SIZE = 64,
         H_MAGIC = 0,
         H_VERSION = 4,
@@ -307,7 +321,87 @@ layouts! {
         B_Y = 2336,
         B_Z = 4384,
         B_QUAT = 6432,
-        SIZE = 10528,
+        COMBAT = 10528,
+        C_FLAGS = 10528,
+        C_SEEKER = 10530,
+        C_INHIBIT = 10531,
+        C_ROUNDS = 10532,
+        C_MISSILES = 10534,
+        C_BANDITS = 10535,
+        C_EVENT_SEQ = 10536,
+        C_RESERVED = 10540,
+        C_PIPPER_BF = 10544,
+        C_SIGNAL = 10568,
+        C_TGT_RANGE = 10572,
+        C_TGT_CLOSURE = 10576,
+        C_TGT_ASPECT = 10580,
+        C_HEALTH = 10584,
+        C_INHIBIT_AGE = 10588,
+        C_ROUNDS_FIRED = 10592,
+        C_ROUND_HITS = 10596,
+        C_MISSILES_FIRED = 10600,
+        C_MISSILE_HITS = 10604,
+        C_KILLS = 10608,
+        C_GUN_KILLS = 10612,
+        C_MISSILE_KILLS = 10616,
+        C_DEATHS = 10620,
+        C_HITS_TAKEN = 10624,
+        C_BANDIT_ROUNDS = 10628,
+        C_EXPLOSIONS = 10632,
+        C_BANDIT_SPAWNS = 10636,
+        BANDIT = 10640,
+        BANDIT_CAPACITY = 1,
+        BANDIT_SIZE = 96,
+        BD_POS_BF = 10640,
+        BD_QUAT = 10664,
+        BD_VEL_BF = 10680,
+        BD_SURFACES = 10692,
+        BD_TEF = 10704,
+        BD_AIRBRAKE = 10708,
+        BD_GEAR_POS = 10712,
+        BD_AB_LEVEL = 10716,
+        BD_HEALTH = 10720,
+        BD_TAS = 10724,
+        BD_LIFE = 10728,
+        BD_AI = 10729,
+        BD_SKILL = 10730,
+        BD_FLAGS = 10731,
+        BD_SPAWN_SEQ = 10732,
+        BD_RESERVED = 10734,
+        MISSILES = 10736,
+        MISSILE_CAPACITY = 4,
+        MISSILE_STRIDE = 40,
+        MS_POS_BF = 0,
+        MS_VEL_BF = 24,
+        MS_STATE = 36,
+        MS_OWNER = 37,
+        TRACERS = 10896,
+        TR_COUNT = 10896,
+        TR_RESERVED = 10900,
+        TR_FIRST = 10904,
+        TRACER_CAPACITY = 48,
+        TRACER_STRIDE = 40,
+        TR_POS_BF = 0,
+        TR_VEL_BF = 24,
+        TR_OWNER = 36,
+        TR_ID = 37,
+        EXPLOSIONS = 12824,
+        EXPLOSION_CAPACITY = 8,
+        EXPLOSION_STRIDE = 32,
+        XP_POS_BF = 0,
+        XP_AGE = 24,
+        XP_KIND = 28,
+        EVENTS = 13080,
+        EVENT_CAPACITY = 32,
+        EVENT_STRIDE = 16,
+        EV_SEQ = 0,
+        EV_TICK = 4,
+        EV_KIND = 8,
+        EV_ACTOR = 9,
+        EV_TARGET = 10,
+        EV_ARG = 11,
+        EV_VALUE = 12,
+        SIZE = 13592,
     }
 
     /// Bits of the snapshot's `O_ENGINE_BITS` (the first engine).
@@ -343,8 +437,8 @@ layouts! {
         VERSION = 1,
         HEADER_SIZE = 64,
         SLOT_COUNT = 3,
-        SLOT_BYTES = 10528,
-        SIZE = 31648,
+        SLOT_BYTES = 13592,
+        SIZE = 40840,
         H_MAGIC = 0,
         H_VERSION = 4,
         H_SLOT_BYTES = 8,
@@ -493,6 +587,151 @@ layouts! {
         // The virtual tester: take-off, circuit and landing (ADR-33). Not available before the
         // tester exists; `fg_set_input_script` refuses it.
         CIRCUIT = 3,
+        // The bot playtester's sortie: take-off, kill the bandit, land (ADR-47). Duels only.
+        SORTIE = 4,
+        // Straight and level at the height, heading and speed of the first tick. Duels only.
+        HOLD = 5,
+        // HOLD, and the missile button pressed once, when the seeker first locks. Duels only.
+        HOLD_FIRE = 6,
+    }
+
+    /// `scenario` argument of `fg_configure` (ADR-48).
+    scenario {
+        // Free flight: no combat.
+        FREE = 0,
+        // A duel against one bandit that patrols 15 km north.
+        DUEL = 1,
+        // The duel with the first bandit 3 km ahead of an air start (debug and tests only).
+        DUEL_MERGE = 2,
+    }
+
+    /// Bits of the snapshot's `C_FLAGS` (a `u16`).
+    combat_flag {
+        // The session is a duel.
+        ACTIVE = 1,
+        // Weapons are armed (1 s off the wheels).
+        ARMED = 2,
+        GUN_FIRING = 4,
+        BANDIT_GUN_FIRING = 8,
+        // A target is designated (the bandit alive within 20 km).
+        TARGET = 16,
+        // `C_PIPPER_BF` holds a gunsight solution.
+        PIPPER = 32,
+        // The bandit is on the pipper, in gun range.
+        SHOOT_GUN = 64,
+        // The fly-out predictor says a missile launched now would hit.
+        IN_RANGE = 128,
+        // Locked, in range and no inhibit.
+        SHOOT_MISSILE = 256,
+        // Latched 0.3 s after one of the player's rounds hit.
+        HIT_RECENT = 512,
+        // Latched 2 s after a kill.
+        KILL_RECENT = 1024,
+        // Latched 0.5 s after the player was hit.
+        PLAYER_HIT = 2048,
+    }
+
+    /// The snapshot's `C_SEEKER`: the mode of the next missile's seeker.
+    seeker_mode {
+        OFF = 0,
+        SEARCH = 1,
+        TONE = 2,
+        LOCKED = 3,
+    }
+
+    /// The snapshot's `C_INHIBIT` and the `LAUNCH_REFUSED` event's argument: why a launch was refused.
+    launch_inhibit {
+        NONE = 0,
+        SAFE = 1,
+        EMPTY = 2,
+        NO_LOCK = 3,
+        TOO_CLOSE = 4,
+        G_LIMIT = 5,
+        ALPHA_LIMIT = 6,
+        SLOW = 7,
+    }
+
+    /// The snapshot's `BD_LIFE`.
+    bandit_life {
+        ABSENT = 0,
+        ALIVE = 1,
+        WRECK = 2,
+    }
+
+    /// The snapshot's `BD_AI`: the bandit's state.
+    bandit_ai {
+        PATROL = 0,
+        INTERCEPT = 1,
+        PURSUE = 2,
+        GUN = 3,
+        DEFEND_GUN = 4,
+        DEFEND_MISSILE = 5,
+        EXTEND = 6,
+        RECOVER = 7,
+        RETURN = 8,
+        WRECK = 9,
+    }
+
+    /// Bits of the snapshot's `BD_FLAGS`.
+    bandit_flag {
+        GUN_FIRING = 1,
+        AB_LIT = 2,
+        // It perceives the player (by eye or GCI).
+        SEES_PLAYER = 4,
+        // In either defence.
+        DEFENDING = 8,
+    }
+
+    /// The snapshot's `MS_STATE`.
+    missile_state {
+        FREE = 0,
+        BOOST = 1,
+        COAST = 2,
+        // Detonated or expired; shown for a second.
+        BURST = 3,
+    }
+
+    /// The snapshot's `XP_KIND` (0: the entry is empty).
+    explosion_kind {
+        MISSILE = 1,
+        AIRCRAFT = 2,
+        GROUND = 3,
+    }
+
+    /// The snapshot's `EV_KIND`.
+    combat_event {
+        MISSILE_LAUNCH = 1,
+        MISSILE_HIT = 2,
+        MISSILE_MISS = 3,
+        KILL = 4,
+        DEATH = 5,
+        BANDIT_SPAWN = 6,
+        LAUNCH_REFUSED = 7,
+        COLLISION = 8,
+        BANDIT_CRASH = 9,
+    }
+
+    /// The snapshot's `EV_ACTOR`, `EV_TARGET`, `MS_OWNER` and `TR_OWNER`.
+    combat_actor {
+        PLAYER = 0,
+        BANDIT = 1,
+        NONE = 255,
+    }
+
+    /// A KILL event's argument.
+    kill_weapon {
+        GUN = 1,
+        MISSILE = 2,
+        CRASH = 3,
+    }
+
+    /// A `MISSILE_MISS` event's argument.
+    miss_reason {
+        TIME = 1,
+        SLOW = 2,
+        GROUND = 3,
+        LOST = 4,
+        TARGET_GONE = 5,
     }
 }
 
@@ -591,7 +830,60 @@ const _: () = {
     assert!(s::B_Y == s::B_X + s::BODY_CAPACITY * 8);
     assert!(s::B_Z == s::B_Y + s::BODY_CAPACITY * 8);
     assert!(s::B_QUAT == s::B_Z + s::BODY_CAPACITY * 8);
-    assert!(s::SIZE == s::B_QUAT + s::BODY_CAPACITY * 16);
+    // v5: the combat block chains on from the bodies, exactly, to SIZE.
+    assert!(s::COMBAT == s::B_QUAT + s::BODY_CAPACITY * 16);
+    assert!(s::C_FLAGS == s::COMBAT && s::C_FLAGS + 2 == s::C_SEEKER);
+    assert!(s::C_SEEKER + 1 == s::C_INHIBIT && s::C_INHIBIT + 1 == s::C_ROUNDS);
+    assert!(s::C_ROUNDS + 2 == s::C_MISSILES && s::C_MISSILES + 1 == s::C_BANDITS);
+    assert!(s::C_BANDITS + 1 == s::C_EVENT_SEQ && s::C_EVENT_SEQ + 4 == s::C_RESERVED);
+    assert!(s::C_RESERVED + 4 == s::C_PIPPER_BF && s::C_PIPPER_BF.is_multiple_of(8));
+    assert!(s::C_PIPPER_BF + 24 == s::C_SIGNAL);
+    assert!(s::C_SIGNAL + 4 == s::C_TGT_RANGE && s::C_TGT_RANGE + 4 == s::C_TGT_CLOSURE);
+    assert!(s::C_TGT_CLOSURE + 4 == s::C_TGT_ASPECT && s::C_TGT_ASPECT + 4 == s::C_HEALTH);
+    assert!(s::C_HEALTH + 4 == s::C_INHIBIT_AGE && s::C_INHIBIT_AGE + 4 == s::C_ROUNDS_FIRED);
+    assert!(
+        s::C_ROUND_HITS == s::C_ROUNDS_FIRED + 4 && s::C_MISSILES_FIRED == s::C_ROUNDS_FIRED + 8
+    );
+    assert!(s::C_MISSILE_HITS == s::C_ROUNDS_FIRED + 12 && s::C_KILLS == s::C_ROUNDS_FIRED + 16);
+    assert!(
+        s::C_GUN_KILLS == s::C_ROUNDS_FIRED + 20 && s::C_MISSILE_KILLS == s::C_ROUNDS_FIRED + 24
+    );
+    assert!(s::C_DEATHS == s::C_ROUNDS_FIRED + 28 && s::C_HITS_TAKEN == s::C_ROUNDS_FIRED + 32);
+    assert!(
+        s::C_BANDIT_ROUNDS == s::C_ROUNDS_FIRED + 36 && s::C_EXPLOSIONS == s::C_ROUNDS_FIRED + 40
+    );
+    assert!(s::C_BANDIT_SPAWNS == s::C_ROUNDS_FIRED + 44 && s::C_BANDIT_SPAWNS + 4 == s::BANDIT);
+    assert!(s::BD_POS_BF == s::BANDIT && s::BANDIT.is_multiple_of(8));
+    assert!(s::BD_POS_BF + 24 == s::BD_QUAT && s::BD_QUAT + 16 == s::BD_VEL_BF);
+    assert!(s::BD_VEL_BF + 12 == s::BD_SURFACES && s::BD_SURFACES + 12 == s::BD_TEF);
+    assert!(s::BD_TEF + 4 == s::BD_AIRBRAKE && s::BD_AIRBRAKE + 4 == s::BD_GEAR_POS);
+    assert!(s::BD_GEAR_POS + 4 == s::BD_AB_LEVEL && s::BD_AB_LEVEL + 4 == s::BD_HEALTH);
+    assert!(s::BD_HEALTH + 4 == s::BD_TAS && s::BD_TAS + 4 == s::BD_LIFE);
+    assert!(
+        s::BD_LIFE + 1 == s::BD_AI && s::BD_AI + 1 == s::BD_SKILL && s::BD_SKILL + 1 == s::BD_FLAGS
+    );
+    assert!(s::BD_FLAGS + 1 == s::BD_SPAWN_SEQ && s::BD_SPAWN_SEQ + 2 == s::BD_RESERVED);
+    assert!(s::BD_RESERVED + 2 == s::BANDIT + s::BANDIT_CAPACITY * s::BANDIT_SIZE);
+    assert!(s::MISSILES == s::BANDIT + s::BANDIT_CAPACITY * s::BANDIT_SIZE);
+    assert!(s::MISSILES.is_multiple_of(8) && s::MISSILE_STRIDE.is_multiple_of(8));
+    assert!(s::MS_POS_BF + 24 == s::MS_VEL_BF && s::MS_VEL_BF + 12 == s::MS_STATE);
+    assert!(s::MS_STATE + 1 == s::MS_OWNER && s::MS_OWNER + 3 == s::MISSILE_STRIDE);
+    assert!(s::TRACERS == s::MISSILES + s::MISSILE_CAPACITY * s::MISSILE_STRIDE);
+    assert!(s::TR_COUNT == s::TRACERS && s::TR_COUNT + 4 == s::TR_RESERVED);
+    assert!(s::TR_RESERVED + 4 == s::TR_FIRST && s::TR_FIRST.is_multiple_of(8));
+    assert!(s::TRACER_STRIDE.is_multiple_of(8) && s::TR_POS_BF + 24 == s::TR_VEL_BF);
+    assert!(s::TR_VEL_BF + 12 == s::TR_OWNER && s::TR_OWNER + 1 == s::TR_ID);
+    assert!(s::TR_ID + 3 == s::TRACER_STRIDE);
+    assert!(s::EXPLOSIONS == s::TR_FIRST + s::TRACER_CAPACITY * s::TRACER_STRIDE);
+    assert!(s::EXPLOSIONS.is_multiple_of(8) && s::EXPLOSION_STRIDE.is_multiple_of(8));
+    assert!(s::XP_POS_BF + 24 == s::XP_AGE && s::XP_AGE + 4 == s::XP_KIND);
+    assert!(s::XP_KIND < s::EXPLOSION_STRIDE);
+    assert!(s::EVENTS == s::EXPLOSIONS + s::EXPLOSION_CAPACITY * s::EXPLOSION_STRIDE);
+    assert!(s::EV_SEQ + 4 == s::EV_TICK && s::EV_TICK + 4 == s::EV_KIND);
+    assert!(s::EV_KIND + 1 == s::EV_ACTOR && s::EV_ACTOR + 1 == s::EV_TARGET);
+    assert!(s::EV_TARGET + 1 == s::EV_ARG && s::EV_ARG + 1 == s::EV_VALUE);
+    assert!(s::EV_VALUE + 4 == s::EVENT_STRIDE);
+    assert!(s::SIZE == s::EVENTS + s::EVENT_CAPACITY * s::EVENT_STRIDE);
 
     // Shared buffers hold exactly their records.
     assert!(b::SLOT_BYTES == s::SIZE);

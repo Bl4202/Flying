@@ -91,7 +91,7 @@ async function boot(root: string): Promise<{ step: Fn; abi: number; configured: 
   new Uint8Array(memory.buffer, ptr, content.length).set(content);
   fnOf(x, 'fg_load_content')(content.length);
   const configured = typeof x['fg_configure'] === 'function';
-  if (configured) fnOf(x, 'fg_configure')(SPAWN_AIR, ASSIST_STANDARD, G_FULL, ARENA_RUGGED);
+  if (configured) fnOf(x, 'fg_configure')(SPAWN_AIR, ASSIST_STANDARD, G_FULL, ARENA_RUGGED, 0, 0);
   if (fnOf(x, 'fg_start')() !== 1) throw new Error('the core would not start');
   return { step: fnOf(x, 'fg_step'), abi, configured };
 }

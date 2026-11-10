@@ -11,7 +11,7 @@ import {
 import { StatusFeed } from './status-feed.ts';
 
 const vector = JSON.parse(
-  readFileSync(new URL('../../../tests/vectors/snapshot_v4.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../tests/vectors/snapshot_v5.json', import.meta.url), 'utf8'),
 ) as { hex: string; decoded: { ownship: Record<string, number> } };
 const SNAPSHOT_BYTES = Uint8Array.from(vector.hex.match(/../g) ?? [], (h) =>
   Number.parseInt(h, 16),

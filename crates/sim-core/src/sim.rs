@@ -9,6 +9,7 @@ use flight::aircraft::AircraftModel;
 use flight::body::RigidState;
 use flight::engine::EngineCommand;
 
+use crate::combat::{Combat, CombatModels, CombatSetup};
 use crate::hash::{StateHasher, SubsystemHashes, no_combat_hash};
 use crate::input::{ErraticPilot, FRAME_BYTES, InputFrame, Script};
 use crate::layout::{core_state, input_script, profile};
@@ -21,7 +22,7 @@ use crate::rng::RngStreams;
 use crate::schedule::{Schedule, TickCtx};
 use crate::seams::replay::{NullReplaySink, ReplaySink};
 use crate::services::Services;
-use crate::session::{Arena, ConfigError, SessionConfig};
+use crate::session::{Arena, ConfigError, Scenario, SessionConfig};
 use crate::snapshot::SnapshotBuffer;
 use crate::spawn::spawn;
 use crate::systems::{default_schedule, write_snapshot};
@@ -99,6 +100,7 @@ pub struct SimCore {
     profiler: Option<Profiler>,
     profile_block: [u8; profile::SIZE],
     terrain: Option<Box<[u8]>>,
+    combat_setup: Option<CombatSetup>,
 }
 
 impl fmt::Debug for SimCore {
@@ -130,6 +132,7 @@ impl SimCore {
             counters: Counters::default(),
             snapshot: SnapshotBuffer::new(),
             replay: Box::new(NullReplaySink),
+            combat: None,
         };
         write_snapshot(&mut world, &svc, 0, CoreState::Idle.code());
         Self {
@@ -144,6 +147,7 @@ impl SimCore {
             profiler: None,
             profile_block: [0; profile::SIZE],
             terrain: None,
+            combat_setup: None,
         }
     }
 
@@ -167,19 +171,21 @@ impl SimCore {
             return Err(LoadContentError::NotIdle);
         }
         let registry = Registry::from_cpack(bytes).map_err(LoadContentError::Invalid)?;
-        let (aircraft, fcs) = match registry.aircraft_handles().next() {
+        let (aircraft, fcs, combat) = match registry.aircraft_handles().next() {
             Some(h) => {
                 let model = AircraftModel::from_registry(&registry, h, SIM_DT)
                     .map_err(LoadContentError::Model)?;
                 let fcs = FcsModel::from_registry(&registry, h, &model)
                     .map_err(LoadContentError::Model)?;
-                (Some(model), Some(fcs))
+                let combat = CombatModels::from_registry(&registry, h, &model);
+                (Some(model), Some(fcs), combat)
             }
-            None => (None, None),
+            None => (None, None, None),
         };
         self.svc.registry = registry;
         self.svc.aircraft = aircraft;
         self.svc.fcs = fcs;
+        self.svc.combat = combat;
         Ok(())
     }
 
@@ -191,13 +197,28 @@ impl SimCore {
     /// new ground. Set the input script after this: the circuit tester reads the world it flies in
     /// when it is made.
     ///
+    /// A duel (`Scenario::Duel` or `DuelMerge`) needs the aircraft's combat data and a skill of the
+    /// session's rank in the pack; a new session forgets any combat set-up.
+    ///
     /// # Errors
-    /// [`ConfigError::NotIdle`] once the core has started.
+    /// [`ConfigError::NotIdle`] once the core has started; [`ConfigError::Invalid`] for a duel the
+    /// content cannot fly.
     pub fn configure(&mut self, session: SessionConfig) -> Result<(), ConfigError> {
         if self.state != CoreState::Idle {
             return Err(ConfigError::NotIdle);
         }
+        if session.scenario != Scenario::Free
+            && self
+                .svc
+                .combat
+                .as_ref()
+                .and_then(|m| m.skill(session.skill))
+                .is_none()
+        {
+            return Err(ConfigError::Invalid);
+        }
         self.session = session;
+        self.combat_setup = None;
         if self.svc.arena != session.arena {
             self.svc.set_arena(session.arena);
             self.world.ownship = Ownship::Spectator(Observer::spawn(&*self.svc.geo));
@@ -221,6 +242,8 @@ impl SimCore {
         self.world.ownship = ownship;
         self.world.input = crate::input::InputState::new();
         self.world.counters = Counters::default();
+        self.world.combat = None;
+        self.combat_setup = None;
         self.world.snapshot.clear();
         self.tick = 0;
         self.session = SessionConfig::default();
@@ -246,6 +269,39 @@ impl SimCore {
         }
         self.spawn_fuel = fraction;
         true
+    }
+
+    /// Sets up the next duel for a gate runner (ADR-48): air starts for the player and the first
+    /// bandit, the bandit's brain, an active bandit from the start and the GCI cue. Only an idle
+    /// core in a duel session accepts it (configure first); `start` applies it. A tool's knob, not
+    /// part of the ABI.
+    pub fn combat_setup(&mut self, setup: CombatSetup) -> bool {
+        if self.state != CoreState::Idle || self.session.scenario == Scenario::Free {
+            return false;
+        }
+        self.combat_setup = Some(setup);
+        true
+    }
+
+    /// The duel, once started.
+    #[must_use]
+    pub fn combat(&self) -> Option<&Combat> {
+        self.world.combat.as_deref()
+    }
+
+    /// The duel, for tests that put it in a state no input can reach.
+    #[cfg(test)]
+    pub(crate) fn combat_mut(&mut self) -> Option<&mut Combat> {
+        self.world.combat.as_deref_mut()
+    }
+
+    /// The duel and the player's aircraft together, for tests.
+    #[cfg(test)]
+    pub(crate) fn world_combat_and_slot(&mut self) -> (&mut Combat, &mut AircraftSlot) {
+        match (self.world.combat.as_deref_mut(), &mut self.world.ownship) {
+            (Some(c), Ownship::Aircraft(a)) => (c, a),
+            _ => panic!("no duel"),
+        }
     }
 
     /// The aircraft, for tests that put it in a state no input can reach.
@@ -281,9 +337,38 @@ impl SimCore {
                 self.session,
             ));
             slot.spawn_fuel = self.spawn_fuel;
-            if !spawn(model, &self.svc, self.session.spawn, &mut slot) {
+            let setup = self.combat_setup.unwrap_or_default();
+            let ok = match setup.player {
+                Some(a) => crate::spawn::spawn_air_at(
+                    model,
+                    &self.svc,
+                    a.east_m,
+                    a.north_m,
+                    a.alt_msl_m,
+                    a.heading_rad,
+                    a.tas_mps,
+                    &mut slot,
+                ),
+                None => spawn(model, &self.svc, self.session.spawn, &mut slot),
+            };
+            if !ok {
                 self.world.counters.trim_failures =
                     self.world.counters.trim_failures.wrapping_add(1);
+            }
+            if let Some(models) = self.svc.combat.as_ref()
+                && let Some(skill) = models.skill(self.session.skill)
+                && self.session.scenario != Scenario::Free
+            {
+                self.world.combat = Some(Combat::new(
+                    models,
+                    skill,
+                    &self.session,
+                    &setup,
+                    &self.rng,
+                    &slot,
+                    model,
+                    &self.svc,
+                ));
             }
             self.world.ownship = Ownship::Aircraft(slot);
         }
@@ -354,8 +439,10 @@ impl SimCore {
     }
 
     /// Selects the scripted pilot (see [`crate::layout::input_script`]). Returns false for an
-    /// unknown kind, leaving the current script in place.
+    /// unknown kind, and for SORTIE, HOLD and `HOLD_FIRE` outside a duel, leaving the current
+    /// script in place.
     pub fn set_input_script(&mut self, kind: u32) -> bool {
+        let duel = self.session.scenario != Scenario::Free;
         let script = match kind as usize {
             input_script::NONE => None,
             input_script::ERRATIC => Some(Script::Erratic(ErraticPilot::new(
@@ -365,6 +452,11 @@ impl SimCore {
             input_script::CIRCUIT => Some(Script::Circuit(Box::new(fcs::tester::Tester::new(
                 crate::circuit::runway(&*self.svc.geo),
             )))),
+            input_script::SORTIE if duel => Some(Script::Sortie(Box::new(
+                ai_pilot::SortieTester::new(crate::circuit::runway(&*self.svc.geo)),
+            ))),
+            input_script::HOLD if duel => Some(Script::Hold(ai_pilot::HoldCourse::new(false))),
+            input_script::HOLD_FIRE if duel => Some(Script::Hold(ai_pilot::HoldCourse::new(true))),
             _ => return false,
         };
         self.world.input.set_script(script);
@@ -514,8 +606,10 @@ impl SimCore {
             o.finish(),
             i.finish(),
             c.finish(),
-            // The combat state, once there is any (WP4); until then every session has none.
-            no_combat_hash(),
+            self.world
+                .combat
+                .as_ref()
+                .map_or_else(no_combat_hash, |c| c.hash()),
         )
     }
 
@@ -546,7 +640,7 @@ fn hash_registry(reg: &Registry, h: &mut StateHasher) {
 mod tests {
     use super::*;
     use crate::layout::{axis, button, snapshot as snap};
-    use crate::session::{Assist, GEffects, Spawn};
+    use crate::session::{Assist, GEffects, Scenario, Spawn};
     use crate::test_support::pack;
 
     fn running(seed: u64) -> SimCore {
@@ -883,6 +977,23 @@ mod tests {
         assert!(d.windows(2).all(|w| w[0].0 <= w[1].0));
         assert_eq!(d.first().map(|x| x.1), Some("ingest-input"));
         assert_eq!(d.last().map(|x| x.1), Some("publish-snapshot"));
+        // The combat systems sit after the ownship's in their stages (ADR-48).
+        let names: Vec<&str> = d.iter().map(|x| x.1).collect();
+        assert_eq!(
+            names,
+            [
+                "ingest-input",
+                "combat-ai",
+                "ownship-dynamics",
+                "probe-dynamics",
+                "bandit-dynamics",
+                "combat-weapons",
+                "terrain-contact",
+                "combat-collision",
+                "combat-lifecycle",
+                "publish-snapshot",
+            ]
+        );
     }
 
     #[test]
@@ -919,16 +1030,16 @@ mod tests {
         let block = c.profile_bytes().to_vec();
         assert_eq!(u64::from_le_bytes(block[0..8].try_into().unwrap()), 5);
         assert!(at(&block, profile::TICK_MS_LAST) > 0.0);
-        for stage in [0, 4, 7, 10] {
+        for stage in [0, 3, 4, 5, 7, 8, 10] {
             assert!(
                 at(&block, profile::STAGE_MS_LAST + 4 * stage) > 0.0,
                 "stage {stage} was timed"
             );
         }
         assert_eq!(
-            at(&block, profile::STAGE_MS_LAST + 4 * 3),
+            at(&block, profile::STAGE_MS_LAST + 4),
             0.0,
-            "the AI stage has no system yet"
+            "the environment stage has no system yet"
         );
     }
 
@@ -963,6 +1074,8 @@ mod tests {
                 assist: Assist::Manual,
                 g_effects: GEffects::Full,
                 arena: Arena::Rugged,
+                scenario: Scenario::Free,
+                skill: 0,
             },
         )
     }
@@ -1156,6 +1269,8 @@ mod tests {
             assist: Assist::Reduced,
             g_effects: GEffects::Off,
             arena: Arena::Rugged,
+            scenario: Scenario::Free,
+            skill: 0,
         };
         assert_eq!(c.configure(wanted), Ok(()));
         assert_eq!(c.session(), wanted);
@@ -1173,7 +1288,7 @@ mod tests {
         // an aircraft (tests/aircraft.rs) and of nothing else.
         let mut a = SimCore::new(7);
         let mut b = SimCore::new(7);
-        b.configure(SessionConfig::from_codes(1, 4, 0, 0).unwrap())
+        b.configure(SessionConfig::from_codes(1, 4, 0, 0, 0, 0).unwrap())
             .unwrap();
         a.start();
         b.start();

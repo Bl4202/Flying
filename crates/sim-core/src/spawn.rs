@@ -172,9 +172,59 @@ pub fn spawn_trimmed(
     tuning: &SpawnTuning,
     slot: &mut AircraftSlot,
 ) -> bool {
-    let env = svc.flight_env();
     let (x, y) = (0.0, -tuning.south_m);
     let ref_bf = DVec3::new(x, y, svc.geo.ground_z_bf(x, y) + tuning.agl_m);
+    spawn_trimmed_at(model, svc, ref_bf, tuning, slot)
+}
+
+/// A trimmed level spawn with the reference point at BF `(east_m, north_m)` and `alt_msl_m` above
+/// MSL, heading `heading_rad` at `tas_mps` (the duel's air starts and the bandit's spawns,
+/// ADR-48). The trim's fallback is the air spawn's. Allocates nothing; false if the trim failed.
+#[allow(clippy::too_many_arguments)] // ALGO: a position, a heading and a speed, unbundled
+pub fn spawn_air_at(
+    model: &AircraftModel,
+    svc: &Services,
+    east_m: f64,
+    north_m: f64,
+    alt_msl_m: f64,
+    heading_rad: f64,
+    tas_mps: f64,
+    slot: &mut AircraftSlot,
+) -> bool {
+    let z = z_at_height(&*svc.geo, east_m, north_m, alt_msl_m);
+    let tuning = SpawnTuning {
+        heading_rad,
+        tas_mps,
+        ..AIR_SPAWN
+    };
+    spawn_trimmed_at(model, svc, DVec3::new(east_m, north_m, z), &tuning, slot)
+}
+
+/// The BF z at which the point over `(x, y)` is `alt_msl_m` above MSL, on any world: Newton steps
+/// on the height (its slope in z is the cosine of a few hundredths of a degree on the curved
+/// Earth, so four steps reach rounding).
+pub(crate) fn z_at_height(
+    geo: &dyn crate::seams::geo::GeoService,
+    x: f64,
+    y: f64,
+    alt_msl_m: f64,
+) -> f64 {
+    let mut z = alt_msl_m;
+    for _ in 0..4 {
+        z += alt_msl_m - geo.height_msl_m(DVec3::new(x, y, z));
+    }
+    z
+}
+
+/// The trimmed level spawn with the reference point at `ref_bf`, heading and speed from `tuning`.
+fn spawn_trimmed_at(
+    model: &AircraftModel,
+    svc: &Services,
+    ref_bf: DVec3,
+    tuning: &SpawnTuning,
+    slot: &mut AircraftSlot,
+) -> bool {
+    let env = svc.flight_env();
     let fuel = model
         .mass
         .load_for(slot.spawn_fuel * model.mass.capacity_kg());
@@ -232,6 +282,19 @@ mod tests {
         assert_eq!(lever_for_tau(-1.0), 0.0);
         assert_eq!(lever_for_tau(2.0), 1.0);
         assert!(EngineCommand::from_lever(lever_for_tau(1.5), 4).ab_stage > 0);
+    }
+
+    #[test]
+    fn the_height_solver_finds_the_bf_z_of_a_height_on_the_curved_earth() {
+        let geo = crate::seams::geo::ProceduralGeo::default_frame();
+        for (x, y, h) in [(0.0, 15_000.0, 4_500.0), (-30_000.0, 25_000.0, 800.0)] {
+            let z = z_at_height(&geo, x, y, h);
+            let got = crate::seams::geo::GeoService::height_msl_m(&geo, DVec3::new(x, y, z));
+            assert!((got - h).abs() < 1e-6, "{got} for {h}");
+            // Below the tangent plane by about (x² + y²) / 2R.
+            let drop = (x * x + y * y) / (2.0 * 6_371_000.0);
+            assert!((h - z - drop).abs() < 1.0, "{z}");
+        }
     }
 
     #[test]
