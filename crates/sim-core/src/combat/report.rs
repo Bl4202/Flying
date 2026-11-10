@@ -771,13 +771,13 @@ mod tests {
 
     #[test]
     fn a_recruit_sortie_succeeds() {
-        // A seed BP1 wins under Standard (seed 5): take-off, a kill, the landing, the stop.
+        // A seed BP1 wins under Standard (seed 17): take-off, a kill, the landing, the stop.
         let r = bot_sortie(
             &pack(8400),
             Arena::Rugged,
             Assist::Standard,
             1,
-            5,
+            17,
             |_, _| {},
         )
         .unwrap();

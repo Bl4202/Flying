@@ -1,8 +1,9 @@
 //! `fg sortie`: the duel gates (ADR-45, ADR-48).
 //!
 //! - **BP1** (`--matrix bp`): the bot's sortie from the runway against a Recruit, seeds × the four
-//!   assists; at least 40 of 50 successes in each. **BP2** (also `--matrix bp`): Standard against a
-//!   Regular and a Veteran, informational. Or one cell with `--assist` and `--skill`.
+//!   assists; at least 40 of 50 successes under Standard, Reduced and Manual, Full informational
+//!   (ADR-45 amendment 1). **BP2** (also `--matrix bp`): Standard against a Regular and a Veteran,
+//!   informational. Or one cell with `--assist` and `--skill`.
 //! - **MS5** (`--sweep`): the missile sweep, 2 aspects × 3 ranges × 200 shots against a target
 //!   holding its course and a defending Veteran.
 //! - **AI1, AI2, AI8** (`--ai-gates`): pursuit (50 seeds × 3 skills), the defence against the gun
@@ -137,8 +138,10 @@ pub fn parse(args: &[String]) -> Result<Args, String> {
         if assist.is_some() || skill.is_some() {
             return Err("--matrix bp names its own cells; drop --assist and --skill".into());
         }
+        // Full is reported, not gated (owner decision D6, ADR-45 amendment 1): its 60° of bank and
+        // 10°/s of flight-path rate cannot turn with a Recruit.
         for (name, lv) in LEVELS {
-            a.cells.push((name, lv, 1, true));
+            a.cells.push((name, lv, 1, lv != Assist::Full));
         }
         a.cells.push(("standard", Assist::Standard, 2, false));
         a.cells.push(("standard", Assist::Standard, 3, false));
@@ -785,7 +788,15 @@ mod tests {
         ]))
         .unwrap();
         assert_eq!(a.cells.len(), 6);
-        assert_eq!(a.cells.iter().filter(|c| c.3).count(), 4, "BP1 is the gate");
+        assert_eq!(
+            a.cells
+                .iter()
+                .filter(|c| c.3)
+                .map(|c| c.0)
+                .collect::<Vec<_>>(),
+            ["standard", "reduced", "manual"],
+            "BP1 gates three assists; Full is informational"
+        );
         assert_eq!(
             (a.seeds, a.threads, a.sweep, a.ai_gates),
             ((3, 7), 4, true, true)
