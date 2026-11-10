@@ -38,6 +38,30 @@ export interface FixtureSnapshot {
     aim?: [number, number];
   };
   bodies?: FixtureBody[];
+  /** The duel's block (snapshot v5); absent: all zero, as in free flight. */
+  combat?: FixtureCombat;
+}
+
+/** The duel's part of a fixture snapshot. */
+export interface FixtureCombat {
+  flags?: number;
+  seeker?: number;
+  inhibit?: number;
+  inhibitAge?: number;
+  rounds?: number;
+  missiles?: number;
+  pipper?: [number, number, number];
+  tgtRange?: number;
+  tgtClosure?: number;
+  bandit?: FixtureBody & {
+    life?: number;
+    spawnSeq?: number;
+    vel?: [number, number, number];
+  };
+  /** Missile slots in order (`MISSILE_STATE`). */
+  missileSlots?: { pos: [number, number, number]; vel: [number, number, number]; state: number }[];
+  tracers?: { pos: [number, number, number]; vel: [number, number, number]; id: number }[];
+  explosions?: { pos: [number, number, number]; age: number; kind: number }[];
 }
 
 /** Heading north, wings level: the attitude the ownship spawns with. */
@@ -169,5 +193,67 @@ export function makeSnapshot(s: FixtureSnapshot = {}): Uint8Array {
       dv.setFloat32(SNAPSHOT.B_QUAT + 16 * i + 4 * k, v, true);
     });
   });
+  if (s.combat) writeCombat(dv, s.combat);
   return out;
+}
+
+function writeCombat(dv: DataView, c: FixtureCombat): void {
+  dv.setUint16(SNAPSHOT.C_FLAGS, c.flags ?? 0, true);
+  dv.setUint8(SNAPSHOT.C_SEEKER, c.seeker ?? 0);
+  dv.setUint8(SNAPSHOT.C_INHIBIT, c.inhibit ?? 0);
+  dv.setFloat32(SNAPSHOT.C_INHIBIT_AGE, c.inhibitAge ?? 0, true);
+  dv.setUint16(SNAPSHOT.C_ROUNDS, c.rounds ?? 0, true);
+  dv.setUint8(SNAPSHOT.C_MISSILES, c.missiles ?? 0);
+  (c.pipper ?? [0, 0, 0]).forEach((v, k) => {
+    dv.setFloat64(SNAPSHOT.C_PIPPER_BF + 8 * k, v, true);
+  });
+  dv.setFloat32(SNAPSHOT.C_TGT_RANGE, c.tgtRange ?? 0, true);
+  dv.setFloat32(SNAPSHOT.C_TGT_CLOSURE, c.tgtClosure ?? 0, true);
+  const b = c.bandit;
+  if (b) {
+    dv.setUint8(SNAPSHOT.C_BANDITS, 1);
+    b.pos.forEach((v, k) => {
+      dv.setFloat64(SNAPSHOT.BD_POS_BF + 8 * k, v, true);
+    });
+    (b.quat ?? NORTH).forEach((v, k) => {
+      dv.setFloat32(SNAPSHOT.BD_QUAT + 4 * k, v, true);
+    });
+    (b.vel ?? [0, 0, 0]).forEach((v, k) => {
+      dv.setFloat32(SNAPSHOT.BD_VEL_BF + 4 * k, v, true);
+    });
+    dv.setFloat32(SNAPSHOT.BD_GEAR_POS, 0, true);
+    dv.setFloat32(SNAPSHOT.BD_HEALTH, 1, true);
+    dv.setUint8(SNAPSHOT.BD_LIFE, b.life ?? 1);
+    dv.setUint16(SNAPSHOT.BD_SPAWN_SEQ, b.spawnSeq ?? 1, true);
+  }
+  (c.missileSlots ?? []).forEach((m, i) => {
+    const at = SNAPSHOT.MISSILES + SNAPSHOT.MISSILE_STRIDE * i;
+    m.pos.forEach((v, k) => {
+      dv.setFloat64(at + SNAPSHOT.MS_POS_BF + 8 * k, v, true);
+    });
+    m.vel.forEach((v, k) => {
+      dv.setFloat32(at + SNAPSHOT.MS_VEL_BF + 4 * k, v, true);
+    });
+    dv.setUint8(at + SNAPSHOT.MS_STATE, m.state);
+  });
+  const tracers = c.tracers ?? [];
+  dv.setUint32(SNAPSHOT.TR_COUNT, tracers.length, true);
+  tracers.forEach((t, i) => {
+    const at = SNAPSHOT.TR_FIRST + SNAPSHOT.TRACER_STRIDE * i;
+    t.pos.forEach((v, k) => {
+      dv.setFloat64(at + SNAPSHOT.TR_POS_BF + 8 * k, v, true);
+    });
+    t.vel.forEach((v, k) => {
+      dv.setFloat32(at + SNAPSHOT.TR_VEL_BF + 4 * k, v, true);
+    });
+    dv.setUint8(at + SNAPSHOT.TR_ID, t.id);
+  });
+  (c.explosions ?? []).forEach((x, i) => {
+    const at = SNAPSHOT.EXPLOSIONS + SNAPSHOT.EXPLOSION_STRIDE * i;
+    x.pos.forEach((v, k) => {
+      dv.setFloat64(at + SNAPSHOT.XP_POS_BF + 8 * k, v, true);
+    });
+    dv.setFloat32(at + SNAPSHOT.XP_AGE, x.age, true);
+    dv.setUint8(at + SNAPSHOT.XP_KIND, x.kind);
+  });
 }

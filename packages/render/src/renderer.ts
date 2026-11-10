@@ -5,6 +5,7 @@
  * contract in `renderer-contract.ts`.
  */
 import type { ZRange } from './camera.ts';
+import type { GpuResources } from './gpu-tally.ts';
 import type { FrameData } from './scene.ts';
 import type { ModelMesh } from './model-mesh.ts';
 import type { TerrainMesh } from './terrain-mesh.ts';
@@ -50,6 +51,8 @@ export interface Renderer {
   debugReadPixels(): Promise<Uint8Array>;
   /** Calls `listener` if the GPU device or context is lost (it may then be restored or not). */
   onLost(listener: (reason: string) => void): void;
+  /** The buffers and textures it holds now (the soak's leak gate L5, ADR-45). */
+  resources(): GpuResources;
   /** Releases GPU resources. Safe to call twice; drawing after it does nothing. */
   dispose(): void;
 }

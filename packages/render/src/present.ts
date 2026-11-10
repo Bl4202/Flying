@@ -46,6 +46,12 @@ export const HUD_LAYER_TYPES = [
   'engine_fuel_block',
   'mode_line',
   'warnings',
+  // The duel's (ADR-41 amendment): drawn only in a duel session.
+  'gun_reticle',
+  'target_box',
+  'seeker',
+  'weapon_status',
+  'kill_cue',
 ] as const;
 export type HudLayerType = (typeof HUD_LAYER_TYPES)[number];
 
@@ -108,7 +114,27 @@ export type HudLayerSpec =
   | (HudLayerBase & { type: 'bank_scale'; radiusMrad: number; tickDeg: number })
   | (HudLayerBase & { type: 'engine_fuel_block'; atMrad: Vec2 })
   | (HudLayerBase & { type: 'mode_line'; atMrad: Vec2 })
-  | (HudLayerBase & { type: 'warnings'; atMrad: Vec2; maxLines: number });
+  | (HudLayerBase & { type: 'warnings'; atMrad: Vec2; maxLines: number })
+  | (HudLayerBase & {
+      type: 'gun_reticle';
+      /** The pipper's radius, the ranging ring's radius (mrad), a full ring's range and the SHOOT range (m). */
+      pipperMrad: number;
+      ringMrad: number;
+      ringMaxM: number;
+      shootM: number;
+    })
+  | (HudLayerBase & {
+      type: 'target_box';
+      /** The box's side and the locator circle's radius (mrad); drawn within this range (m). */
+      sizeMrad: number;
+      locatorRadiusMrad: number;
+      showWithinM: number;
+    })
+  /** The seeker circle's radius and the lock diamond's half-diagonal, mrad. */
+  | (HudLayerBase & { type: 'seeker'; circleMrad: number; diamondMrad: number })
+  | (HudLayerBase & { type: 'weapon_status'; atMrad: Vec2 })
+  /** How long HIT and SPLASH show after each starts, s. */
+  | (HudLayerBase & { type: 'kill_cue'; atMrad: Vec2; hitS: number; splashS: number });
 
 export interface HudSpec {
   readonly id: string;
@@ -211,6 +237,34 @@ function parseLayer(s: Slice): HudLayerSpec {
       return { type, id, atMrad: at() };
     case 'warnings':
       return { type, id, atMrad: at(), maxLines: s.at('max_lines').int(1, 3) };
+    case 'gun_reticle':
+      return {
+        type,
+        id,
+        pipperMrad: s.n('pipper_mrad', 0.01),
+        ringMrad: s.n('ring_mrad', 0.01),
+        ringMaxM: s.n('ring_max_m', 1),
+        shootM: s.n('shoot_m', 1),
+      };
+    case 'target_box':
+      return {
+        type,
+        id,
+        sizeMrad: s.n('size_mrad', 0.01),
+        locatorRadiusMrad: s.n('locator_radius_mrad', 0.01),
+        showWithinM: s.n('show_within_m', 1),
+      };
+    case 'seeker':
+      return {
+        type,
+        id,
+        circleMrad: s.n('circle_mrad', 0.01),
+        diamondMrad: s.n('diamond_mrad', 0.01),
+      };
+    case 'weapon_status':
+      return { type, id, atMrad: at() };
+    case 'kill_cue':
+      return { type, id, atMrad: at(), hitS: s.n('hit_s', 0.01), splashS: s.n('splash_s', 0.01) };
   }
 }
 

@@ -104,6 +104,39 @@
       "id": "warnings",
       "at_mrad": [0, 100],
       "max_lines": 3
+    },
+    {
+      "type": "gun_reticle",
+      "id": "gun",
+      "pipper_mrad": 3,
+      "ring_mrad": 25,
+      "ring_max_m": 1800,
+      "shoot_m": 1000
+    },
+    {
+      "type": "target_box",
+      "id": "target",
+      "size_mrad": 40,
+      "locator_radius_mrad": 130,
+      "show_within_m": 20000
+    },
+    {
+      "type": "seeker",
+      "id": "seeker",
+      "circle_mrad": 35,
+      "diamond_mrad": 12
+    },
+    {
+      "type": "weapon_status",
+      "id": "weapons",
+      "at_mrad": [-120, -160]
+    },
+    {
+      "type": "kill_cue",
+      "id": "cues",
+      "at_mrad": [0, 60],
+      "hit_s": 0.3,
+      "splash_s": 2.0
     }
   ]
 }

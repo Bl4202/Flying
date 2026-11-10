@@ -12,6 +12,7 @@
  */
 import { TERRAIN_LEVEL_COUNT } from '@flying/sim-bridge/terrain-levels';
 import type { ZRange } from './camera.ts';
+import { GpuTally, type GpuResources } from './gpu-tally.ts';
 import {
   buildMarkerMesh,
   MARKER_INSTANCE_FLOATS,
@@ -82,6 +83,11 @@ export class WebGpuRenderer implements Renderer {
   readonly #uniform: GPUBuffer;
   /** The aircraft's part matrices and glow (binding 2 of every bind group). */
   readonly #modelUniform: GPUBuffer;
+  /** The bandit's (ADR-48), and a bind group like level 0's with it at binding 2. */
+  readonly #banditUniform: GPUBuffer;
+  readonly #banditBindGroup: GPUBindGroup;
+  /** Every buffer and texture made here, counted (the soak's L5). */
+  readonly #tally = new GpuTally();
   readonly #meshes = new Map<MeshSlot, MeshGpu>();
   /** The HUD's block (binding 3 of every bind group) and its segments, one instance each. */
   readonly #hudUniform: GPUBuffer;
@@ -123,28 +129,33 @@ export class WebGpuRenderer implements Renderer {
     this.#pipelines = args.pipelines;
 
     const device = args.device;
-    this.#uniform = device.createBuffer({
+    this.#uniform = this.#tally.gpuBuffer(device, {
       label: 'frame uniform',
       size: FRAME_UNIFORM_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
-    this.#modelUniform = device.createBuffer({
+    this.#modelUniform = this.#tally.gpuBuffer(device, {
       label: 'model uniform',
       size: MODEL_UNIFORM_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
-    this.#hudUniform = device.createBuffer({
+    this.#banditUniform = this.#tally.gpuBuffer(device, {
+      label: 'bandit model uniform',
+      size: MODEL_UNIFORM_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    this.#hudUniform = this.#tally.gpuBuffer(device, {
       label: 'hud uniform',
       size: HUD_UNIFORM_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
-    this.#hudSegments = device.createBuffer({
+    this.#hudSegments = this.#tally.gpuBuffer(device, {
       label: 'hud segments',
       size: MAX_SEGMENTS * SEGMENT_FLOATS * 4,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
     for (let level = 0; level < TERRAIN_LEVEL_COUNT; level++) {
-      const buffer = device.createBuffer({
+      const buffer = this.#tally.gpuBuffer(device, {
         label: `terrain level ${String(level)} uniform`,
         size: LEVEL_UNIFORM_BYTES,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -162,14 +173,23 @@ export class WebGpuRenderer implements Renderer {
         }),
       );
     }
+    this.#banditBindGroup = device.createBindGroup({
+      layout: args.layout,
+      entries: [
+        { binding: 0, resource: { buffer: this.#uniform } },
+        { binding: 1, resource: { buffer: this.#levelUniforms[0] as GPUBuffer } },
+        { binding: 2, resource: { buffer: this.#banditUniform } },
+        { binding: 3, resource: { buffer: this.#hudUniform } },
+      ],
+    });
     const mesh = buildMarkerMesh();
-    this.#markerVertices = device.createBuffer({
+    this.#markerVertices = this.#tally.gpuBuffer(device, {
       label: 'marker mesh',
       size: mesh.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
     device.queue.writeBuffer(this.#markerVertices, 0, mesh);
-    this.#markerInstances = device.createBuffer({
+    this.#markerInstances = this.#tally.gpuBuffer(device, {
       label: 'marker instances',
       size: MARKER_INSTANCE_CAPACITY * INSTANCE_BYTES,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -331,7 +351,7 @@ export class WebGpuRenderer implements Renderer {
   #makeTargets(): void {
     this.#depth?.destroy();
     this.#msaa?.destroy();
-    this.#depth = this.#device.createTexture({
+    this.#depth = this.#tally.gpuTexture(this.#device, {
       label: 'depth',
       size: [this.#width, this.#height],
       format: DEPTH_FORMAT,
@@ -340,7 +360,7 @@ export class WebGpuRenderer implements Renderer {
     });
     this.#msaa =
       this.#samples > 1
-        ? this.#device.createTexture({
+        ? this.#tally.gpuTexture(this.#device, {
             label: 'colour (multisampled)',
             size: [this.#width, this.#height],
             format: this.#format,
@@ -357,14 +377,14 @@ export class WebGpuRenderer implements Renderer {
     this.#meshes.delete(slot);
     if (mesh === undefined) return;
     const device = this.#device;
-    const vertices = device.createBuffer({
+    const vertices = this.#tally.gpuBuffer(device, {
       label: `${slot} vertices`,
       size: mesh.vertices.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
     device.queue.writeBuffer(vertices, 0, mesh.vertices);
     const indexBytes = Math.ceil(mesh.indices.byteLength / 4) * 4;
-    const indices = device.createBuffer({
+    const indices = this.#tally.gpuBuffer(device, {
       label: `${slot} indices`,
       size: indexBytes,
       usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
@@ -385,7 +405,7 @@ export class WebGpuRenderer implements Renderer {
     const old = this.#levels[level];
     old?.vertices.destroy();
     old?.indices.destroy();
-    const vertices = device.createBuffer({
+    const vertices = this.#tally.gpuBuffer(device, {
       label: `terrain level ${String(level)} vertices`,
       size: mesh.vertices.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -393,7 +413,7 @@ export class WebGpuRenderer implements Renderer {
     device.queue.writeBuffer(vertices, 0, mesh.vertices);
     // Buffer writes must be a multiple of four bytes; 16-bit indices may not be.
     const indexBytes = Math.ceil(mesh.indices.byteLength / 4) * 4;
-    const indices = device.createBuffer({
+    const indices = this.#tally.gpuBuffer(device, {
       label: `terrain level ${String(level)} indices`,
       size: indexBytes,
       usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
@@ -435,6 +455,7 @@ export class WebGpuRenderer implements Renderer {
       }
     }
     if (frame.model) queue.writeBuffer(this.#modelUniform, 0, frame.modelUniform);
+    if (frame.bandit) queue.writeBuffer(this.#banditUniform, 0, frame.banditUniform);
     if (frame.hud && frame.hudCount > 0) {
       queue.writeBuffer(this.#hudUniform, 0, frame.hudUniform);
       queue.writeBuffer(
@@ -511,6 +532,16 @@ export class WebGpuRenderer implements Renderer {
         pass.drawIndexed(interior.indexCount);
       }
     }
+    // The bandit: the same exterior, canopy and all, from its own uniform.
+    const banditMesh = frame.bandit ? this.#meshes.get('exterior') : undefined;
+    if (banditMesh) {
+      pass.setPipeline(pipelines.mesh);
+      pass.setBindGroup(0, this.#banditBindGroup);
+      pass.setVertexBuffer(0, banditMesh.vertices);
+      pass.setIndexBuffer(banditMesh.indices, 'uint16');
+      pass.drawIndexed(banditMesh.indexCount);
+      pass.setBindGroup(0, this.#bindGroups[0] as GPUBindGroup);
+    }
     if (frame.instanceCount > 0) {
       pass.setPipeline(pipelines.marker);
       pass.setVertexBuffer(0, this.#markerVertices);
@@ -541,13 +572,13 @@ export class WebGpuRenderer implements Renderer {
       return new Uint8Array(w * h * 4);
     }
     const device = this.#device;
-    const target = device.createTexture({
+    const target = this.#tally.gpuTexture(device, {
       size: [w, h],
       format: this.#format,
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
     });
     const bytesPerRow = Math.ceil((w * 4) / 256) * 256;
-    const readback = device.createBuffer({
+    const readback = this.#tally.gpuBuffer(device, {
       size: bytesPerRow * h,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
@@ -582,6 +613,10 @@ export class WebGpuRenderer implements Renderer {
     this.#lost.push(listener);
   }
 
+  resources(): GpuResources {
+    return this.#tally.snapshot();
+  }
+
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
@@ -597,6 +632,7 @@ export class WebGpuRenderer implements Renderer {
       m.indices.destroy();
     }
     this.#modelUniform.destroy();
+    this.#banditUniform.destroy();
     this.#hudUniform.destroy();
     this.#hudSegments.destroy();
     this.#markerVertices.destroy();

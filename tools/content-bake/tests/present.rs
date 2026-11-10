@@ -212,7 +212,25 @@ fn push_layer(v: &mut Value, layer: Value) -> usize {
     layers.len() - 1
 }
 
-// The weapon elements of ADR-49, as the shipped layout will carry them (WP6).
+/// The weapon element types (ADR-49), which the shipped layout carries as its last five layers.
+const WEAPON_TYPES: [&str; 5] = [
+    "gun_reticle",
+    "target_box",
+    "seeker",
+    "weapon_status",
+    "kill_cue",
+];
+
+/// The shipped HUD without its weapon layers, for the tests that add their own. They are its last
+/// five layers, so every other layer keeps its index.
+fn hud_without_weapons() -> Value {
+    let mut v = value(HUD);
+    let layers = v["layers"].as_array_mut().unwrap();
+    layers.retain(|l| !WEAPON_TYPES.contains(&l["type"].as_str().unwrap_or("")));
+    v
+}
+
+// The weapon elements of ADR-49, as the shipped layout carries them.
 fn gun_reticle() -> Value {
     json!({ "type": "gun_reticle", "id": "gun", "pipper_mrad": 3, "ring_mrad": 25,
             "ring_max_m": 1800, "shoot_m": 1000 })
@@ -523,7 +541,7 @@ fn fifty_invalid_hud_layouts_fail_each_with_file_pointer_and_hint() {
     let cases = invalid_huds();
     assert!(cases.len() >= 50, "the corpus has {} cases", cases.len());
     for (name, mutate) in cases {
-        let mut v = value(HUD);
+        let mut v = hud_without_weapons();
         let pointer = mutate(&mut v);
         let result = load_hud(HUD, &serde_json::to_string(&v).unwrap(), "core").map(|_| ());
         assert_fails_at(result, HUD, &pointer, name);
@@ -532,7 +550,13 @@ fn fifty_invalid_hud_layouts_fail_each_with_file_pointer_and_hint() {
 
 #[test]
 fn the_weapon_elements_pass_in_a_valid_layout() {
-    let mut v = value(HUD);
+    let mut v = hud_without_weapons();
+    // The shipped layout carries all five.
+    let shipped = value(HUD)["layers"].as_array().unwrap().len();
+    assert_eq!(
+        shipped - v["layers"].as_array().unwrap().len(),
+        WEAPON_TYPES.len()
+    );
     for layer in [
         gun_reticle(),
         target_box(),
@@ -589,7 +613,7 @@ fn the_weapon_elements_obey_their_placement_rules() {
         ),
     ];
     for (what, layer, key, edit) in cases {
-        let mut v = value(HUD);
+        let mut v = hud_without_weapons();
         let mut layer = layer;
         edit(&mut layer);
         let i = push_layer(&mut v, layer);
@@ -597,7 +621,7 @@ fn the_weapon_elements_obey_their_placement_rules() {
         assert_fails_at(result, HUD, &format!("/layers/{i}/{key}"), what);
     }
     // Two layers of one type are refused, as for every element.
-    let mut v = value(HUD);
+    let mut v = hud_without_weapons();
     push_layer(&mut v, gun_reticle());
     let mut again = gun_reticle();
     again["id"] = json!("gun2");

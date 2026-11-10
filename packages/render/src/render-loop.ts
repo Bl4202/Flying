@@ -31,6 +31,7 @@ import { bodyToRender } from './camera.ts';
 import type { Declutter } from './hud/elements.ts';
 import { Hud } from './hud/hud.ts';
 import { buildCockpitMesh, buildModelMesh } from './model-mesh.ts';
+import type { GpuResources } from './gpu-tally.ts';
 import { ModelRig } from './model-rig.ts';
 import type { RenderPresentation } from './present.ts';
 import type { SceneState, SnapshotInterpolator } from './interp.ts';
@@ -82,6 +83,8 @@ export class RenderLoop {
   /** The aircraft's presentation, once known: its meshes are uploaded and its parts animated. */
   #presentation: RenderPresentation | undefined;
   #modelRig: ModelRig | undefined;
+  /** The bandit's own rig of the same model (ADR-48); the scene draws it while there is one. */
+  #banditRig: ModelRig | undefined;
   #hud: Hud | undefined;
   /** The newest snapshot's aircraft status, for the HUD and the warnings. */
   readonly #status = newAircraftStatus();
@@ -145,6 +148,9 @@ export class RenderLoop {
         status: this.#status,
         warnings: warningBits(this.#status),
         timeS: nowMs / 1000,
+        // The duel's symbols sit on world points seen from the eye (ADR-41 amendment).
+        eyeBf: camera.eyeBf,
+        combat: state,
       },
       this.#rot,
       {
@@ -192,6 +198,7 @@ export class RenderLoop {
   setPresentation(presentation: RenderPresentation): void {
     this.#presentation = presentation;
     this.#modelRig = new ModelRig(presentation.model);
+    this.#banditRig = new ModelRig(presentation.model);
     this.#hud = new Hud(
       presentation.hud,
       presentation.cockpit,
@@ -284,6 +291,7 @@ export class RenderLoop {
     const frame = d.scene.build(state, {
       ...(camera ? { camera } : {}),
       ...(this.#modelRig ? { model: this.#modelRig } : {}),
+      ...(this.#banditRig ? { banditModel: this.#banditRig } : {}),
       aspect: this.#aspect,
       zRange: this.#renderer.zRange,
       timeS: now / 1000,
@@ -348,6 +356,7 @@ export class RenderLoop {
       gappedFrames: this.gappedFrames,
       snappedFrames: this.snappedFrames,
       contendedReads: this.contendedReads,
+      ...liveResources(this.#renderer.resources()),
     };
     this.#interval.reset();
     this.#cpu.reset();
@@ -357,4 +366,9 @@ export class RenderLoop {
     this.#windowFrames = 0;
     return stats;
   }
+}
+
+/** The renderer's live GPU resources as the stats name them. */
+function liveResources(r: GpuResources): { liveBuffers: number; liveTextures: number } {
+  return { liveBuffers: r.buffers, liveTextures: r.textures };
 }

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { SNAPSHOT } from '@flying/sim-bridge/layout';
+import {
+  BANDIT_LIFE,
+  COMBAT_FLAG,
+  EXPLOSION_KIND,
+  MISSILE_STATE,
+  SNAPSHOT,
+} from '@flying/sim-bridge/layout';
 import { SnapshotInterpolator } from './interp.ts';
-import { makeSnapshot, NORTH } from './snapshot-fixture.ts';
+import { makeSnapshot, NORTH, type FixtureCombat } from './snapshot-fixture.ts';
 
 const DT = 1000 / 60;
 const at = (tick: number, x: number, extra: Parameters<typeof makeSnapshot>[0] = {}): Uint8Array =>
@@ -191,5 +197,161 @@ describe('SnapshotInterpolator', () => {
     expect(s?.gStress).toBeCloseTo(0.8, 6);
     expect(s?.redout).toBeCloseTo(0.6, 6);
     expect([s?.aimAz, s?.aimEl].map((x) => Math.round((x ?? 0) * 1e6) / 1e6)).toEqual([1.25, -0.5]);
+  });
+
+  describe('the duel', () => {
+    const duel = (tick: number, combat: FixtureCombat): Uint8Array =>
+      makeSnapshot({ tick, publishMs: 1000 + tick * DT, ownship: { pos: [0, 0, 100] }, combat });
+    /** Halfway between ticks 1 and 2. */
+    const HALF = 1000 + 2 * DT + DT / 2;
+    const got = (i: SnapshotInterpolator, t = HALF) => {
+      const s = i.sample(t);
+      if (!s) throw new Error('no state');
+      return s;
+    };
+    const pair = (a: FixtureCombat, b: FixtureCombat): SnapshotInterpolator => {
+      const i = new SnapshotInterpolator();
+      i.push(duel(1, a));
+      i.push(duel(2, b));
+      return i;
+    };
+    const xyz = (v: ArrayLike<number>, at = 0): number[] =>
+      [0, 1, 2].map((k) => Math.round((v[at + k] ?? NaN) * 1e6) / 1e6);
+    const bandit = (x: number, extra: Partial<NonNullable<FixtureCombat['bandit']>> = {}) => ({
+      pos: [x, 1000, 500] as [number, number, number],
+      quat: NORTH,
+      ...extra,
+    });
+
+    it('blends the pipper while both snapshots have one, and otherwise takes the newest', () => {
+      const flags = COMBAT_FLAG.ACTIVE | COMBAT_FLAG.PIPPER;
+      const both = pair({ flags, pipper: [0, 0, 0] }, { flags, pipper: [10, 20, 30] });
+      expect(xyz(got(both).pipperBf)).toEqual([5, 10, 15]);
+      const fresh = pair(
+        { flags: COMBAT_FLAG.ACTIVE, pipper: [0, 0, 0] },
+        { flags, pipper: [10, 20, 30] },
+      );
+      expect(xyz(got(fresh).pipperBf)).toEqual([10, 20, 30]);
+    });
+
+    it('passes on the weapon state of the newest snapshot, unblended', () => {
+      const i = pair(
+        { flags: COMBAT_FLAG.ACTIVE, rounds: 500, missiles: 2, tgtRange: 1000 },
+        {
+          flags: COMBAT_FLAG.ACTIVE | COMBAT_FLAG.ARMED,
+          seeker: 2,
+          inhibit: 3,
+          inhibitAge: 0.25,
+          rounds: 480,
+          missiles: 1,
+          tgtRange: 900,
+          tgtClosure: 50,
+        },
+      );
+      const s = got(i);
+      expect(s.combatFlags).toBe(COMBAT_FLAG.ACTIVE | COMBAT_FLAG.ARMED);
+      expect([s.seeker, s.inhibit, s.rounds, s.missilesLeft]).toEqual([2, 3, 480, 1]);
+      expect(s.inhibitAge).toBeCloseTo(0.25, 6);
+      expect(s.tgtRange).toBeCloseTo(900, 3);
+      expect(s.tgtClosure).toBeCloseTo(50, 3);
+    });
+
+    it('blends the bandit between two snapshots of the same life', () => {
+      const i = pair({ bandit: bandit(0) }, { bandit: bandit(100) });
+      const s = got(i);
+      expect(s.banditLife).toBe(BANDIT_LIFE.ALIVE);
+      expect(xyz(s.banditPosBf)).toEqual([50, 1000, 500]);
+      expect(Math.hypot(...s.banditQuat)).toBeCloseTo(1, 6);
+      expect(i.status.snapped).toBe(false);
+    });
+
+    it('snaps the bandit when it respawned (a new spawn number), even a short way off', () => {
+      const i = pair(
+        { bandit: bandit(0, { spawnSeq: 1 }) },
+        { bandit: bandit(100, { spawnSeq: 2 }) },
+      );
+      const s = got(i);
+      expect(xyz(s.banditPosBf)).toEqual([100, 1000, 500]);
+      expect(s.banditSpawnSeq).toBe(2);
+    });
+
+    it('snaps the bandit when it jumped further than the teleport distance, and says so', () => {
+      const i = pair({ bandit: bandit(0) }, { bandit: bandit(5000) });
+      expect(xyz(got(i).banditPosBf)).toEqual([5000, 1000, 500]);
+      expect(i.status.snapped).toBe(true);
+    });
+
+    it('takes a bandit that has just appeared straight from the newest, and none when absent', () => {
+      const appeared = pair({}, { bandit: bandit(300) });
+      expect(xyz(got(appeared).banditPosBf)).toEqual([300, 1000, 500]);
+      const gone = pair({ bandit: bandit(0) }, {});
+      expect(got(gone).banditLife).toBe(BANDIT_LIFE.ABSENT);
+    });
+
+    it('packs the missiles in flight, blending a slot that was in flight in both', () => {
+      const slot = (x: number, state: number) => ({
+        pos: [x, 0, 200] as [number, number, number],
+        vel: [600, 0, 0] as [number, number, number],
+        state,
+      });
+      const i = pair(
+        { missileSlots: [slot(0, MISSILE_STATE.FREE), slot(0, MISSILE_STATE.BOOST)] },
+        {
+          missileSlots: [
+            slot(70, MISSILE_STATE.BOOST),
+            slot(100, MISSILE_STATE.COAST),
+            slot(0, MISSILE_STATE.FREE),
+          ],
+        },
+      );
+      const s = got(i);
+      expect(s.missileCount).toBe(2);
+      // Slot 0 has just launched: the newest. Slot 1 flew in both: halfway.
+      expect(xyz(s.missilePosBf, 0)).toEqual([70, 0, 200]);
+      expect(xyz(s.missilePosBf, 3)).toEqual([50, 0, 200]);
+      expect([s.missileState[0], s.missileState[1]]).toEqual([
+        MISSILE_STATE.BOOST,
+        MISSILE_STATE.COAST,
+      ]);
+      expect(xyz(s.missileVelBf, 3)).toEqual([600, 0, 0]);
+    });
+
+    it('blends a tracer with the same round of the older snapshot, wherever it is in the list', () => {
+      const round = (x: number, id: number) => ({
+        pos: [x, 0, 300] as [number, number, number],
+        vel: [1000, 0, 0] as [number, number, number],
+        id,
+      });
+      const i = pair(
+        { tracers: [round(0, 7), round(500, 9)] },
+        // Round 7 was culled; 9 moved to the front; 11 is new.
+        { tracers: [round(600, 9), round(40, 11)] },
+      );
+      const s = got(i);
+      expect(s.tracerCount).toBe(2);
+      expect(xyz(s.tracerPosBf, 0)).toEqual([550, 0, 300]);
+      expect(xyz(s.tracerPosBf, 3)).toEqual([40, 0, 300]);
+      // The id table is cleared after each sample. Round 7 comes back (the id wrapped) while the
+      // older snapshot no longer has it: it is drawn where it is, not blended with a stale index.
+      i.push(duel(3, { tracers: [round(700, 7)] }));
+      expect(xyz(got(i, HALF + DT).tracerPosBf, 0)).toEqual([700, 0, 300]);
+    });
+
+    it('takes the explosions from the newest snapshot, skipping empty slots', () => {
+      const i = pair(
+        { explosions: [{ pos: [1, 2, 3], age: 0.1, kind: EXPLOSION_KIND.MISSILE }] },
+        {
+          explosions: [
+            { pos: [0, 0, 0], age: 0, kind: 0 },
+            { pos: [10, 20, 30], age: 0.4, kind: EXPLOSION_KIND.AIRCRAFT },
+          ],
+        },
+      );
+      const s = got(i);
+      expect(s.explosionCount).toBe(1);
+      expect(xyz(s.explosionPosBf)).toEqual([10, 20, 30]);
+      expect(s.explosionAge[0]).toBeCloseTo(0.4, 6);
+      expect(s.explosionKind[0]).toBe(EXPLOSION_KIND.AIRCRAFT);
+    });
   });
 });

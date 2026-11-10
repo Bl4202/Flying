@@ -3,6 +3,7 @@
  * should still run (the sim, the overlay, the input), and what tests use for the render loop.
  */
 import type { ZRange } from './camera.ts';
+import type { GpuResources } from './gpu-tally.ts';
 import {
   CLEAR_COLOUR,
   type Backend,
@@ -74,6 +75,10 @@ export class NullRenderer implements Renderer {
 
   onLost(listener: (reason: string) => void): void {
     this.#lost.push(listener);
+  }
+
+  resources(): GpuResources {
+    return { buffers: 0, textures: 0 };
   }
 
   /** Test hook: behave as if the device was lost. */

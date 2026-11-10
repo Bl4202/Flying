@@ -6,7 +6,8 @@ import { quatFromColumns } from '../snapshot-fixture.ts';
 import { renderPresentation, type RenderPresentation } from '../present.ts';
 import { HudGraph, SEGMENT_FLOATS } from './graph.ts';
 import { drawLayer, type HudContext } from './elements.ts';
-import { HudState, type HudInput } from './state.ts';
+import { HudState, type HudCombatInput, type HudInput } from './state.ts';
+import { BANDIT_LIFE, COMBAT_FLAG } from '@flying/sim-bridge/layout';
 import { DEFAULT_HUD_TEXTS } from './texts.ts';
 
 export const DEG = Math.PI / 180;
@@ -76,6 +77,28 @@ export interface Scenario {
   status?: Partial<AircraftStatus>;
   warnings?: number;
   timeS?: number;
+  /** The eye, BF (default the aircraft's reference point). */
+  eye?: [number, number, number];
+  /** The duel (absent: free flight); `combatFlags` gets `ACTIVE` added. */
+  combat?: Partial<HudCombatInput>;
+}
+
+/** A duel input: active, a live bandit at the origin, every other field zero unless given. */
+export function combatInput(c: Partial<HudCombatInput> = {}): HudCombatInput {
+  return {
+    seeker: 0,
+    inhibit: 0,
+    inhibitAge: 0,
+    rounds: 150,
+    missilesLeft: 2,
+    tgtRange: 0,
+    tgtClosure: 0,
+    pipperBf: [0, 0, 0],
+    banditLife: BANDIT_LIFE.ALIVE,
+    banditPosBf: [0, 0, 0],
+    ...c,
+    combatFlags: (c.combatFlags ?? 0) | COMBAT_FLAG.ACTIVE,
+  };
 }
 
 /** A HUD input for a scenario: attitude from the angles, velocity along the nose unless given. */
@@ -94,6 +117,8 @@ export function input(s: Scenario = {}): HudInput {
     status: status(s.status),
     warnings: s.warnings ?? 0,
     timeS: s.timeS ?? 0,
+    ...(s.eye === undefined ? {} : { eyeBf: s.eye }),
+    ...(s.combat === undefined ? {} : { combat: combatInput(s.combat) }),
   };
 }
 
