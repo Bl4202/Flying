@@ -1,5 +1,6 @@
 /**
- * The screens outside the flight: the first-run flow, the main menu and the settings (ADR-44).
+ * The screens outside the flight: the first-run flow, the main menu, the settings (ADR-44) and the
+ * statistics (ADR-49).
  * `ScreenController` shows the one the application state names, turns what the player does in them
  * into flow events, and leaves the doing (starting a sortie, applying a setting to the controls,
  * the renderer and the audio) to the demo through `ScreenDeps`.
@@ -21,6 +22,8 @@ import {
   type SettingsPatch,
   SettingsScreen,
   type SettingsTab,
+  StatisticsScreen,
+  type StatisticsDeps,
 } from '@flying/ui';
 
 const PROFILE_FOR: Record<DeviceKind, BuiltinId> = {
@@ -68,6 +71,8 @@ export interface ScreenDeps {
   save: (name: string, text: string) => void;
   readFile?: (file: File) => Promise<string>;
   info: { storage: string; build: string };
+  /** The statistics and what the screen does with them. */
+  statistics: Pick<StatisticsDeps, 'stats' | 'feel' | 'exportText' | 'onImport' | 'onClear'>;
   install?: OptionalRow;
   update?: OptionalRow;
   audio?: OptionalRow;
@@ -78,6 +83,7 @@ export class ScreenController {
   readonly menu: MainMenu;
   readonly firstRun: FirstRun;
   readonly settings: SettingsScreen;
+  readonly statistics: StatisticsScreen;
 
   constructor(deps: ScreenDeps) {
     this.#d = deps;
@@ -88,6 +94,9 @@ export class ScreenController {
       onFly: deps.onFly,
       onSettings: () => {
         this.#go({ type: 'menu-screen', screen: 'settings' });
+      },
+      onStatistics: () => {
+        this.#go({ type: 'menu-screen', screen: 'statistics' });
       },
       build: deps.info.build,
       ...(deps.install === undefined ? {} : { install: deps.install }),
@@ -137,11 +146,21 @@ export class ScreenController {
       info: deps.info,
       ...(deps.readFile === undefined ? {} : { readFile: deps.readFile }),
     });
+    this.statistics = new StatisticsScreen(root, {
+      ...deps.statistics,
+      save: deps.save,
+      onBack: () => {
+        this.#go({ type: 'menu-screen', screen: 'home' });
+      },
+      ...(deps.readFile === undefined ? {} : { readFile: deps.readFile }),
+    });
   }
 
   /** Whether a screen is on show. */
   get active(): boolean {
-    return this.menu.isOpen || this.firstRun.isOpen || this.settings.isOpen;
+    return (
+      this.menu.isOpen || this.firstRun.isOpen || this.settings.isOpen || this.statistics.isOpen
+    );
   }
 
   /** Shows what the application state names, and nothing else. */
@@ -149,15 +168,23 @@ export class ScreenController {
     if (state.name === 'FIRST_RUN') {
       this.menu.close();
       this.settings.close();
+      this.statistics.close();
       this.firstRun.show(state.step);
     } else if (state.name === 'MAIN_MENU' && state.screen === 'home') {
       this.firstRun.close();
       this.settings.close();
+      this.statistics.close();
       this.menu.open();
       this.menu.refresh();
+    } else if (state.name === 'MAIN_MENU' && state.screen === 'statistics') {
+      this.firstRun.close();
+      this.menu.close();
+      this.settings.close();
+      this.statistics.open();
     } else if (state.name === 'MAIN_MENU') {
       this.firstRun.close();
       this.menu.close();
+      this.statistics.close();
       this.settings.open();
     } else {
       this.closeAll();
@@ -168,11 +195,17 @@ export class ScreenController {
     this.firstRun.close();
     this.menu.close();
     this.settings.close();
+    this.statistics.close();
   }
 
-  /** Esc: back out of the settings; the other screens stay (Esc must not skip a setup by accident). */
+  /**
+   * Esc: back out of the settings or the statistics; the other screens stay (Esc must not skip a
+   * setup by accident).
+   */
   escape(): void {
-    if (this.settings.isOpen) this.#go({ type: 'menu-screen', screen: 'home' });
+    if (this.settings.isOpen || this.statistics.isOpen) {
+      this.#go({ type: 'menu-screen', screen: 'home' });
+    }
   }
 
   /** Re-reads what the screens show, for a change made elsewhere (a pad plugged in, an update ready). */
@@ -180,12 +213,14 @@ export class ScreenController {
     this.menu.refresh();
     this.firstRun.refresh();
     this.settings.refresh();
+    this.statistics.refresh();
   }
 
   destroy(): void {
     this.firstRun.destroy();
     this.menu.destroy();
     this.settings.destroy();
+    this.statistics.destroy();
   }
 
   #go(event: FlowEvent): void {

@@ -3,7 +3,7 @@
  * `settings/2`.
  *
  * The values use the numbers the simulation's session config uses (`ASSIST_LEVEL`, `G_EFFECTS`,
- * `SPAWN_KIND`, `ARENA`), so the page hands them over as they are. Reading is forgiving: a stored
+ * `SPAWN_KIND`, `ARENA`, `SCENARIO`), so the page hands them over as they are. Reading is forgiving: a stored
  * value that is missing or out of range falls back to its default, so a half-written or hand-edited
  * entry never stops the game from starting. Importing a file is strict: it names every field it
  * cannot use, by JSON pointer, and stores nothing.
@@ -12,7 +12,7 @@
  * kept; it is left in place, so going back to the older build still finds its settings.
  */
 import type { Kv } from '@flying/platform-web';
-import { ARENA, ASSIST_LEVEL, G_EFFECTS, SPAWN_KIND } from '@flying/sim-bridge';
+import { ARENA, ASSIST_LEVEL, G_EFFECTS, SCENARIO, SPAWN_KIND } from '@flying/sim-bridge';
 
 export const SETTINGS_KEY = 'settings/2';
 /** Where v0.1b kept them. */
@@ -86,6 +86,10 @@ export interface Settings {
   spawn: number;
   /** `ARENA`: 0 rugged, 1 plain. */
   arena: number;
+  /** `SCENARIO`: 0 free flight, 1 a duel (the merge is a test scenario, reached by a URL flag). */
+  scenario: number;
+  /** The duel's bandit: 1 Recruit, 2 Regular, 3 Veteran. */
+  banditSkill: number;
   mouseMode: MouseModeSetting;
   /** 0 to 3 times. */
   mouseSensitivity: number;
@@ -121,6 +125,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   gfxStrength: 100,
   spawn: SPAWN_KIND.RUNWAY,
   arena: ARENA.RUGGED,
+  scenario: SCENARIO.FREE,
+  banditSkill: 1,
   mouseMode: 'off',
   mouseSensitivity: 1,
   mouseSpring: 0,
@@ -216,6 +222,8 @@ function overlay(base: Readonly<Settings>, raw: unknown): Settings {
     gfxStrength: percent(raw['gfxStrength'], 0, 100, base.gfxStrength),
     spawn: whole(raw['spawn'], SPAWN_KIND.RUNWAY, SPAWN_KIND.AIR, base.spawn),
     arena: whole(raw['arena'], ARENA.RUGGED, ARENA.PLAIN, base.arena),
+    scenario: whole(raw['scenario'], SCENARIO.FREE, SCENARIO.DUEL, base.scenario),
+    banditSkill: whole(raw['banditSkill'], 1, 3, base.banditSkill),
     mouseMode: oneOf(raw['mouseMode'], MOUSE_MODES, base.mouseMode),
     mouseSensitivity: ranged(raw['mouseSensitivity'], 0, 3, base.mouseSensitivity),
     mouseSpring: ranged(raw['mouseSpring'], 0, 1, base.mouseSpring),
@@ -286,6 +294,8 @@ const RULES: Readonly<Record<string, Rule | Readonly<Record<string, Rule>>>> = {
   gfxStrength: isRange(0, 100),
   spawn: isWhole(SPAWN_KIND.RUNWAY, SPAWN_KIND.AIR),
   arena: isWhole(ARENA.RUGGED, ARENA.PLAIN),
+  scenario: isWhole(SCENARIO.FREE, SCENARIO.DUEL),
+  banditSkill: isWhole(1, 3),
   mouseMode: isChoice(MOUSE_MODES),
   mouseSensitivity: isRange(0, 3),
   mouseSpring: isRange(0, 1),

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { PumpObservation } from '@flying/input';
 import {
   type AircraftStatus,
+  type CombatEventView,
   CONTENDED,
   newAircraftStatus,
   SNAPSHOT,
@@ -15,7 +16,11 @@ const vector = JSON.parse(
 ) as {
   hex: string;
   decoded: { ownship: Record<string, number> };
-  duel: { hex: string; decoded: { rounds: number; event_seq: number; bandit: { skill: number } } };
+  duel: {
+    hex: string;
+    ticks: number;
+    decoded: { rounds: number; event_seq: number; bandit: { skill: number } };
+  };
 };
 const SNAPSHOT_BYTES = Uint8Array.from(vector.hex.match(/../g) ?? [], (h) =>
   Number.parseInt(h, 16),
@@ -38,19 +43,26 @@ function fakeSource(bytes: Uint8Array = SNAPSHOT_BYTES) {
   return { state, source };
 }
 
-function rig(source: SnapshotSource | undefined, reported?: () => AircraftStatus | undefined) {
+function rig(
+  source: SnapshotSource | undefined,
+  reported?: () => AircraftStatus | undefined,
+  extra: { reportedTick?: () => number | undefined } = {},
+) {
   const seen: { status: AircraftStatus; observation: PumpObservation }[] = [];
   const frames: (() => void)[] = [];
+  const events: CombatEventView[] = [];
   const feed = new StatusFeed({
     source,
     reported: reported ?? (() => undefined),
+    ...extra,
+    onEvent: (e) => events.push({ ...e }),
     requestFrame: (cb) => frames.push(cb),
     cancelFrame: () => undefined,
     onStatus: (status, observation) => {
       seen.push({ status, observation });
     },
   });
-  return { feed, seen, frames };
+  return { feed, seen, frames, events };
 }
 
 describe('StatusFeed (shared channel)', () => {
@@ -92,6 +104,21 @@ describe('StatusFeed (shared channel)', () => {
     state.publication = 2;
     feed.poll();
     expect(feed.combat).toBe(first);
+  });
+
+  it("reads the tick, and hands on each of the duel's events once", () => {
+    const { source, state } = fakeSource(DUEL_BYTES);
+    const { feed, events } = rig(source);
+    expect(feed.tick).toBe(0);
+    state.publication = 1;
+    feed.poll();
+    expect(feed.tick).toBe(vector.duel.ticks);
+    expect(events.length).toBeGreaterThan(0);
+    expect(events.at(-1)?.seq).toBe(vector.duel.decoded.event_seq);
+    const n = events.length;
+    state.publication = 2;
+    feed.poll();
+    expect(events).toHaveLength(n);
   });
 
   it('reuses one status and one observation, however often it polls', () => {
@@ -166,5 +193,11 @@ describe('StatusFeed (message channel)', () => {
     expect(feed.poll()).toBe(true);
     expect(feed.status).toBe(reported);
     expect(seen[0]?.observation).toMatchObject({ spawnSeq: 7, assist: 3, throttle: 0.4 });
+  });
+
+  it('takes the tick from the reported stats', () => {
+    const { feed } = rig(undefined, () => undefined, { reportedTick: () => 1234 });
+    expect(feed.tick).toBe(1234);
+    expect(rig(undefined).feed.tick).toBe(0);
   });
 });

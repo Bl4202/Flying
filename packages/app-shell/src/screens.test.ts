@@ -12,6 +12,7 @@ import {
   type FlowState,
   type Settings,
   type SettingsPatch,
+  StatsStore,
 } from '@flying/ui';
 import { deviceOfProfile, kindOfMapping, ScreenController } from './screens.ts';
 
@@ -30,6 +31,7 @@ async function setup(start: FlowState = { name: 'MAIN_MENU', screen: 'home' }) {
   let found: DetectedDevice[] = [];
   const store = new ControlsStore(memoryKv());
   await store.load();
+  const stats = new StatsStore(memoryKv());
   const log = {
     flights: 0,
     setupDone: 0,
@@ -81,6 +83,13 @@ async function setup(start: FlowState = { name: 'MAIN_MENU', screen: 'home' }) {
     },
     save: (name) => log.saved.push(name),
     info: { storage: 'memory', build: 'deadbeefcafe' },
+    statistics: {
+      stats: () => stats.stats,
+      feel: () => stats.feel,
+      exportText: () => stats.export(),
+      onImport: (text) => stats.import(text),
+      onClear: () => stats.clear(),
+    },
   });
   created.push(screens);
   const q = (id: string): HTMLElement => {
@@ -144,6 +153,25 @@ describe('ScreenController: the main menu', () => {
     r.q('settings-close').click();
     expect(r.has('main-menu')).toBe(true);
     expect(r.has('settings-screen')).toBe(false);
+  });
+
+  it('goes to the statistics and back, with the button or Esc', async () => {
+    const r = await setup();
+    r.screens.show(r.flow());
+    r.q('menu-statistics').click();
+    expect(r.flow()).toEqual({ name: 'MAIN_MENU', screen: 'statistics' });
+    expect(r.has('statistics')).toBe(true);
+    expect(r.has('main-menu')).toBe(false);
+    expect(r.screens.active).toBe(true);
+    r.q('stats-export').click();
+    expect(r.log.saved).toEqual(['flying-stats.json']);
+    r.q('stats-back').click();
+    expect(r.has('main-menu')).toBe(true);
+    expect(r.has('statistics')).toBe(false);
+    r.q('menu-statistics').click();
+    r.screens.escape();
+    expect(r.flow()).toEqual({ name: 'MAIN_MENU', screen: 'home' });
+    expect(r.has('statistics')).toBe(false);
   });
 
   it('backs out of the settings with Esc, and leaves the menu and the first run alone', async () => {

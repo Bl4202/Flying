@@ -170,16 +170,29 @@ export function trapTab(panel: HTMLElement, doc: Document, e: KeyboardEvent): vo
   if (e.key !== 'Tab') return;
   const items = [
     ...panel.querySelectorAll<HTMLElement>(
-      'button, input, select, a[href], [tabindex]:not([tabindex="-1"])',
+      'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])',
     ),
   ].filter((el) => !el.hasAttribute('disabled') && !el.hidden);
   const first = items[0];
   const last = items.at(-1);
   if (first === undefined || last === undefined) return;
-  if (e.shiftKey && doc.activeElement === first) {
+  // A group of radio buttons is one stop: focus may be on any of them.
+  const at = (el: HTMLElement): boolean => {
+    const now = doc.activeElement;
+    if (now === el) return true;
+    return (
+      now instanceof HTMLInputElement &&
+      el instanceof HTMLInputElement &&
+      now.type === 'radio' &&
+      el.type === 'radio' &&
+      now.name !== '' &&
+      now.name === el.name
+    );
+  };
+  if (e.shiftKey && at(first)) {
     e.preventDefault();
     last.focus();
-  } else if (!e.shiftKey && doc.activeElement === last) {
+  } else if (!e.shiftKey && at(last)) {
     e.preventDefault();
     first.focus();
   }

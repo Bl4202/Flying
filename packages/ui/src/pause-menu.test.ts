@@ -253,4 +253,19 @@ describe('PauseMenu: the main menu', () => {
     button?.click();
     expect(left).toBe(1);
   });
+
+  it('ends the sortie (for its debrief) from a button above Main menu', () => {
+    const calls: string[] = [];
+    const r = setup({
+      onEndSortie: () => calls.push('end'),
+      onMainMenu: () => calls.push('menu'),
+    });
+    r.menu.open();
+    const ids = [...r.root.querySelectorAll<HTMLElement>('button')].map((b) => b.dataset['testid']);
+    expect(ids.indexOf('pause-end-sortie')).toBe(ids.indexOf('pause-main-menu') - 1);
+    const end = r.root.querySelector<HTMLElement>('[data-testid="pause-end-sortie"]');
+    expect(end?.textContent).toBe('End sortie');
+    end?.click();
+    expect(calls).toEqual(['end']);
+  });
 });

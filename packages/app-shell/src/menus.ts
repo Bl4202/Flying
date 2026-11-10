@@ -11,6 +11,7 @@
  */
 import type { ControlsProfile, GamepadHub, InputPump } from '@flying/input';
 import { BUTTON } from '@flying/sim-bridge';
+import type { OverridableSettings } from './session.ts';
 import {
   BindingEditor,
   type ControlsStore,
@@ -23,7 +24,7 @@ import {
 } from '@flying/ui';
 
 /** The settings a URL flag can set for one visit. */
-export type SettingsOverrides = Partial<Pick<Settings, 'spawn' | 'assist' | 'gEffects' | 'arena'>>;
+export type SettingsOverrides = Partial<OverridableSettings>;
 
 export interface MenuControllerDeps {
   root: HTMLElement;
@@ -44,6 +45,8 @@ export interface MenuControllerDeps {
   syncMouseLock: () => void;
   /** The player chose Main menu: the sortie is over (the sim is reset and the main menu shown). */
   onMainMenu: () => void;
+  /** The player chose End sortie: show its debrief (the simulation stays held). */
+  onEndSortie: () => void;
   /** The player chose or edited a profile: fly with it. */
   onProfile: (profile: ControlsProfile) => void;
   /** The player changed settings in a menu: apply them. `next` is every setting now. */
@@ -75,6 +78,9 @@ export class MenuController {
       },
       onRespawn: () => {
         this.respawn();
+      },
+      onEndSortie: () => {
+        deps.onEndSortie();
       },
       onMainMenu: () => {
         this.leaveForMainMenu();
@@ -158,6 +164,19 @@ export class MenuController {
     this.#d.onMainMenu();
   }
 
+  /**
+   * Closes the pause menu and the editor for the debrief, which takes their place: the simulation
+   * stays held and the controls silent.
+   */
+  closeForDebrief(): void {
+    this.#closeEditor();
+    this.#pause.close();
+    this.#back = undefined;
+    if (this.#menu === null) return;
+    this.#menu = null;
+    this.#d.setMenu(null);
+  }
+
   /** Closes whatever is open and flies on. */
   close(): void {
     this.#closeEditor();
@@ -188,6 +207,8 @@ export class MenuController {
     if (patch.assist !== undefined) delete overrides.assist;
     if (patch.gEffects !== undefined) delete overrides.gEffects;
     if (patch.arena !== undefined) delete overrides.arena;
+    if (patch.scenario !== undefined) delete overrides.scenario;
+    if (patch.banditSkill !== undefined) delete overrides.banditSkill;
     void this.#d.settings.update(patch);
   }
 

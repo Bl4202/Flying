@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { ARENA, ASSIST_LEVEL } from '@flying/sim-bridge';
+import { ARENA, ASSIST_LEVEL, SCENARIO } from '@flying/sim-bridge';
 import { MainMenu, type MainMenuDeps } from './main-menu.ts';
 import {
   applySettingsPatch,
@@ -14,7 +14,7 @@ function setup(extra: Partial<MainMenuDeps> = {}) {
   document.body.append(root);
   let settings: Settings = applySettingsPatch(DEFAULT_SETTINGS, {});
   const changes: SettingsPatch[] = [];
-  const calls = { fly: 0, settings: 0 };
+  const calls = { fly: 0, settings: 0, statistics: 0 };
   const menu = new MainMenu(root, {
     settings: () => settings,
     onChange: (patch) => {
@@ -26,6 +26,9 @@ function setup(extra: Partial<MainMenuDeps> = {}) {
     },
     onSettings: () => {
       calls.settings += 1;
+    },
+    onStatistics: () => {
+      calls.statistics += 1;
     },
     build: '0123456789abcdef',
     ...extra,
@@ -54,12 +57,41 @@ describe('MainMenu', () => {
     expect(menu.isOpen).toBe(false);
   });
 
-  it('starts a sortie with Fly and opens the settings', () => {
+  it('starts a sortie with Fly and opens the settings and the statistics', () => {
     const { menu, q, calls } = setup();
     menu.open();
     q('menu-fly').click();
     q('menu-settings').click();
-    expect(calls).toEqual({ fly: 1, settings: 1 });
+    q('menu-statistics').click();
+    expect(calls).toEqual({ fly: 1, settings: 1, statistics: 1 });
+  });
+
+  it('chooses free flight or a dogfight, and offers the bandit only for a dogfight', () => {
+    const { menu, q, pressed, changes, settings } = setup();
+    menu.open();
+    expect(pressed(`menu-mode-${String(SCENARIO.FREE)}`)).toBe(true);
+    expect(q('menu-bandit').hidden).toBe(true);
+    q(`menu-mode-${String(SCENARIO.DUEL)}`).click();
+    expect(q('menu-bandit').hidden).toBe(false);
+    expect(pressed('menu-bandit-1')).toBe(true);
+    q('menu-bandit-3').click();
+    expect(changes).toEqual([{ scenario: SCENARIO.DUEL }, { banditSkill: 3 }]);
+    expect(settings()).toMatchObject({ scenario: SCENARIO.DUEL, banditSkill: 3 });
+    q(`menu-mode-${String(SCENARIO.FREE)}`).click();
+    expect(q('menu-bandit').hidden).toBe(true);
+    // The bandit is still the one chosen, for the next dogfight.
+    expect(settings().banditSkill).toBe(3);
+  });
+
+  it("explains each bandit, and the dogfight's menu opens with its bandit showing", () => {
+    const { menu, q } = setup();
+    menu.open();
+    q(`menu-mode-${String(SCENARIO.DUEL)}`).click();
+    q('menu-bandit-1').dispatchEvent(new Event('focus'));
+    expect(q('menu-bandit-preview').textContent).toBe('Holds fire: a target that runs and chases.');
+    menu.close();
+    menu.open();
+    expect(q('menu-bandit').hidden).toBe(false);
   });
 
   it('shows the arena and the assist level, and changes them', () => {

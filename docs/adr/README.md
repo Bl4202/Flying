@@ -53,6 +53,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-46](0046-weapons.md) | Weapons: the gun, the director gunsight, the IR seeker, the PN missile and the fuze | Proposed |
 | [ADR-47](0047-combat-ai-and-the-bot.md) | Combat AI: the bandit's state machine, the manoeuvre controller and the bot playtester | Proposed |
 | [ADR-48](0048-combat-in-the-core.md) | Combat in the core: the duel scenario, ABI v5, snapshot v5, events and the combat hash | Proposed |
+| [ADR-49](0049-debrief-statistics-and-the-feel-questionnaire.md) | The dogfight in the app: mode, debrief, statistics and the feel questionnaire | Proposed |
 
 ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist before any tuning
 (AC-66.4).
