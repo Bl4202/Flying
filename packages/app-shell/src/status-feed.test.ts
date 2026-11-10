@@ -12,8 +12,15 @@ import { StatusFeed } from './status-feed.ts';
 
 const vector = JSON.parse(
   readFileSync(new URL('../../../tests/vectors/snapshot_v5.json', import.meta.url), 'utf8'),
-) as { hex: string; decoded: { ownship: Record<string, number> } };
+) as {
+  hex: string;
+  decoded: { ownship: Record<string, number> };
+  duel: { hex: string; decoded: { rounds: number; event_seq: number; bandit: { skill: number } } };
+};
 const SNAPSHOT_BYTES = Uint8Array.from(vector.hex.match(/../g) ?? [], (h) =>
+  Number.parseInt(h, 16),
+);
+const DUEL_BYTES = Uint8Array.from(vector.duel.hex.match(/../g) ?? [], (h) =>
   Number.parseInt(h, 16),
 );
 
@@ -69,6 +76,22 @@ describe('StatusFeed (shared channel)', () => {
     expect(last?.observation.assist).toBe(feed.status?.assist);
     expect(last?.observation.noseAzRad).toBe(feed.status?.noseAz);
     expect(last?.observation.noseElRad).toBe(feed.status?.noseEl);
+  });
+
+  it('reads the duel from the same snapshot (ADR-48), and nothing before the first one', () => {
+    const { source, state } = fakeSource(DUEL_BYTES);
+    const { feed } = rig(source);
+    expect(feed.combat).toBeUndefined();
+    state.publication = 1;
+    feed.poll();
+    const c = vector.duel.decoded;
+    expect(feed.combat?.rounds).toBe(c.rounds);
+    expect(feed.combat?.eventSeq).toBe(c.event_seq);
+    expect(feed.combat?.banditSkill).toBe(c.bandit.skill);
+    const first = feed.combat;
+    state.publication = 2;
+    feed.poll();
+    expect(feed.combat).toBe(first);
   });
 
   it('reuses one status and one observation, however often it polls', () => {

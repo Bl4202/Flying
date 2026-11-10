@@ -14,7 +14,7 @@ import { MAX_CATCH_UP_TICKS, SIM_DT_MS } from './constants.ts';
 import { SimLoop, type LoopSim } from './sim-loop.ts';
 
 /** Everything the loop touches, faked, with one shared log of what happened in what order. */
-function rig(opts: { profiling?: boolean } = {}) {
+function rig(opts: { profiling?: boolean; wasmBytes?: () => number } = {}) {
   const log: string[] = [];
   let mono = 0;
   let shared = 1_700_000_000_000;
@@ -77,6 +77,7 @@ function rig(opts: { profiling?: boolean } = {}) {
     sharedNowMs: () => shared,
     sleeper: 'timer',
     profiling: opts.profiling ?? false,
+    ...(opts.wasmBytes === undefined ? {} : { wasmBytes: opts.wasmBytes }),
   });
   const frameSampledAt = (tMs: number): Uint8Array => {
     const f = new Uint8Array(INPUT_FRAME.SIZE);
@@ -152,6 +153,18 @@ describe('SimLoop', () => {
     expect(new SnapshotReader(r.published[0]?.bytes ?? new Uint8Array(SNAPSHOT.SIZE)).tick()).toBe(
       1,
     );
+  });
+
+  it('reports the duel status from the snapshot and the memory size it is given (0 without)', () => {
+    const r = rig({ wasmBytes: () => 64 * 65_536 });
+    r.loop.start();
+    r.advance(SIM_DT_MS + 0.1);
+    r.loop.iterate();
+    const s = r.loop.report();
+    expect(s.wasmBytes).toBe(64 * 65_536);
+    expect(s.combat.flags).toBe(0);
+    expect(s.combat.counters).toHaveLength(12);
+    expect(rig().loop.report().wasmBytes).toBe(0);
   });
 
   it('measures input latency from the newest frame sampled to the snapshot published', () => {

@@ -163,10 +163,18 @@ const BUTTON_ACTION_IDS: readonly ActionId[] = [
   'flight.flaps_cycle',
   'flight.parking_brake',
   'flight.recover',
+  'flight.fire_gun',
+  'flight.fire_missile',
 ];
 const BUTTON_ACTION_INDEX = Int32Array.from(BUTTON_ACTION_IDS, (id) => actionIndex(id));
-/** 1 for the actions that act on a press (`button`), 0 for holds and the rest. */
-const PRESS_ACTION = Uint8Array.from(ACTIONS, (a) => (a.kind === 'button' ? 1 : 0));
+/**
+ * 1 for the actions that, held through a change of context or profile, wait for a release before
+ * they act again: every press-type button, and the gun's trigger (closing a menu with Space still
+ * down must not open fire, CT2). Other holds (brakes, trim) take effect at once.
+ */
+const RELEASE_FIRST = Uint8Array.from(ACTIONS, (a) =>
+  a.kind === 'button' || a.id === 'flight.fire_gun' ? 1 : 0,
+);
 const BUTTON_BITS = Int32Array.of(
   BUTTON.RESET,
   BUTTON.TRIM_NOSE_UP,
@@ -178,6 +186,8 @@ const BUTTON_BITS = Int32Array.of(
   BUTTON.FLAPS_CYCLE,
   BUTTON.PARKING_BRAKE,
   BUTTON.RECOVER,
+  BUTTON.FIRE_GUN,
+  BUTTON.FIRE_MISSILE,
 );
 
 /** Actions the pump or the page carries out on a press, reported through `onAction`. */
@@ -779,8 +789,8 @@ export class InputPump {
     for (let a = 0; a < ACTION_COUNT; a++) {
       const down = this.#anyActive(a);
       this.#prevActive[a] = down ? 1 : 0;
-      // A press-type button held through the change is not pressed again by it.
-      this.#suppress[a] = down && PRESS_ACTION[a] === 1 ? 1 : 0;
+      // A press-type button (or the gun) held through the change is not pressed again by it.
+      this.#suppress[a] = down && RELEASE_FIRST[a] === 1 ? 1 : 0;
     }
     this.#resync = false;
   }

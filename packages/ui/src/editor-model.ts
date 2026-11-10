@@ -52,6 +52,7 @@ export const EDITOR_GROUPS: readonly EditorGroup[] = [
   'engine',
   'systems',
   'brakes',
+  'weapons',
   'view',
   'system',
 ];

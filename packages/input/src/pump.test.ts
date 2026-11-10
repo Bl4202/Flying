@@ -404,16 +404,22 @@ describe('InputPump: gamepad', () => {
     expect(press({ 14: 1 })).toBe(bit(BUTTON.FLAPS_UP));
     expect(press({ 3: 1 })).toBe(bit(BUTTON.GEAR));
     expect(press({ 0: 1 })).toBe(bit(BUTTON.PARKING_BRAKE));
-    expect(press({ 4: 1 })).toBe(bit(BUTTON.RECOVER));
     expect(press({ 2: 1 })).toBe(0n);
     expect(r.last().axes[AXIS.BRAKE_L]).toBe(1);
   });
 
-  it('presses reset with Back', () => {
+  it('fires the gun from RB and the missile from LB, holds recover on Back, and has no reset (v0.1d)', () => {
     const r = padRig();
-    r.pads.set(0, fakePad({ buttons: { 8: 1 } }));
-    r.pump.update();
-    expect(r.last().buttons).toBe(bit(BUTTON.RESET));
+    const press = (buttons: Record<number, number>): bigint => {
+      r.pads.set(0, fakePad({ buttons }));
+      r.advance(4);
+      r.pump.update();
+      return r.last().buttons;
+    };
+    expect(press({ 5: 1 })).toBe(bit(BUTTON.FIRE_GUN));
+    expect(press({ 4: 1 })).toBe(bit(BUTTON.FIRE_MISSILE));
+    expect(press({ 8: 1 })).toBe(bit(BUTTON.RECOVER));
+    expect(r.actions).not.toContain('system.respawn');
   });
 
   it('holds the afterburner on L3 while held and drops to military power on release', () => {
@@ -675,6 +681,51 @@ describe('InputPump: what each frame says about when things happened (AC-58.3)',
     r.run(100);
     r.pump.neutral();
     expect(r.last().flags).toBe(INPUT_FLAG.NEUTRAL);
+  });
+});
+
+describe('InputPump: the weapons (CT2)', () => {
+  it('sets FIRE_GUN while Space is held and FIRE_MISSILE while M is down', () => {
+    const r = rig();
+    r.press('Space');
+    r.run(20);
+    expect(r.last().buttons).toBe(bit(BUTTON.FIRE_GUN));
+    r.release('Space');
+    r.run(8);
+    expect(r.last().buttons).toBe(0n);
+    r.press('KeyM');
+    r.run(8);
+    expect(r.last().buttons).toBe(bit(BUTTON.FIRE_MISSILE));
+    r.release('KeyM');
+    r.run(8);
+    expect(r.last().buttons).toBe(0n);
+  });
+
+  it('clears both in a neutral frame (focus lost)', () => {
+    const r = rig();
+    r.press('Space');
+    r.press('KeyM');
+    r.run(8);
+    expect(r.last().buttons).toBe(bit(BUTTON.FIRE_GUN) | bit(BUTTON.FIRE_MISSILE));
+    r.pump.neutral();
+    expect(r.last().buttons).toBe(0n);
+  });
+
+  it('does not fire a trigger held while a menu closes until it has been released', () => {
+    const r = rig();
+    r.pump.setContext('menu');
+    r.press('Space');
+    r.press('KeyM');
+    r.run(8);
+    r.pump.setContext('flight');
+    r.run(8);
+    expect(r.last().buttons).toBe(0n);
+    r.release('Space');
+    r.release('KeyM');
+    r.run(8);
+    r.press('Space');
+    r.run(8);
+    expect(r.last().buttons).toBe(bit(BUTTON.FIRE_GUN));
   });
 });
 

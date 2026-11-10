@@ -188,6 +188,7 @@ async function init(cmd: SimInit): Promise<void> {
     sharedNowMs,
     sleeper: sleeper.kind,
     profiling: cmd.profiling,
+    wasmBytes: () => handle.memory.buffer.byteLength,
   });
 
   post({

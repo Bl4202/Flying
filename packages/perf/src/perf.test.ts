@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { RenderStats } from '@flying/render/messages';
-import { newAircraftStatus, type Quantiles, type SimStats } from '@flying/sim-bridge';
+import {
+  newAircraftStatus,
+  newCombatStatus,
+  type Quantiles,
+  type SimStats,
+} from '@flying/sim-bridge';
 import { ARENA_LIMITS, evaluateGates, PS0_LIMITS, verdictOf } from './gates.ts';
 import { describeMachine } from './machine.ts';
 import { isPerfReport, type PerfMetrics } from './report.ts';
@@ -76,6 +81,8 @@ function world(b: Partial<Behaviour> = {}) {
       tickLatency: q(),
       tickLatencyRun: q(),
       status: newAircraftStatus(),
+      combat: newCombatStatus(),
+      wasmBytes: 0,
       inputsDropped: 0,
       snapshotsDropped: 0,
       coreState: 2,

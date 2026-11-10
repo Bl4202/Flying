@@ -111,7 +111,11 @@ export function attachInput(targets: InputTargets, opts: AttachOptions): () => v
     const event = e as unknown as KeyEventLike;
     if (isTyping(event.target)) return;
     if (opts.swallow?.(event) === true) return;
-    if (opts.pump.bindings.keyCodes.has(event.code)) event.preventDefault();
+    // In flight every bound key is the game's; in a menu only the menu's own (pause), so Enter,
+    // Space and the arrows keep working the page (Enter and Space are weapons in flight).
+    const bindings = opts.pump.bindings;
+    const claimed = opts.pump.context === 'menu' ? bindings.menuKeyCodes : bindings.keyCodes;
+    if (claimed.has(event.code)) event.preventDefault();
     if (opts.keyboard.keyDown(event.code, event.repeat)) {
       opts.pump.poke(event.timeStamp);
       sample();

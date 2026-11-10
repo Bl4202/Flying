@@ -69,7 +69,13 @@ describe('compileBindings: layout', () => {
     ]) {
       expect(map.keyCodes.has(code), code).toBe(true);
     }
-    expect(map.keyCodes.has('KeyM')).toBe(false);
+    // And the weapon keys (Space would scroll the page, Enter would follow a focused link).
+    for (const code of ['Space', 'KeyM', 'Enter']) {
+      expect(map.keyCodes.has(code), code).toBe(true);
+    }
+    expect(map.keyCodes.has('KeyJ')).toBe(false);
+    // In a menu the page claims only the menu's own keys.
+    expect([...map.menuKeyCodes]).toEqual(['Escape']);
     // Mouse and pad bindings are not keys.
     const pad = compileBindings(
       profileOf([

@@ -208,7 +208,7 @@ describe('ControlsStore: a profile from before the view actions', () => {
     const store = new ControlsStore(kv);
     await store.load();
     const loaded = store.find('mine');
-    expect(loaded?.catalogue).toBe(2);
+    expect(loaded?.catalogue).toBe(3);
     expect(loaded?.bindings.some((b) => b.action === 'flight.camera_cycle')).toBe(true);
     expect(store.migrationNotes).toEqual([]);
     const stored = await kv.get<string>(profileKey('mine'));
@@ -238,7 +238,7 @@ describe('ControlsStore: a profile from before the view actions', () => {
     await store.load();
     const result = await store.importText(serializeProfile(oldProfile()));
     expect(result.ok).toBe(true);
-    expect(result.ok && result.profile.catalogue).toBe(2);
+    expect(result.ok && result.profile.catalogue).toBe(3);
     expect(result.ok && result.profile.bindings.some((b) => b.action === 'flight.zoom')).toBe(true);
   });
 });
