@@ -51,7 +51,7 @@ test('the arena run produces a valid report with the arena gates, and the sim ho
     mkdirSync(REPORT_DIR, { recursive: true });
     writeFileSync(`${REPORT_DIR}/perf-arena.json`, `${JSON.stringify(report, null, 2)}\n`);
   }
-  expect(report.build.abi).toBe(4);
+  expect(report.build.abi).toBe(5);
   expect(report.gates.map((g) => g.id)).toEqual([
     'sim-rate',
     'dropped',
