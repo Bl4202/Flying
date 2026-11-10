@@ -41,3 +41,24 @@ simulation state. It is a regression and desync *detector*, not a security measu
 
 - Any intentional change to `sim-core` behaviour touches the golden file and is visible in review.
 - The probe world is real code that the v0.0b fixed-rate loop will step.
+
+## Amendment 1 (2026-11-10, v0.1d): the combat column and the one re-bless
+
+- **Seven columns.** The per-subsystem hashes are now `tick_h`, `rng`, `bodies`, `ownship`,
+  `input`, `content` and `combat`, and `combined` hashes all seven. `combat` (ADR-48) covers every
+  number of a duel's combat state and nothing observational; in a session without combat it is the
+  hash of the tag `NOCOMBAT`, a constant (`31ef7ff32813f286`). `hash_kind::COMBAT = 7`.
+- **Five suites.** `cargo xtask determinism` checks `determinism`, `flight60`, `circuit`,
+  `plain-circuit` and, new, `combat` (`tests/golden/combat.json`: the bot's 10-minute duel sortie
+  against a Regular, every 600 ticks), native release, native debug and both WASM builds alike.
+- **The v0.1d re-bless.** v0.1d puts the weapon and AI data in the simulation pack (owner decision
+  D2, ADR-45), and the pack's SHA-256 is hashed, so the `content` and `combined` columns of the four
+  free-flight goldens move. They are re-blessed **once**, at the end of WP4 after the last data
+  change, in a commit that does nothing else. The proof is `cargo xtask golden-diff --against
+  v0.1c`: same seeds, sessions and checkpoints; `tick_h`, `rng`, `bodies`, `ownship` and `input`
+  identical everywhere; `content` one value in every file; `combat` the no-combat constant; and
+  `combined` exactly what the seven columns hash to. Its output goes in the commit's body. Before
+  the re-bless, `golden-diff --against v0.1c --fresh` compares a fresh run with the old goldens.
+  A second re-bless of those four in v0.1d needs the owner's OK.
+- **The combat golden** follows the blessing policy above. It holds the bot's code as well as the
+  core's, so a change to `ai-pilot`'s behaviour moves it too.

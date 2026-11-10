@@ -27,7 +27,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-20](0020-dom-for-chrome-gpu-for-hud.md) | DOM for chrome, GPU for HUD | Accepted |
 | [ADR-21](0021-toolchains-and-wasm-threads-build.md) | Toolchains and the WASM threads build | Accepted |
 | [ADR-22](0022-github-pages-staging-with-service-worker-isolation.md) | GitHub Pages staging with Service-Worker-assisted isolation | Accepted |
-| [ADR-23](0023-state-hash-and-golden-policy.md) | State hash algorithm and golden-file policy | Accepted |
+| [ADR-23](0023-state-hash-and-golden-policy.md) | State hash algorithm and golden-file policy (amendment 1: the combat column and the v0.1d re-bless) | Accepted |
 | [ADR-24](0024-thin-custom-renderer.md) | A thin custom renderer over raw WebGPU and WebGL2 | Accepted |
 | [ADR-25](0025-runtime-topology-ipc-and-abi-v2.md) | Runtime topology, IPC formats and ABI v2 | Accepted |
 | [ADR-26](0026-sim-loop-pacing.md) | Simulation loop pacing | Accepted |
@@ -52,6 +52,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-45](0045-v0-1d-gates.md) | v0.1d gates: weapons, the bandit, the bot playtester, the soak, the debrief and G1 for a solo project | Proposed |
 | [ADR-46](0046-weapons.md) | Weapons: the gun, the director gunsight, the IR seeker, the PN missile and the fuze | Proposed |
 | [ADR-47](0047-combat-ai-and-the-bot.md) | Combat AI: the bandit's state machine, the manoeuvre controller and the bot playtester | Proposed |
+| [ADR-48](0048-combat-in-the-core.md) | Combat in the core: the duel scenario, ABI v5, snapshot v5, events and the combat hash | Proposed |
 
 ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist before any tuning
 (AC-66.4).
