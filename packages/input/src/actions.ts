@@ -29,7 +29,7 @@ export interface ActionDef {
   readonly range?: 'bipolar' | 'unipolar';
   readonly context: ActionContext;
   /** The group the binding editor lists it under. */
-  readonly group: 'axes' | 'engine' | 'systems' | 'brakes' | 'view' | 'system';
+  readonly group: 'axes' | 'engine' | 'systems' | 'brakes' | 'weapons' | 'view' | 'system';
   /** `strings.ts` key (in the `ui` package) of its label. */
   readonly label: string;
 }
@@ -56,7 +56,7 @@ const def = <const I extends string>(
  * means 1, the v0.1b catalogue), so that actions added later can be given their default bindings
  * once, where the inputs are free, and not again if the player removes them.
  */
-export const ACTION_CATALOGUE_VERSION = 2;
+export const ACTION_CATALOGUE_VERSION = 3;
 
 /** The actions added in each catalogue version after the first. */
 export const ACTIONS_ADDED_IN: Readonly<Record<number, readonly string[]>> = {
@@ -73,6 +73,8 @@ export const ACTIONS_ADDED_IN: Readonly<Record<number, readonly string[]>> = {
     'flight.hud_brightness_up',
     'flight.hud_brightness_down',
   ],
+  // v0.1d (ADR-37 amendment): the gun and the missile.
+  3: ['flight.fire_gun', 'flight.fire_missile'],
 };
 
 /** Every action, in the order the binding editor shows them. */
@@ -99,6 +101,9 @@ export const ACTIONS = [
   def('flight.recover', 'hold', 'systems'),
   def('flight.mouse_mode', 'button', 'view'),
   def('flight.assist_cycle', 'button', 'systems'),
+  // The weapons (ADR-48): the gun fires while held, the missile launches on the press.
+  def('flight.fire_gun', 'hold', 'weapons'),
+  def('flight.fire_missile', 'button', 'weapons'),
   // The view (ADR-41): none of these reach the input frame; the pump reports them as `ViewInput`.
   def('flight.camera_cycle', 'button', 'view'),
   def('flight.free_look', 'hold', 'view'),

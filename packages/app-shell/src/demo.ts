@@ -648,6 +648,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
     feed = new StatusFeed({
       source: modes.snapshotChannel === 'shared' ? openSnapshotSource(snapshots.source) : undefined,
       reported: () => latestSim?.status,
+      reportedCombat: () => latestSim?.combat,
       requestFrame: (callback) => requestAnimationFrame(callback),
       cancelFrame: (id) => {
         cancelAnimationFrame(id);

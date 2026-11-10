@@ -164,3 +164,26 @@ nodes (AC-53.4: 147 measured with 44 rows; 40 rows and the strip is about 141).
     laws trim themselves.
 - The e2e specs that read overlay rows by id (`ov-thrust`, `ov-latency`, ...) follow the merged
   rows there.
+
+## Amendment 1 (2026-11-10, v0.1d): catalogue v3, the weapons and the moved bindings
+
+- **Catalogue v3.** Two actions in a new group `weapons`, after `flight.assist_cycle`:
+  `flight.fire_gun` (hold; the frame's `FIRE_GUN` bit while held) and `flight.fire_missile`
+  (button; `FIRE_MISSILE` while down, the core acts on the rising edge). `ACTIONS_ADDED_IN[3]`
+  lists them, so a stored catalogue-2 (or older) custom profile gains their default bindings once,
+  where the inputs are free; an action left with none is named in the controls' migration note.
+- **Defaults.** Keyboard and mouse: Space and the primary mouse button fire the gun (the primary
+  button counts only while the pointer is locked, as before); M, Enter and the middle button
+  launch. Gamepad: RB the gun, LB the missile; recover moves from LB to Back, and respawn loses its
+  pad binding (it stays in the pause menu). Joystick: the trigger (button 0) the gun, button 1 the
+  missile; the brakes move to button 4 and the airbrake to button 5.
+- **Ctrl+Space.** Ctrl is the throttle-down key, so a player holding it and firing presses
+  Ctrl+Space, which on macOS switches the input source when the player has more than one. The
+  controls doc says so; the gun can be rebound.
+- **Keys are claimed only in flight.** The page used to stop the browser acting on every bound key,
+  menus included; with Enter and Space bound to the weapons that took Enter and Space from the
+  menus' buttons (the first-run screens could not be finished from the keyboard). In the `menu`
+  context the page now claims only the keys of actions whose context is `menu` (pause, on Escape).
+- **The trigger waits for a release after a context change**, like a press-type button: closing a
+  menu with Space still held does not open fire until Space is released and pressed again. The
+  other holds (brakes, trim) still take effect at once.

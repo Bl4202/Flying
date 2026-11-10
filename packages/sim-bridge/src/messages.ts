@@ -10,6 +10,7 @@
  */
 import type { Variant } from '@flying/platform-web/wasm-loader';
 import type { AircraftStatus } from './aircraft-status.ts';
+import type { CombatStatus } from './combat-status.ts';
 import type { InputEndpoint } from './input-channel.ts';
 import type { SessionConfig } from './sim-handle.ts';
 import type { SnapshotEndpoint } from './snapshot-channel.ts';
@@ -141,6 +142,10 @@ export interface SimStats {
    * that cannot read the snapshot itself (the message channel). Four times a second.
    */
   status: AircraftStatus;
+  /** The duel's weapons, target and bandit as of the newest snapshot (all zero without combat). */
+  combat: CombatStatus;
+  /** The WebAssembly memory's size, bytes (the soak's L1 watches it). */
+  wasmBytes: number;
   /** The core's own stage timings, while profiling is on. */
   profile: {
     tickMsLast: number;

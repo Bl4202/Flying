@@ -1,4 +1,6 @@
 export * from './aircraft-status.ts';
+export * from './combat-events.ts';
+export * from './combat-status.ts';
 export * from './frame-math.ts';
 export * from './input-channel.ts';
 export * from './input-frame.ts';

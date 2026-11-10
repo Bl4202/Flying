@@ -187,7 +187,11 @@ const hat = (device: string, dir: HatDirection): Source => ({ kind: 'hat', devic
 /**
  * The keyboard and mouse bindings every built-in profile carries. W pushes the stick forward
  * (nose down) and S pulls it back; the throttle also answers to Page Up and Page Down because
- * Ctrl+W, Ctrl+R and Ctrl+S mean something else to the browser (GDD 58.3).
+ * Ctrl+W, Ctrl+R and Ctrl+S mean something else to the browser (GDD 58.3). Space fires the gun
+ * while held and M or Enter launches a missile (ADR-37 amendment); the mouse's primary button is
+ * the gun too (it counts only while the pointer is locked, as the mouse device rules) and the
+ * middle button the missile. With Ctrl held as the throttle, Ctrl+Space can switch the input
+ * source on macOS when the player has several; rebind the gun if it does.
  */
 function keyboardBindings(compact = false): Binding[] {
   // A profile holds four bindings an action at most. The pad profiles already spend one of the
@@ -221,6 +225,11 @@ function keyboardBindings(compact = false): Binding[] {
     bind('flight.recover', key('KeyU')),
     bind('flight.mouse_mode', key('KeyO')),
     bind('flight.assist_cycle', key('F8')),
+    bind('flight.fire_gun', key('Space')),
+    bind('flight.fire_gun', { kind: 'mouse-button', button: 0 }),
+    bind('flight.fire_missile', key('KeyM')),
+    bind('flight.fire_missile', key('Enter')),
+    bind('flight.fire_missile', { kind: 'mouse-button', button: 1 }),
     ...viewBindings(),
     bind('system.respawn', key('KeyR')),
     bind('system.pause', key('Escape')),
@@ -250,6 +259,10 @@ function viewBindings(): Binding[] {
   ];
 }
 
+/**
+ * A standard-mapping gamepad: the right bumper fires the gun and the left one launches a missile;
+ * recover is on Back, and respawn has no pad button (it stays in the pause menu).
+ */
 function gamepadBindings(): Binding[] {
   const d = 'pad';
   return [
@@ -269,18 +282,20 @@ function gamepadBindings(): Binding[] {
     bind('flight.brakes', padButton(d, PAD_BUTTON.X)),
     bind('flight.airbrake', padButton(d, PAD_BUTTON.B)),
     bind('flight.parking_brake', padButton(d, PAD_BUTTON.A)),
-    bind('flight.recover', padButton(d, PAD_BUTTON.LEFT_BUMPER)),
+    bind('flight.recover', padButton(d, PAD_BUTTON.BACK)),
+    bind('flight.fire_gun', padButton(d, PAD_BUTTON.RIGHT_BUMPER)),
+    bind('flight.fire_missile', padButton(d, PAD_BUTTON.LEFT_BUMPER)),
     bind('flight.camera_cycle', padButton(d, PAD_BUTTON.RIGHT_STICK)),
-    bind('system.respawn', padButton(d, PAD_BUTTON.BACK)),
     bind('system.pause', padButton(d, PAD_BUTTON.START)),
   ];
 }
 
 /**
  * A generic joystick or HOTAS: stick on axes 0 and 1, an absolute throttle lever on axis 2 (a
- * lever pushed forward reads -1), twist or pedals on axis 3 or 5, the hat for trim and flaps.
- * Which axis a given device uses for what varies; the binding editor fixes the rest. Untested on
- * hardware (no devices were available for v0.1b).
+ * lever pushed forward reads -1), twist or pedals on axis 3 or 5, the hat for trim and flaps,
+ * the trigger (button 0) for the gun and button 1 for the missile; the brakes and the airbrake are
+ * on buttons 4 and 5. Which axis a given device uses for what varies; the binding editor fixes the
+ * rest. Untested on hardware (no devices were available for v0.1b).
  */
 function joystickBindings(): Binding[] {
   const d = 'joy';
@@ -294,10 +309,12 @@ function joystickBindings(): Binding[] {
     bind('flight.trim_nose_up', hat(d, 'down')),
     bind('flight.flaps_up', hat(d, 'left')),
     bind('flight.flaps_down', hat(d, 'right')),
-    bind('flight.brakes', padButton(d, 0)),
-    bind('flight.airbrake', padButton(d, 1)),
+    bind('flight.fire_gun', padButton(d, 0)),
+    bind('flight.fire_missile', padButton(d, 1)),
     bind('flight.gear', padButton(d, 2)),
     bind('flight.flaps_cycle', padButton(d, 3)),
+    bind('flight.brakes', padButton(d, 4)),
+    bind('flight.airbrake', padButton(d, 5)),
   ];
 }
 

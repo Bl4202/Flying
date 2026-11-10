@@ -81,7 +81,7 @@ describe('the action catalogue', () => {
   });
 
   it('records which actions each catalogue version added, all of them real', () => {
-    expect(ACTION_CATALOGUE_VERSION).toBe(2);
+    expect(ACTION_CATALOGUE_VERSION).toBe(3);
     for (const [version, ids] of Object.entries(ACTIONS_ADDED_IN)) {
       expect(Number(version)).toBeLessThanOrEqual(ACTION_CATALOGUE_VERSION);
       for (const id of ids) expect(isActionId(id), id).toBe(true);

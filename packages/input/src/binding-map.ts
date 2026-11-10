@@ -10,7 +10,7 @@
  * (and its calibration). It runs again whenever the hub's `revision` changes, so a device that is
  * plugged back in, or on another port, picks its bindings up again.
  */
-import { ACTION_COUNT, actionIndex } from './actions.ts';
+import { ACTION_COUNT, actionDef, actionIndex } from './actions.ts';
 import { HAT_BIT, type GamepadHub, type PadSlot } from './devices/gamepad.ts';
 import { type MouseSource } from './devices/mouse.ts';
 import { type KeyboardState } from './keyboard.ts';
@@ -39,8 +39,13 @@ export class BindingMap {
   readonly count: number;
   /** Where `read` leaves its result, in element 0. */
   readonly out = new Float64Array(1);
-  /** Key codes the profile uses, for the page to stop the browser acting on them. */
+  /** Key codes the profile uses, for the page to stop the browser acting on them in flight. */
   readonly keyCodes: ReadonlySet<string>;
+  /**
+   * The key codes of the actions that work while a menu is open (pause): the only keys the page
+   * claims then, so Enter, Space and the arrows still operate the menus.
+   */
+  readonly menuKeyCodes: ReadonlySet<string>;
   readonly #start: Int32Array;
   readonly #src: Uint8Array;
   readonly #code: string[];
@@ -89,6 +94,7 @@ export class BindingMap {
     this.#start[ACTION_COUNT] = total;
     const fill = this.#start.slice(0, ACTION_COUNT);
     const keys = new Set<string>();
+    const menuKeys = new Set<string>();
     for (const b of profile.bindings) {
       const a = actionIndex(b.action);
       if (a < 0) continue;
@@ -103,6 +109,7 @@ export class BindingMap {
           this.#src[i] = SRC.KEY;
           this.#code[i] = s.code;
           keys.add(s.code);
+          if (actionDef(b.action)?.context === 'menu') menuKeys.add(s.code);
           break;
         case 'mouse-button':
           this.#src[i] = SRC.MOUSE_BUTTON;
@@ -131,6 +138,7 @@ export class BindingMap {
       }
     }
     this.keyCodes = keys;
+    this.menuKeyCodes = menuKeys;
   }
 
   /** Looks the pad sources up among the connected devices. Call again when `hub.revision` moves. */

@@ -10,7 +10,9 @@ import {
   INPUT_FLAG,
   INPUT_FRAME,
   newAircraftStatus,
+  newCombatStatus,
   readAircraftStatus,
+  readCombatStatus,
   SnapshotReader,
   stampPublishTime,
   type InputSource,
@@ -38,6 +40,8 @@ export interface SimLoopDeps {
   sharedNowMs(): number;
   sleeper: 'atomics' | 'timer';
   profiling: boolean;
+  /** The WebAssembly memory's size, bytes, for the stats (absent: 0). */
+  wasmBytes?: () => number;
 }
 
 function quantiles(h: Histogram): Quantiles {
@@ -208,6 +212,8 @@ export class SimLoop {
     snap.ownshipSurfaces(surfaces);
     const status = newAircraftStatus();
     readAircraftStatus(snap, status);
+    const combat = newCombatStatus();
+    readCombatStatus(snap, combat);
     const stats: SimStats = {
       atMs: d.sharedNowMs(),
       tick,
@@ -225,6 +231,8 @@ export class SimLoop {
       tickLatency: quantiles(this.#tickWait),
       tickLatencyRun: quantiles(this.#tickWaitRun),
       status,
+      combat,
+      wasmBytes: d.wasmBytes?.() ?? 0,
       inputsDropped: d.inputs.dropped(),
       snapshotsDropped: d.snapshots.dropped(),
       coreState: d.sim.coreState(),

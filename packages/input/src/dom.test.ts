@@ -114,6 +114,29 @@ describe('attachInput', () => {
     expect(r.keyboard.isDown('KeyD')).toBe(false);
   });
 
+  it('claims the weapon keys in flight but leaves Enter and Space to a menu; Escape is claimed in both', () => {
+    const r = rig();
+    const press = (code: string): boolean => {
+      const e = key('keydown', code);
+      r.win.dispatchEvent(e);
+      r.win.dispatchEvent(key('keyup', code));
+      return e.defaultPrevented;
+    };
+    expect([press('Space'), press('Enter'), press('KeyM'), press('Escape')]).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
+    r.pump.setContext('menu');
+    expect([press('Space'), press('Enter'), press('KeyM'), press('Escape')]).toEqual([
+      false,
+      false,
+      false,
+      true,
+    ]);
+  });
+
   it('leaves keys it does not use to the browser', () => {
     const r = rig();
     const f5 = key('keydown', 'F5');

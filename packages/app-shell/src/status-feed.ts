@@ -6,14 +6,18 @@
  * With the shared snapshot channel the page reads the newest snapshot itself every animation
  * frame; a seqlock read does not disturb the renderer's. With the message channel the renderer
  * owns the only end of the channel, so the page takes the status the sim reports with its 4 Hz
- * stats.
+ * stats. The duel's status (weapons, target, bandit; ADR-48) comes the same two ways, from the
+ * same snapshot read.
  */
 import type { PumpObservation } from '@flying/input';
 import {
   type AircraftStatus,
+  type CombatStatus,
   CONTENDED,
   newAircraftStatus,
+  newCombatStatus,
   readAircraftStatus,
+  readCombatStatus,
   SNAPSHOT,
   SnapshotReader,
   type SnapshotSource,
@@ -24,6 +28,8 @@ export interface StatusFeedDeps {
   source: SnapshotSource | undefined;
   /** The status from the sim's periodic stats (the message channel's only way). */
   reported: () => AircraftStatus | undefined;
+  /** The duel's status from the same stats (the message channel); absent: none. */
+  reportedCombat?: () => CombatStatus | undefined;
   requestFrame: (callback: () => void) => number;
   cancelFrame: (id: number) => void;
   /** Called with the new status whenever it has been read afresh. */
@@ -35,6 +41,7 @@ export class StatusFeed {
   readonly #buf = new Uint8Array(SNAPSHOT.SIZE);
   readonly #reader = new SnapshotReader(this.#buf);
   readonly #own = newAircraftStatus();
+  readonly #combat = newCombatStatus();
   /** One object, filled in place for every call to `onStatus`. */
   readonly #observation: PumpObservation = {
     spawnSeq: 0,
@@ -54,6 +61,12 @@ export class StatusFeed {
   /** The newest status, or undefined before the first snapshot. */
   get status(): AircraftStatus | undefined {
     return this.#d.source === undefined ? this.#d.reported() : this.#have ? this.#own : undefined;
+  }
+
+  /** The duel's newest status (all zero without combat), or undefined before the first snapshot. */
+  get combat(): CombatStatus | undefined {
+    if (this.#d.source === undefined) return this.#d.reportedCombat?.();
+    return this.#have ? this.#combat : undefined;
   }
 
   start(): void {
@@ -82,6 +95,7 @@ export class StatusFeed {
       if (n !== CONTENDED && n > 0 && n !== this.#lastPublication && this.#reader.valid()) {
         this.#lastPublication = n;
         readAircraftStatus(this.#reader, this.#own);
+        readCombatStatus(this.#reader, this.#combat);
         this.#have = true;
       }
       status = this.#have ? this.#own : undefined;

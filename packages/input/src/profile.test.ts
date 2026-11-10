@@ -122,8 +122,11 @@ describe('built-in profiles', () => {
     expect(src('flight.brakes')).toContain('pad:b:2');
     expect(src('flight.airbrake')).toContain('pad:b:1');
     expect(src('flight.parking_brake')).toContain('pad:b:0');
-    expect(src('flight.recover')).toContain('pad:b:4');
-    expect(src('system.respawn')).toContain('pad:b:8');
+    // v0.1d: the bumpers are the weapons, recover moves to Back, respawn has no pad button.
+    expect(src('flight.recover')).toContain('pad:b:8');
+    expect(src('flight.fire_gun')).toContain('pad:b:5');
+    expect(src('flight.fire_missile')).toContain('pad:b:4');
+    expect(src('system.respawn').some((k) => k.startsWith('pad:'))).toBe(false);
     expect(src('system.pause')).toContain('pad:b:9');
     expect(pad.toggles.afterburner).toBe('hold');
   });
@@ -144,6 +147,19 @@ describe('built-in profiles', () => {
     expect(bindingsOf(joy, 'flight.throttle')[0]?.invert).toBe(true);
     expect(one('flight.yaw')).toEqual(expect.arrayContaining(['joy:a:3', 'joy:a:5']));
     expect(joy.deviceClass).toBe('joystick');
+  });
+
+  it('put the weapons on Space, M, Enter and the mouse, and on the joystick trigger and button 1 (CT1)', () => {
+    const km = builtinProfile('default-km');
+    const k = (action: ActionId) => bindingsOf(km, action).map((b) => sourceKey(b.source));
+    expect(k('flight.fire_gun')).toEqual(['key:Space', 'mouse:0']);
+    expect(k('flight.fire_missile')).toEqual(['key:KeyM', 'key:Enter', 'mouse:1']);
+    const joy = builtinProfile('generic-joystick');
+    const j = (action: ActionId) => bindingsOf(joy, action).map((b) => sourceKey(b.source));
+    expect(j('flight.fire_gun')).toContain('joy:b:0');
+    expect(j('flight.fire_missile')).toContain('joy:b:1');
+    expect(j('flight.brakes')).toContain('joy:b:4');
+    expect(j('flight.airbrake')).toContain('joy:b:5');
   });
 
   it("never exceed the editor's binding count per action", () => {
@@ -527,16 +543,16 @@ describe('the view bindings and the action catalogue version', () => {
   it('writes the catalogue version, and reads it back, and refuses one it does not know', () => {
     const p = builtinProfile('default-km');
     const text = serializeProfile(p);
-    expect(JSON.parse(text)).toMatchObject({ catalogue: 2 });
+    expect(JSON.parse(text)).toMatchObject({ catalogue: 3 });
     const back = parseControlsProfileText(text);
-    expect(back.ok && back.profile.catalogue).toBe(2);
+    expect(back.ok && back.profile.catalogue).toBe(3);
     expect(serializeProfile(back.ok ? back.profile : p)).toBe(text);
     // A profile without one (a v0.1b file) reads as it is, with none.
     const v1 = JSON.parse(text) as Record<string, unknown>;
     delete v1['catalogue'];
     const old = parseControlsProfile(v1);
     expect(old.ok && old.profile.catalogue).toBeUndefined();
-    const newer = parseControlsProfile({ ...JSON.parse(text), catalogue: 3 });
+    const newer = parseControlsProfile({ ...JSON.parse(text), catalogue: 4 });
     expect(newer.ok).toBe(false);
     expect(!newer.ok && newer.errors[0]?.pointer).toBe('/catalogue');
   });
@@ -547,7 +563,7 @@ describe('the view bindings and the action catalogue version', () => {
       expect(old.catalogue).toBeUndefined();
       const m = migrateProfile(old);
       expect(m.migrated).toBe(true);
-      expect(m.profile.catalogue).toBe(2);
+      expect(m.profile.catalogue).toBe(ACTION_CATALOGUE_VERSION);
       expect(m.unbound).toEqual([]);
       const want = builtinProfile('default-km').bindings.filter((b) =>
         VIEW_ACTIONS.includes(b.action),
@@ -562,6 +578,38 @@ describe('the view bindings and the action catalogue version', () => {
       const again = migrateProfile(m.profile);
       expect(again.migrated).toBe(false);
       expect(again.profile).toBe(m.profile);
+    });
+
+    it('gives a catalogue-2 profile the weapon bindings where the inputs are free, and names an action left without any (CT1)', () => {
+      const weapons = ACTIONS_ADDED_IN[3] as readonly ActionId[];
+      const v2: ControlsProfile = {
+        ...builtinProfile('default-km'),
+        catalogue: 2,
+        bindings: builtinProfile('default-km').bindings.filter((b) => !weapons.includes(b.action)),
+      };
+      const m = migrateProfile(v2);
+      expect(m.migrated).toBe(true);
+      expect(m.profile.catalogue).toBe(3);
+      expect(m.unbound).toEqual([]);
+      const want = builtinProfile('default-km').bindings.filter((b) => weapons.includes(b.action));
+      expect(m.added).toEqual(want);
+      // The player had put the gear on Space and the parking brake on the primary mouse button:
+      // the gun gets nothing and is named, the missile gets all three of its inputs.
+      const taken: ControlsProfile = {
+        ...v2,
+        bindings: [
+          ...v2.bindings,
+          { action: 'flight.gear', source: { kind: 'key', code: 'Space' } },
+          { action: 'flight.parking_brake', source: { kind: 'mouse-button', button: 0 } },
+        ],
+      };
+      const t = migrateProfile(taken);
+      expect(t.unbound).toEqual(['flight.fire_gun']);
+      expect(t.added.map((b) => b.action)).toEqual([
+        'flight.fire_missile',
+        'flight.fire_missile',
+        'flight.fire_missile',
+      ]);
     });
 
     it("leaves the player's own bindings alone and leaves an action unbound if its keys are taken", () => {

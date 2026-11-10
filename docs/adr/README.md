@@ -41,7 +41,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-34](0034-flight-control-system.md) | The flight control system: assist levels, limiters, ground mode, mouse-aim | Accepted |
 | [ADR-35](0035-ground-model-and-test-airfield.md) | Ground model, touchdown criteria and the test airfield | Accepted |
 | [ADR-36](0036-session-config-abi-v3-input-snapshot.md) | Session config, ABI v3, input frame v3, snapshot v3 and the throttle hand-over | Accepted |
-| [ADR-37](0037-controls-stack.md) | The controls stack: actions, devices, `controls/1` profiles, the pump and the binding editor | Accepted |
+| [ADR-37](0037-controls-stack.md) | The controls stack: actions, devices, `controls/1` profiles, the pump and the binding editor (amendment 1: catalogue v3, the weapons) | Accepted |
 | [ADR-38](0038-g-physiology-departure-and-structure.md) | G-physiology, departure diagnostics, structural limits and the onboard control model | Accepted |
 | [ADR-39](0039-v0-1c-gates.md) | v0.1c gates: screenshots, cameras, HUD, audio, frame rate and app flow | Accepted |
 | [ADR-40](0040-custom-renderer-stays.md) | The renderer stays custom; sky, terrain levels and quality presets | Accepted |
