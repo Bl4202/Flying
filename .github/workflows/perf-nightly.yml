@@ -2,7 +2,8 @@ name: perf-nightly
 
 # PS-0, the empty loop, for two minutes on a CI runner, kept as an artifact so a trend can be read
 # off it. The runners are shared and have no GPU, so nothing here fails the build; the strict
-# gates are checked on the reference machines (ADR-28).
+# gates are checked on the reference machines (ADR-28). And the 30-minute soak (ADR-45 L1 to L7),
+# whose report the v0.1d exit needs once on its final commit.
 on:
   schedule:
     - cron: '17 3 * * *'
@@ -11,6 +12,9 @@ on:
       seconds:
         description: Length of the measured window, in seconds
         default: '120'
+      soak_seconds:
+        description: Length of the soak's measured window, in seconds
+        default: '1800'
 
 permissions:
   contents: read
@@ -46,5 +50,32 @@ jobs:
             perf-reports
             playwright-report
             test-results
+          if-no-files-found: ignore
+          retention-days: 90
+
+  soak:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+        with:
+          nightly: 'true'
+          tools: binaryen
+      - run: pnpm build
+        env:
+          GIT_SHA: ${{ github.sha }}
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Soak
+        run: pnpm soak
+        env:
+          SOAK_SECONDS: ${{ inputs.soak_seconds || '1800' }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: soak-${{ github.run_id }}
+          path: |
+            test-results/soak
+            playwright-report
           if-no-files-found: ignore
           retention-days: 90
