@@ -257,3 +257,12 @@ start after the second. The browser's sortie, from take-off to the stop, takes a
 `SOAK_SECONDS=300` after a 120 s warm-up holds only two starts, so it cannot fail L5. The seeded
 `leak-gpu` run uses `SOAK_WARMUP_SECONDS=0` and `SOAK_SECONDS=900`, and `leak-js` keeps
 `SOAK_SECONDS=300`.
+
+**G1-c2 as measured.** `crates/fcs/tests/nn2.rs` was missing when the code was otherwise ready for
+merge 1: the plan names it in the gate table but gives it to no work package. It was written before
+the merge. The behavioural test expected the turn at M 0.85 to bleed speed, which would raise the
+heading rate. At military power the Kestrel gains speed instead (292 to 323 m/s), so the rate falls
+from 3.39 to 2.99°/s (-12 %). The gate, a change of at least 5 %, holds either way: a fixed-rate
+turn would give no change. At M 0.5 the rate is 5.51°/s, 63 % above M 0.85's (gate ≥ 10 %). The
+structural audit (G1-c1) made 24 000 calls, 800 of them on the wheels; the control system changed
+only the pitch trim (9 081 times).
