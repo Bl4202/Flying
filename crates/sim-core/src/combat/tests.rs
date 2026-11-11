@@ -302,6 +302,33 @@ fn the_player_shot_down_dies_and_respawns_rearmed() {
 }
 
 #[test]
+fn a_regular_behind_a_player_flying_straight_hits_it() {
+    // The bandit 800 m behind, co-speed and co-altitude, hunting; the player hands off. Its gun
+    // puts the pipper on the player and fires there (it once steered its nose onto its own
+    // pipper and sprayed 150 rounds without a hit).
+    let start = |north_m: f64| AirStart {
+        east_m: 0.0,
+        north_m,
+        alt_msl_m: 4_000.0,
+        heading_rad: 0.0,
+        tas_mps: 200.0,
+    };
+    let setup = CombatSetup {
+        player: Some(start(0.0)),
+        bandit: Some(start(-800.0)),
+        brain: BrainKind::Normal,
+        bandit_active: true,
+        gci: true,
+        unarmed: false,
+    };
+    let mut c = duel_core(9, duel(Spawn::Air, 2), Some(setup));
+    fly(&mut c, 60 * 60, 0);
+    let st = combat(&c).stats;
+    assert!(st.bandit_rounds > 0, "{st:?}");
+    assert!(st.hits_taken > 0, "{st:?}");
+}
+
+#[test]
 fn a_reset_after_a_duel_flies_as_a_fresh_core() {
     // DT3: a duel, a reset, the same duel again equals a fresh core in every column, and a free
     // session after a reset equals a fresh free core.

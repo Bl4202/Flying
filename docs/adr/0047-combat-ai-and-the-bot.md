@@ -257,3 +257,43 @@ Regular 40, the rest unchanged), which also drew out fights long enough to empty
 - Nearly every other failure is "no kill": after a missed merge the bandit gets behind the bot,
   and the bot does not win the rolling fight that follows within its 480 s of attack. The Recruit
   never fires, so the bot is never in danger from it.
+
+## Amendment 2 (2026-11-11): the bandit's gun puts the pipper on the player
+
+**The defect.** Rule 7 and the GUN behaviour above treat the gunsight's aim point as the place to
+point the nose. The aim point is the director's pipper (ADR-46): the place the player must be for
+rounds fired now to hit it, worked out along the bandit's present gun line. It moves with the
+nose. So GUN steered the nose towards a point that its own nose carried along, and fired whenever
+the nose was within 6 mrad of that point, which is nearly always. The player's position did not
+enter the trigger at all. Found in the pre-merge walkthrough (plan section 13): a Regular sat in
+GUN for minutes 150 to 1 100 m behind a player flying straight and fired all 150 rounds without a
+hit, and still none with its aim error set to 0. Over 24 bot sorties against the Regular and the
+Veteran it hit once. No gate measured the bandit's hits: AI1 measures position, AI8 firing.
+
+**As built now** (the bot's own gun logic, which was right):
+
+- **Rule 7:** GUN when seen within 1 200 m with the pipper within `20 mrad × 1 200 / R` of the
+  player (the line of sight, extrapolated by the contact's age).
+- **Steering:** GUN turns the velocity by the angle from the pipper to the player as the bandit
+  sees it. That is the line of sight displaced by the skill's aim error, still drawn every 0.5 s.
+  The line of sight's own rate is still fed forward.
+- **Trigger:** it fires inside 1 000 m only with a gunsight solution and the seen player within
+  6 mrad of the pipper. Bursts are 0.6 s with 0.4 s pauses, as before.
+- **No solution:** the nose goes on the player.
+
+No data changed. A Regular now shoots down a player flying straight at the merge in 33 s (28
+rounds, 10 hits, seed `1f1e5eed00000001`). A new sim-core test,
+`a_regular_behind_a_player_flying_straight_hits_it`, fails on the old code (150 rounds, no hit).
+
+**The gates on the fixed build** (seeds 1 to 50, `rugged`): BP1 against the Recruit **Standard 44,
+Reduced 41, Manual 43** (gate ≥ 40 each), Full 37 (informational). The Recruit never fires, but it
+flies GUN too, so its manoeuvres changed. BP2: **Regular 32, Veteran 33**, with the bot shot down in
+12 and 13 runs (before: 42 and 43, and no deaths). AI1 50/50 at every skill, AI2 (Regular 0.00 s,
+Veteran 0.00 s, holding course 10.23 s), AI4 (highest CAS 0.954 `V_mo`), AI5 (0 impacts over 852
+bandits), AI8 (Regular and Veteran fire in 50/50, the Recruit fires 0 rounds) and MS5 all pass. The
+bot now launches a missile now and then: 6 in the 150 BP1 runs under Standard, Reduced and Manual.
+The combat golden is re-blessed for this change, before merge 1, as the plan allows. The four
+older goldens do not move: they fly no duel.
+
+The known limit "the Recruit never fires, so the bot is never in danger from it" stands. Against a
+Regular or a Veteran the bot is now in danger, as a player is.

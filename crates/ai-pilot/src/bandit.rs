@@ -54,12 +54,12 @@ pub const DEFEND_GUN_ATA_RAD: f64 = core::f64::consts::FRAC_PI_6;
 pub const DEFEND_GUN_AA_RAD: f64 = core::f64::consts::FRAC_PI_3;
 /// GUN: the player within this range, m. // ALGO: ADR-47
 pub const GUN_RANGE_M: f64 = 1_200.0;
-/// ... and the aim point within this of the nose at that range (closer, proportionally more), rad.
+/// ... and the pipper within this of the player at that range (closer, proportionally more), rad.
 /// // ALGO: ADR-47
 pub const GUN_WINDOW_RAD: f64 = 0.020;
 /// It fires within this range, m. // ALGO: ADR-47
 pub const FIRE_RANGE_M: f64 = 1_000.0;
-/// ... with the nose this close to where it aims, rad. // ALGO: ADR-47
+/// ... with the player (as it sees it) this close to the pipper, rad. // ALGO: ADR-47
 pub const FIRE_AIM_RAD: f64 = 0.006;
 /// Bursts and pauses, s; the aim error is drawn again this often, s. // ALGO: ADR-47
 pub const BURST_S: f64 = 0.6;
@@ -444,9 +444,11 @@ impl BanditBrain {
         let range = (c.pos_bf - p.own.pos_bf).length();
         if c.visual && range <= GUN_RANGE_M {
             let window = GUN_WINDOW_RAD * GUN_RANGE_M / range.max(1.0);
+            // The pipper (where the player must be for the rounds to hit) near the player.
+            let los = c.pos_bf + c.vel_bf * c.age_s - p.own.pos_bf;
             let on = p
                 .gun_aim_point_bf
-                .is_some_and(|a| angle_between(p.nose_bf(), a - p.own.pos_bf) <= window);
+                .is_some_and(|a| angle_between(los, a - p.own.pos_bf) <= window);
             if on {
                 return BanditState::Gun;
             }
@@ -649,7 +651,12 @@ impl BanditBrain {
         }
     }
 
-    /// GUN: the nose on the aim point, off by the skill's aim error, and the trigger.
+    /// GUN: the pipper onto the player, as the bandit sees it (off by the skill's aim error), and
+    /// the trigger while the player is on the pipper.
+    ///
+    /// The gunsight's aim point is where the player must be for the rounds to hit it; it moves
+    /// with the bandit's nose. So the bandit turns by the angle from the pipper to the player
+    /// (not from the nose to the pipper, which would chase the pipper round with the nose).
     fn gun(&mut self, p: &Percept, skill: &SkillParams, c: &Contact) -> (Goal, bool) {
         let o = &p.own;
         let t = p.t_s;
@@ -660,21 +667,27 @@ impl BanditBrain {
             ];
             self.aim_until_s = t + AIM_REDRAW_S;
         }
-        let aim_point = p.gun_aim_point_bf.unwrap_or(c.pos_bf);
-        let base = (aim_point - o.pos_bf).normalized_or(p.nose_bf());
-        let (e1, e2) = across_pair(base);
-        let aim = (base + e1 * self.aim_offset[0] + e2 * self.aim_offset[1]).normalized_or(base);
         let nose = p.nose_bf();
-        // Steer the velocity so the nose (the gun) comes onto the aim: the angle of attack stays.
-        // The line of sight's own rate is fed forward, so a crossing target is tracked without
-        // the lag of the controller's turn gain.
         let v_hat = o.vel_bf.normalized_or(nose);
+        // Where it sees the player now: the line of sight, off by the aim error.
         let r = c.pos_bf + c.vel_bf * c.age_s - o.pos_bf;
+        let los = r.normalized_or(nose);
+        let (e1, e2) = across_pair(los);
+        let seen = (los + e1 * self.aim_offset[0] + e2 * self.aim_offset[1]).normalized_or(los);
+        // The pipper; without a solution, the nose goes on the player.
+        let pip = p
+            .gun_aim_point_bf
+            .map_or(nose, |a| (a - o.pos_bf).normalized_or(nose));
+        // Steer the velocity by the pipper's error, so the angle of attack stays. The line of
+        // sight's own rate is fed forward, so a crossing target is tracked without the lag of
+        // the controller's turn gain.
         let los_rate = r.cross(c.vel_bf - o.vel_bf) * (1.0 / r.length_squared().max(1.0));
-        let dir = v_hat + (aim - nose) + los_rate.cross(aim) * (1.0 / K_TURN);
+        let dir = v_hat + (seen - pip) + los_rate.cross(seen) * (1.0 / K_TURN);
         let range = (c.pos_bf - o.pos_bf).length();
-        let want =
-            skill.fires_gun && range <= FIRE_RANGE_M && angle_between(nose, aim) <= FIRE_AIM_RAD;
+        let want = skill.fires_gun
+            && p.gun_aim_point_bf.is_some()
+            && range <= FIRE_RANGE_M
+            && angle_between(seen, pip) <= FIRE_AIM_RAD;
         let fire = self.trigger(want, t);
         (
             Goal {
