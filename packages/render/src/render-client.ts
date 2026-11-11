@@ -397,7 +397,9 @@ export class RenderClient {
 
   /** The settings the renderer should have: the player's, the quality's sample count, the flags'. */
   #sendSettings(): void {
-    const fault = this.#opts.flags.fault;
+    // `leak-js` is the page's own fault; the renderer has the others.
+    const flag = this.#opts.flags.fault;
+    const fault = flag === 'leak-js' ? undefined : flag;
     const settings: RenderSettings = {
       ...this.#settings,
       sampleCount: this.#quality.sampleCount,

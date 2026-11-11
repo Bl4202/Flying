@@ -37,9 +37,35 @@ function facts(over: Partial<RunFacts> = {}): RunFacts {
     flightWanted: true,
     latencyWanted: 0,
     latency: null,
+    soak: null,
     ...over,
   };
 }
+
+describe('the dogfight run and the soak (v0.1d)', () => {
+  it('reads --scenario combat (no scripted minute by default) and --soak', () => {
+    const o = parseLocalArgs([
+      '--name',
+      'm4-combat',
+      '--class',
+      'recommended',
+      '--scenario',
+      'combat',
+      '--soak',
+    ]);
+    expect([o.scenario, o.fly, o.soak]).toEqual(['combat', 0, true]);
+    expect(parseLocalArgs(['--name', 'x', '--class', 'high']).soak).toBe(false);
+    expect(() => parseLocalArgs(['--name', 'x', '--class', 'high', '--scenario', 'war'])).toThrow(
+      /combat/,
+    );
+  });
+
+  it('judges the soak when it ran, and says so in the summary', () => {
+    expect(judgeRun(facts({ soak: 'fail' }), 'high').pass).toBe(false);
+    expect(judgeRun(facts({ soak: 'pass' }), 'high').checks.map((c) => c.id)).toContain('soak');
+    expect(judgeRun(facts(), 'high').checks.map((c) => c.id)).not.toContain('soak');
+  });
+});
 
 describe('parseLocalArgs', () => {
   it('reads a full command line', () => {
@@ -82,6 +108,7 @@ describe('parseLocalArgs', () => {
       camera: undefined,
       res: undefined,
       quality: undefined,
+      soak: false,
     });
   });
 

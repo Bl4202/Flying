@@ -16,6 +16,10 @@ const preview = (port: number, headers: 'on' | 'off') => ({
 // PW_CHANNEL=chrome uses the locally installed Chrome instead of a downloaded Chromium.
 const chromium = process.env['PW_CHANNEL'] ? { channel: process.env['PW_CHANNEL'] } : {};
 
+/** The soak's measured window and warm-up, seconds (ADR-45 section 4.7). */
+const SOAK_SECONDS = Number(process.env['SOAK_SECONDS'] ?? '1800');
+const SOAK_WARMUP_SECONDS = Number(process.env['SOAK_WARMUP_SECONDS'] ?? '120');
+
 export default defineConfig({
   testDir: 'tests/e2e',
   fullyParallel: false,
@@ -25,9 +29,24 @@ export default defineConfig({
   use: { trace: 'retain-on-failure' },
   projects: [
     // The blocking end-to-end suite, on the CI browser (the bundled Chromium headless shell).
-    { name: 'e2e', testIgnore: ['**/perf/**', '**/browsers/**'], use: { ...chromium } },
+    {
+      name: 'e2e',
+      testIgnore: ['**/perf/**', '**/browsers/**', '**/soak/**'],
+      use: { ...chromium },
+    },
     // PS-0 and the first-run benchmark. Lenient unless PERF_STRICT=1 (reference machines).
     { name: 'perf', testMatch: '**/perf/**/*.spec.ts', use: { ...chromium } },
+    // The 30-minute soak: the bot's sortie again and again, with the leak gates (ADR-45 L1 to L7).
+    {
+      name: 'soak',
+      testMatch: '**/soak/**/*.spec.ts',
+      timeout: (SOAK_WARMUP_SECONDS + SOAK_SECONDS + 600) * 1000,
+      retries: 0,
+      use: {
+        ...chromium,
+        launchOptions: { args: ['--js-flags=--expose-gc', '--enable-precise-memory-info'] },
+      },
+    },
     // Other engines: the page boots and the compat check speaks. Informational (ADR-28).
     {
       name: 'firefox',

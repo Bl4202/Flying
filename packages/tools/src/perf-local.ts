@@ -1,18 +1,21 @@
 /**
  * Scripted reference-machine run: opens the build in real Chrome, notes the compat verdict, flies
  * a scripted minute, runs the full benchmark and PS-0 (or, with `--scenario arena`, the v0.1c arena
- * run), and writes the reports and a summary under `docs/exit/v0.1c/machines/<name>/`. Run it on
+ * run, or with `--scenario combat` the v0.1d dogfight run; with `--soak`, then the 30-minute soak),
+ * and writes the reports and a summary under `docs/exit/v0.1c/machines/<name>/`. Run it on
  * the machine being measured:
  *
  *   pnpm perf:local --name m4-webgpu --class recommended
  *   pnpm perf:local --name m4-webgl2-throttled --class minimum --renderer webgl2 --throttle 4
  *   pnpm perf:local --name a-arena-cockpit --class recommended --scenario arena
  *   pnpm perf:local --name a-arena-chase --class recommended --scenario arena --camera chase
+ *   pnpm perf:local --name m4-combat --class recommended --scenario combat --soak
  *
  * See docs/runbooks/reference-machines.md. Not part of CI: it needs a real GPU and a headed
  * browser to mean anything.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { chromium, type Page } from '@playwright/test';
 import {
@@ -58,7 +61,7 @@ const save = (name: string, content: string): void => {
 const browser = await chromium.launch({
   channel: 'chrome',
   headless: opts.headless,
-  args: opts.scenario === 'arena' ? ['--autoplay-policy=no-user-gesture-required'] : [],
+  args: opts.scenario === 'ps0' ? [] : ['--autoplay-policy=no-user-gesture-required'],
 });
 const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
 const page = await context.newPage();
@@ -74,7 +77,7 @@ if (opts.throttle > 1) {
 }
 
 const facts: RunFacts = {
-  scenario: opts.scenario === 'arena' ? 'ARENA' : 'PS-0',
+  scenario: opts.scenario === 'arena' ? 'ARENA' : opts.scenario === 'combat' ? 'COMBAT' : 'PS-0',
   compatVerdict: null,
   compatCodes: [],
   adapter: '',
@@ -87,6 +90,7 @@ const facts: RunFacts = {
   flightWanted: opts.fly > 0,
   latencyWanted: opts.latency,
   latency: null,
+  soak: null,
 };
 
 /** Passes the compat screen if one shows, recording what it said. */
@@ -308,6 +312,25 @@ try {
   consoleErrors.push(`run stopped early: ${message}`);
 } finally {
   await browser.close();
+}
+
+// 4. The soak, in its own browser (Playwright's soak project, the same build).
+if (opts.soak) {
+  console.log('the soak (30 minutes and its warm-up)…');
+  const run = spawnSync('pnpm', ['soak'], {
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      SOAK_BASE_URL: opts.base,
+      SOAK_REPORT_DIR: outDir,
+      PW_CHANNEL: 'chrome',
+    },
+  });
+  const file = join(outDir, 'soak-report.json');
+  const verdict = existsSync(file)
+    ? (JSON.parse(readFileSync(file, 'utf8')) as { verdict?: { pass?: boolean } }).verdict
+    : undefined;
+  facts.soak = run.status === 0 && verdict?.pass === true ? 'pass' : 'fail';
 }
 
 const judgement = judgeRun(facts, opts.machineClass);

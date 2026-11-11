@@ -664,6 +664,17 @@ export class WebGl2Renderer implements Renderer {
     return this.#tally.snapshot();
   }
 
+  /** Kept, never deleted: the `leak-gpu` fault. */
+  readonly #leaked: (WebGLBuffer | null)[] = [];
+
+  debugLeakBuffer(): void {
+    const gl = this.#gl;
+    const b = this.#made('buffers', gl.createBuffer());
+    gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    gl.bufferData(gl.ARRAY_BUFFER, 65_536, gl.STATIC_DRAW);
+    this.#leaked.push(b);
+  }
+
   /** `obj`, counted as one more live `kind`. */
   #made<T>(kind: keyof GpuResources, obj: T): T {
     this.#tally.glMade(kind, obj);

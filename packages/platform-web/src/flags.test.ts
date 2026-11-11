@@ -55,8 +55,9 @@ describe('parseFlags', () => {
     }
   });
 
-  it('knows the two performance scenarios', () => {
+  it('knows the three performance scenarios', () => {
     expect(parseFlags('perf=ps0').perf).toBe('ps0');
+    expect(parseFlags('perf=combat').perf).toBe('combat');
     expect(parseFlags('perf=arena&res=1920x1080&camera=chase')).toMatchObject({
       perf: 'arena',
       res: { width: 1920, height: 1080 },
@@ -138,6 +139,10 @@ describe('parseFlags', () => {
     expect(f.warnings.join()).toMatch(/fault=flat-earth/);
     expect(parseFlags('debug=perf&fault=flat-earth').fault).toBe('flat-earth');
     expect(parseFlags('debug=1&fault=round-earth').fault).toBeUndefined();
+    // The soak's two seeded leaks, with debugging on only.
+    expect(parseFlags('debug=1&fault=leak-js').fault).toBe('leak-js');
+    expect(parseFlags('debug=1&fault=leak-gpu').fault).toBe('leak-gpu');
+    expect(parseFlags('fault=leak-gpu').fault).toBeUndefined();
   });
 
   it('bounds the duration', () => {

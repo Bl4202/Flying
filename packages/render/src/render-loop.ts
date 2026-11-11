@@ -76,6 +76,8 @@ export class RenderLoop {
   readonly #latencyRun = new Histogram(200, 400);
   readonly #age = new Histogram(200, 400);
   #renderer: Renderer;
+  /** The newest snapshot's tick drawn (the `leak-gpu` fault watches it run back). */
+  #lastTick = 0;
   readonly #terrain = new TerrainSet();
   readonly #rig: CameraRig;
   readonly #view: ViewState = newViewState();
@@ -282,6 +284,11 @@ export class RenderLoop {
     if (state === null) {
       return false;
     }
+    // The seeded `leak-gpu` fault: a buffer leaked at each new session (the tick runs back).
+    if (this.#settings.fault === 'leak-gpu' && state.tick < this.#lastTick) {
+      this.#renderer.debugLeakBuffer();
+    }
+    this.#lastTick = state.tick;
 
     let camera: CameraPose | undefined;
     if (this.#rigActive) {
