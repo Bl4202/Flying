@@ -90,18 +90,25 @@ fn rules_10_9_8_patrol_intercept_pursue() {
 }
 
 #[test]
-fn rule_7_gun_when_close_and_the_aim_point_is_near_the_nose() {
+fn rule_7_gun_when_close_and_the_pipper_is_near_the_player() {
     let s = skill(2);
     let mut b = BanditBrain::new(BrainKind::Normal, 1.0);
     let mut p = base(0.0);
     p.contact = Some(contact(0.0, 800.0, true));
-    // The aim point 10 mrad off the nose at 800 m (the window there is 30 mrad).
+    // The pipper 10 mrad off the player at 800 m (the window there is 30 mrad).
     p.gun_aim_point_bf = Some(p.own.pos_bf + DVec3::new(8.0, 800.0, 0.0));
     assert_eq!(decided(&mut b, &p, &s), BanditState::Gun);
     // 40 mrad off: pursue.
     let mut b = BanditBrain::new(BrainKind::Normal, 1.0);
     p.gun_aim_point_bf = Some(p.own.pos_bf + DVec3::new(32.0, 800.0, 0.0));
     assert_eq!(decided(&mut b, &p, &s), BanditState::Pursue);
+    // The pipper on the nose but the player 40 mrad off it: pursue (the pipper moves with the
+    // nose, so the nose being near it says nothing).
+    let mut b = BanditBrain::new(BrainKind::Normal, 1.0);
+    p.contact = Some(contact(32.0, 800.0, true));
+    p.gun_aim_point_bf = Some(p.own.pos_bf + DVec3::new(0.0, 800.0, 0.0));
+    assert_eq!(decided(&mut b, &p, &s), BanditState::Pursue);
+    p.contact = Some(contact(0.0, 800.0, true));
     // Not seen (GCI): no gun.
     let mut b = BanditBrain::new(BrainKind::Normal, 1.0);
     p.gun_aim_point_bf = Some(p.own.pos_bf + DVec3::new(0.0, 800.0, 0.0));
@@ -285,11 +292,17 @@ fn the_recruit_holds_its_fire_and_the_others_fire_in_bursts() {
     p.gun_aim_point_bf = Some(p.own.pos_bf + DVec3::new(0.0, 600.0, 0.0));
     let ck = Cockpit::air(Assist::Standard, p.own.pos_bf, 0.0, 200.0, 10_260.0);
     let af = ck.airframe();
-    // Its nose exactly on the aim point (the cockpit's nose is a few degrees up: aim there).
+    // The player exactly on the pipper, which is on the nose (a few degrees up in the cockpit).
     let nose = ck.ac.body.att.rotate(DVec3::X);
     p.own.att = ck.ac.body.att;
     p.own.vel_bf = ck.ac.body.vel_bf;
     p.gun_aim_point_bf = Some(p.own.pos_bf + nose * 600.0);
+    p.contact = Some(Contact {
+        pos_bf: p.own.pos_bf + nose * 600.0,
+        vel_bf: p.own.vel_bf,
+        visual: true,
+        age_s: 0.0,
+    });
     for (rank, fires) in [(1, false), (2, true), (3, true)] {
         let s = skill(rank);
         let mut b = BanditBrain::new(BrainKind::Normal, 1.0);
@@ -309,6 +322,43 @@ fn the_recruit_holds_its_fire_and_the_others_fire_in_bursts() {
             assert!(pattern[0] && pattern[30] && !pattern[45] && !pattern[59]);
         }
     }
+}
+
+#[test]
+fn the_gun_brings_the_pipper_onto_the_player_and_fires_only_with_it_there() {
+    let s = skill(2);
+    let mut p = base(0.0);
+    // The pipper on the nose, 600 m ahead; the player 30 mrad to its right (east), co-speed.
+    let nose = p.nose_bf();
+    p.gun_aim_point_bf = Some(p.own.pos_bf + nose * 600.0);
+    let off = Contact {
+        pos_bf: p.own.pos_bf + nose * 600.0 + DVec3::new(18.0, 0.0, 0.0),
+        vel_bf: p.own.vel_bf,
+        visual: true,
+        age_s: 0.0,
+    };
+    let mut b = BanditBrain::new(BrainKind::Normal, 1.0);
+    let (goal, fire) = b.gun(&p, &s, &off);
+    // It turns towards the player (east), and holds its fire.
+    let v_hat = p.own.vel_bf.normalized_or(nose);
+    assert!(goal.dir_bf.dot(DVec3::X) > 0.025, "{:?}", goal.dir_bf);
+    assert!((goal.dir_bf - v_hat).length() > 0.025);
+    assert!(!fire);
+    // The player on the pipper: no turn beyond the velocity, and it fires.
+    let on = Contact {
+        pos_bf: p.own.pos_bf + nose * 600.0,
+        ..off
+    };
+    let mut b = BanditBrain::new(BrainKind::Normal, 1.0);
+    let (goal, fire) = b.gun(&p, &s, &on);
+    assert!((goal.dir_bf - v_hat).length() < 1e-9, "{:?}", goal.dir_bf);
+    assert!(fire);
+    // Without a solution it puts the nose on the player and holds its fire.
+    p.gun_aim_point_bf = None;
+    let mut b = BanditBrain::new(BrainKind::Normal, 1.0);
+    let (goal, fire) = b.gun(&p, &s, &off);
+    assert!(goal.dir_bf.dot(DVec3::X) > 0.025);
+    assert!(!fire);
 }
 
 /// Every field of the percept made NaN in turn.

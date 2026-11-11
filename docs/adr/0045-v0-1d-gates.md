@@ -227,9 +227,10 @@ The merge starts the bandit 3 km ahead on the player's heading, tail-on. The pla
 2.85° above the bandit (the angle of attack), outside the Dart-1's caged 2° half-angle. The Recruit
 turns into the player at once, so its aspect passes the seeker's 35° limit at 1.9 s, before the
 nose comes within 2° of it at 2.0 s (seed `1f1e5eed00000001`; the `fg` probe that measured this is
-not committed). The bot playtester never launches either: 0 missiles in 44 sorties (20 against the
-Recruit, 12 each against the Regular and the Veteran, Standard). Its kills are all gun kills
-(ADR-47's known limits). The launch path is judged where its geometry is fixed: CT2 and the core's
+not committed). The bot playtester seldom launches: 0 missiles in 44 sorties before ADR-47
+amendment 2 (20 against the Recruit, 12 each against the Regular and the Veteran, Standard), and 6
+in the 150 BP1 runs after it. Nearly all its kills are gun kills. The launch path is judged where
+its geometry is fixed: CT2 and the core's
 missile tests, MS1 to MS5 in `fg sortie`, and the scene's tests for drawing a missile in flight.
 So:
 
