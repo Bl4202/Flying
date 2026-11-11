@@ -128,6 +128,14 @@ The CI `conformance` job runs `cargo xtask conformance && cargo xtask circuit` a
 reports. The same script flies in the browser with `?script=circuit` (`tests/e2e/circuit.spec.ts`),
 and its hash is the third determinism suite.
 
+**For the duel (v0.1d, ADR-47).** The bandit and the bot playtester fly through the same `sticks`:
+`sticks::air_n` takes a `LoadDemand { n, bank }` (a load factor and a bank angle, for turns harder
+than a flight-path rate would ask for) and writes the stick each assist reads; Full, which reads a
+flight-path rate, gets the one the load factor gives at the present bank. The bot playtester
+(`ai_pilot::SortieTester`) uses the tester's take-off up to the crosswind turn, then flies the climb
+and the attack itself, and hands the aircraft back with `Tester::join_downwind`: the circuit goes on
+from the downwind leg with the gear up, and lands. `Tester::runway` tells it where to return.
+
 ## Checks that guard it
 
 | Check | Catches |
@@ -137,3 +145,4 @@ and its hash is the third determinism suite.
 | `cargo xtask determinism` | `FcsState` left out of the hash: the circuit golden diverges |
 | `crates/sim-wasm/tests/fcs_no_alloc.rs`, `no_alloc.rs` | An allocation in a step, a switch, the ground blends, mouse-aim, recover, G-LOC, or the tester's sortie |
 | `cargo xtask check-layers`, `check-content-ids` | `fcs` depending on `sim-core`; a content id spelt in `fcs` code |
+| `crates/fcs/tests/nn2.rs` (ADR-45 G1-c) | The control system writing the aircraft's state (anything but the pitch trim), or turning it at a fixed rate whatever the speed |

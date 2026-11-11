@@ -1,4 +1,4 @@
-# Runtime architecture, as built in v0.1c
+# Runtime architecture, as built in v0.1d
 
 What runs where, how bytes move, and which switches change it. The decisions behind it are
 ADR-17 (roles), ADR-24 (renderer), ADR-25 (topology, IPC, ABI), ADR-26 (loop pacing); this page
@@ -6,8 +6,10 @@ is the map. Code references are to files in the repository. The aircraft inside 
 described in [flight.md](flight.md), its control laws in [fcs.md](fcs.md) and the controls on the
 page in [controls.md](controls.md). v0.1b changed the layouts and added `fg_configure` (ABI 3,
 [ADR-36](../adr/0036-session-config-abi-v3-input-snapshot.md)); v0.1c added the arena to it, `fg_reset`
-and the presentation fields of the snapshot (ABI 4, [ADR-43](../adr/0043-arenas-abi-v4-and-the-presentation-bundle.md)).
-What is drawn and heard is in [presentation.md](presentation.md) and [audio.md](audio.md).
+and the presentation fields of the snapshot (ABI 4, [ADR-43](../adr/0043-arenas-abi-v4-and-the-presentation-bundle.md));
+v0.1d added the duel to the session, the weapon buttons and the snapshot's combat block (ABI 5,
+[ADR-48](../adr/0048-combat-in-the-core.md)). What is drawn and heard is in
+[presentation.md](presentation.md) and [audio.md](audio.md); the duel itself in [combat.md](combat.md).
 
 ## Topology
 
@@ -59,8 +61,8 @@ Little-endian, defined in `crates/sim-core/src/layout.rs`, generated into
 | Block | Size | Contents |
 |---|---|---|
 | `InputFrame` v3 | 96 B | `seq` u32, `flags` u32 (1 neutral, 2 changed, 4 mouse-aim, 8 auto-GCAS), `t_ms` f64 (the **source event's** time on the shared clock, never hashed), 12 axes f32 (pitch, roll, yaw, throttle, throttle2, brake L and R, trim P, R and Y, cursor X and Y), 64 buttons, 2 hats, then at 74 `assist_req` u8, `spawn_ack` u8, `spawn_req` u8, and at 80 `t_sent_ms` f64 (diagnostic, never hashed) |
-| Snapshot v4 | 10 528 B | 64 B header (magic `FGSN`, version 4, tick, `publish_time_ms`, last input `seq`, body count, core state, `input_t_ms`); 224 B ownship at 64 to 287 (the v2 block to byte 185, then assist, control-system mode, `flags2`, spawn counter, flap detent, gear, flap and airbrake positions, brakes, steering, ground speed, vertical speed, the lowest wheel's height, the pilot's lagged g, stress and red-out, the load-factor command, the last touchdown's sink rate, the aim in use, the crash cause and the gear bits, and **from v4** at 258 the `arena` u8, at 259 the `engine_bits` u8 (running 1, afterburner lit 2, compressor stalled 4, relighting 8), then f32 at 260 dynamic pressure, 264 fuel flow (kg/s), 268 the core thrust as a fraction of military, 272 the afterburner level, 276 the largest `n_z` since the last spawn, 280 `n_max` for the present configuration and 284 the warning angle of attack (the stall angle less 3°)); 256 bodies as structure of arrays from byte 288. The v4 fields are computed at publish from state that is already hashed: no hash moved |
-| Snapshot SAB | 31 648 B | 64 B header (magic, version, slot size and count, the `published` word, one sequence counter per slot) and 3 slots |
+| Snapshot v5 | 13 592 B | 64 B header (magic `FGSN`, version 4, tick, `publish_time_ms`, last input `seq`, body count, core state, `input_t_ms`); 224 B ownship at 64 to 287 (the v2 block to byte 185, then assist, control-system mode, `flags2`, spawn counter, flap detent, gear, flap and airbrake positions, brakes, steering, ground speed, vertical speed, the lowest wheel's height, the pilot's lagged g, stress and red-out, the load-factor command, the last touchdown's sink rate, the aim in use, the crash cause and the gear bits, and **from v4** at 258 the `arena` u8, at 259 the `engine_bits` u8 (running 1, afterburner lit 2, compressor stalled 4, relighting 8), then f32 at 260 dynamic pressure, 264 fuel flow (kg/s), 268 the core thrust as a fraction of military, 272 the afterburner level, 276 the largest `n_z` since the last spawn, 280 `n_max` for the present configuration and 284 the warning angle of attack (the stall angle less 3°)); 256 bodies as structure of arrays from byte 288; **from v5** the combat block at 10 528 (ADR-48): flags u16, the seeker's mode, the last launch refusal, rounds and missiles left, the bandit count and the newest event's sequence number, then the pipper (f64 x 3), the seeker's signal, the target's range, closure and aspect, the player's health and the refusal's age, twelve u32 counters (`COMBAT_COUNTER`) from 10 592, one 96 B bandit from 10 640, four 40 B missile slots from 10 736, the tracers (a count and 48) from 10 896, eight 32 B explosions from 12 824 and the 32-entry event ring (16 B each) from 13 080. The v4 and v5 fields are computed at publish from state that is already hashed; the combat block is all zero without a duel |
+| Snapshot SAB | 40 840 B | 64 B header (magic, version, slot size and count, the `published` word, one sequence counter per slot) and 3 slots |
 | Input ring SAB | 6 176 B | 32 B header (record size, capacity 64, write and read positions, dropped count) and 64 frames |
 | Profile block | 160 B | ticks, tick time (last, EWMA), 11 stage times (last, EWMA), 13 counters (inputs applied, non-finite, stale and overflowed; FDM faults, crashes, respawns, snapshots, trim failures; touchdowns, hard landings, G-LOC events, assist changes) |
 | Terrain level | 465 980 B | origin f64x3, posts, spacing, then 129 x 129 vertices of position, normal and height; four of them (L0 250 m spacing, L1 1 km, L2 4 km, L3 16 km), filled by `fg_terrain_fill` from the sim's own terrain function |
@@ -83,12 +85,12 @@ g limiter 8, overspeed 16, overstress 32, blackout 64, G-LOC 128, red-out 256, h
 mouse-aim in use 16 384, throttle held 32 768. `crash_cause` is 0 none, 1 airframe impact, 2 sink
 rate, 3 gear collapse, 4 tunnelling, 5 numerical. The authority is `crates/sim-core/src/layout.rs`.
 
-## Sim ABI v4 (`crates/sim-wasm/src/abi.rs`)
+## Sim ABI v5 (`crates/sim-wasm/src/abi.rs`)
 
 ```text
-fg_abi_version() = 4         fg_init(seed_lo, seed_hi)        fg_core_state()
+fg_abi_version() = 5         fg_init(seed_lo, seed_hi)        fg_core_state()
 fg_content_reserve(len)      fg_load_content(len) -> status
-fg_configure(spawn, assist, g_effects, arena) -> config_status (idle core only)
+fg_configure(spawn, assist, g_effects, arena, scenario, skill) -> config_status (idle core only)
 fg_reset() -> status         any state to idle, the world rebuilt; content, models and the
                              snapshot buffer (and its pointer) kept
 fg_start()  fg_pause()  fg_resume()                           fg_set_input_script(kind)
@@ -100,23 +102,31 @@ fg_tick_lo/hi()              fg_state_hash_lo/hi()            fg_subsystem_hash_
 import: env.fg_now() -> f64  (profiling clock; the threads build also imports env.memory)
 ```
 
-Hash kinds: 0 combined, 1 tick, 2 rng, 3 bodies, 4 ownship, 5 input, 6 content. Input scripts: 0
-none (live input), 1 erratic (the 10⁶-tick determinism run), 2 flight60 (the 60 s scripted flight
-of `AC-11.7`), 3 circuit (the virtual tester's sortie, ADR-33). Buttons: 0 reset, 1 and 2 pitch trim
-nose up and down (held), 3 gear lever (toggle), 4 flaps down, 5 flaps up, 6 airbrake (held = open),
-7 parking brake (toggle), 8 recover (held), 9 trim reset, 10 flap cycle. `fg_configure` takes the
+Hash kinds: 0 combined, 1 tick, 2 rng, 3 bodies, 4 ownship, 5 input, 6 content, 7 combat (the
+constant `NOCOMBAT` hash without a duel). Input scripts: 0 none (live input), 1 erratic (the
+10⁶-tick determinism run), 2 flight60 (the 60 s scripted flight of `AC-11.7`), 3 circuit (the
+virtual tester's sortie, ADR-33), and in a duel only 4 sortie (the bot playtester's whole sortie,
+ADR-47), 5 hold (holds its first tick's heading, height and speed) and 6 hold-fire (the same, and
+the missile button once at the first armed lock). Buttons: 0 reset, 1 and 2 pitch trim nose up
+and down (held), 3 gear lever (toggle), 4 flaps down, 5 flaps up, 6 airbrake (held = open), 7
+parking brake (toggle), 8 recover (held), 9 trim reset, 10 flap cycle, 11 fire the gun (held), 12
+fire a missile (press). Crash causes add 6 shot down and 7 collision. `fg_configure` takes the
 spawn (0 runway, the default; 1 air), the assist level (1 Full, 2 Standard, the default; 3 Reduced;
 4 Manual), the g-effects dial (0 Off, 1 Reduced, 2 Full, the default) and the arena (0 `rugged`, the
-default: the v0.1b world; 1 `plain`: a 40 m plain with gentle noise and the same runway), and returns
-0 ok, 1 the core has started, 2 an argument is out of range, 3 no core; the session is in the
-`ownship` hash (the arena in its fourth byte, so `rugged` hashes as v0.1b did). `fg_reset` returns
+default: the v0.1b world; 1 `plain`: a 40 m plain with gentle noise and the same runway), the
+scenario (0 free flight, the default; 1 duel; 2 duel from the merge, the bandit 3 km ahead of an
+air start, which refuses a runway spawn) and the bandit's skill (its rank, 1 to 3; 0 in free
+flight), and returns 0 ok, 1 the core has started, 2 an argument is out of range, 3 no core; the
+session is in the `ownship` hash (the arena in its fourth byte, so `rugged` hashes as v0.1b did;
+`scenario << 32 | skill << 40`, so free flight hashes as v0.1c did). `fg_reset` returns
 the core to idle after any state (the main menu's Fly and Main menu use it); it clears the input
 state, so the host sets the script again after `fg_configure`.
 `fg_init` leaves the core idle; callers load content, configure, choose a script, then `fg_start`.
 Changes during the sortie travel in the input frame (an assist level, a spawn request read on the
 reset press, the spawn acknowledgement), so they are replayed. The pointer-lifetime and
 view-refresh rules are in `crates/sim-wasm/UNSAFE.md`. v0.1b added `fg_configure` and changed the
-layouts (ABI 3); v0.1c added the arena, `fg_reset` and the v4 snapshot fields (ABI 4).
+layouts (ABI 3); v0.1c added the arena, `fg_reset` and the v4 snapshot fields (ABI 4); v0.1d the
+scenario and skill, scripts 4 to 6, buttons 11 and 12, hash kind 7 and the combat block (ABI 5).
 
 ## Messages
 
@@ -125,7 +135,7 @@ Typed in `packages/sim-bridge/src/messages.ts` (Sim Worker) and
 
 | To the Sim Worker | Effect |
 |---|---|
-| `init` | load the module and the content pack, configure the session (spawn, assist, g-effects, arena), create the core, open the channels; the workers start at boot and the core stays idle until Fly |
+| `init` | load the module and the content pack, configure the session (spawn, assist, g-effects, arena, scenario, skill), create the core, open the channels; the workers start at boot and the core stays idle until Fly |
 | `configure` | idle core only: a session and an input script, then all four terrain levels are filled again (Fly) |
 | `reset` | any state to idle, the world rebuilt, the terrain levels refilled (Main menu) |
 | `start`, `pause`, `resume`, `stop` | lifecycle; `pause` and `resume` re-anchor the clock |
@@ -137,7 +147,7 @@ Typed in `packages/sim-bridge/src/messages.ts` (Sim Worker) and
 | From the Sim Worker | Contents |
 |---|---|
 | `ready` | ABI version, build, sleeper, content hash |
-| `stats` (4 Hz) | tick, rate, dropped time, tick-cost and input-age quantiles, the control, poll and tick latency of AC-58.3 (each for the report interval and since `reset-run`), queue drops, core state, the aircraft block and status of the latest snapshot (the page's source of it in message mode), stage timings when profiling |
+| `stats` (4 Hz) | tick, rate, dropped time, tick-cost and input-age quantiles, the control, poll and tick latency of AC-58.3 (each for the report interval and since `reset-run`), queue drops, core state, the aircraft block and status of the latest snapshot (the page's source of it in message mode), the duel's `CombatStatus` and the WebAssembly memory's size (v0.1d), stage timings when profiling |
 | `state`, `hash`, `error` | as named |
 
 The Render Worker takes `init` (the canvas, snapshot channel, terrain port, view channel), `canvas` (a
@@ -146,12 +156,13 @@ debug view and seeded fault, the HUD palette, scale and words), `view` (the view
 where there is no shared buffer), `cockpit` and `presentation` (the aircraft's data, from the
 bundle), `read-pixels` (the answer includes the mean luminance), `read-image` (the picture as RGBA,
 top row first, for the screenshot gates), `reset-run`, `stall` and `stop`, and reports `ready`,
-`stats` (with a mask of the terrain levels it holds), `need-canvas`, `need-main-thread`, `lost`,
+`stats` (with a mask of the terrain levels it holds, the live GPU buffers and textures, and from
+v0.1d the frames drawn with the bandit, a missile and a tracer), `need-canvas`, `need-main-thread`, `lost`,
 `pixels`, `image` and `error`. Terrain arrives on its own port as `{ type: 'terrain', level, patch }`.
 The sound is not fed by a message: the status feed on the main thread reads the snapshot every
 animation frame and sets the worklet's parameters; in message mode (no isolation) it uses the 4 Hz
 `stats`, which is slower than the plan's 30 Hz `audio-feed` and is recorded as a gap in
-[the v0.1c exit](../exit/v0.1c.md).
+[the v0.1c exit](../exit/v0.1c.md). The combat voices read the same feed's `combat` (v0.1d).
 
 ## URL flags (`packages/platform-web/src/flags.ts`)
 
@@ -164,19 +175,21 @@ Unknown keys and bad values are ignored with a warning in the log.
 | `flags` | `transfer`, `mainrender`, `timer`, `stall` | force copies instead of shared memory; render on the main thread; timers instead of `Atomics.wait`; allow the stall hooks |
 | `compat` | `1` | show the compat screen even if it was acknowledged |
 | `selftest` | `1`, `renderer`, `audio`, `screens` | the determinism self-test table; the renderer contract in this browser; the audio self-test; the screenshot gates (`case=horizon|terrain|hud`) |
-| `perf` | `ps0`, `arena` | run PS-0 (the empty loop) or the arena scenario (the circuit over the rugged arena with the HUD and the sound, in the cockpit at High in a 1920 x 1080 buffer unless the URL says) and show the report |
+| `perf` | `ps0`, `arena`, `combat` | run PS-0 (the empty loop), the arena scenario (the circuit over the rugged arena with the HUD and the sound, in the cockpit at High in a 1920 x 1080 buffer unless the URL says) or the COMBAT scenario (the bot's sortie from the merge against a Regular, the same view, v0.1d) and show the report |
 | `seconds` | 1 to 3600 | length of the measured window of a perf run |
 | `bench` | `quick`, `full` | run the first-run benchmark and show the report |
 | `spawn` | `runway` (default), `air` | where the aircraft starts and respawns; overrides the stored setting for the visit |
 | `assist` | `full`, `standard` (default), `reduced`, `manual` | the assist level to start in |
 | `g` | `off`, `reduced`, `full` (default) | the g-effects dial |
-| `script` | `circuit` | the virtual tester flies the circuit instead of the player (a test aid; no controls are created) |
+| `script` | `circuit`, `sortie` | the virtual tester flies the circuit, or (in a duel) the bot playtester flies a whole sortie, instead of the player (test aids; no controls are created) |
+| `scenario` | `free`, `duel`, `merge` | free flight or a duel, in place of the player's setting; `merge` is the duel's test start, the bandit 3 km ahead (it forces `spawn=air`) |
+| `skill` | `1`, `2`, `3` | the duel's bandit (Recruit, Regular, Veteran), in place of the player's setting |
 | `fly` | `1` | skip the first run and the main menu and start flying at once (`perf` and `script` imply it) |
 | `arena` | `rugged` (default), `plain` | the procedural test arena of the sortie |
 | `camera` | `cockpit`, `chase` | the camera a sortie starts in, in place of the player's setting |
 | `res` | `WxH` | fix the drawing buffer's size (perf and screenshot runs) |
 | `quality` | `low`, `medium`, `high` | the graphics preset, in place of the one chosen (a test aid) |
-| `view`, `fault` | `classify`; `flat-earth`, `no-skirts`, `hud-body-axes` | the classify view (flat key colours, for the screenshot gates) and the seeded render faults (the faults are honoured only with `debug=1`) |
+| `view`, `fault` | `classify`; `flat-earth`, `no-skirts`, `hud-body-axes`, `leak-js`, `leak-gpu` | the classify view (flat key colours, for the screenshot gates) and the seeded faults: the render faults, and the soak's leaks (2 KB of JavaScript kept every frame; a GPU buffer made at each new session and never freed). Faults are honoured only with `debug=1` |
 
 Keys and toggles: `Ctrl+Shift+D` opens the debug overlay and `Esc` the pause menu. The default
 keyboard bindings are in [controls.md](controls.md) and can be changed in the binding editor. The

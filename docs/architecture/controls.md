@@ -12,7 +12,7 @@ profile, the pump, the binding editor and the latency measurement. The decisions
 
 | Module | What it does |
 |---|---|
-| `actions.ts` | The catalogue: 24 actions, each with a kind, a context and a group |
+| `actions.ts` | The catalogue (v3): 37 actions, each with a kind, a context and a group |
 | `sources.ts` | What a binding can name: a key, a mouse button, the wheel, a pad button or axis, a hat direction |
 | `profile.ts` | The `controls/1` type, `parseControlsProfile` (errors as JSON pointers), `serializeProfile` (canonical), the three built-ins, `chooseProfile` |
 | `profile-edit.ts` | The pure edits the editor makes to a profile |
@@ -46,14 +46,26 @@ Page keys):
 | Gear, flaps | `L` gear lever (up is refused on the wheels), `V` flaps up, take-off, landing, up |
 | Brakes | `B` wheel brakes while held, `P` parking brake, `N` airbrake (toggle) |
 | Assist | `U` recover (held), `F8` next assist level |
+| Weapons | `Space`, or the primary mouse button while the pointer is locked, fires the gun while held; `M`, `Enter` or the middle button launches a missile |
 | Mouse | `O` aim, then stick, then off; Pointer Lock on a click |
 | System | `R` respawn, `Esc` pause menu, `Ctrl+Shift+D` the debug overlay |
 
 Gamepad: right stick roll and pitch, triggers yaw, left stick Y the throttle, left stick click the
 afterburner (held), the d-pad trim (up and down) and flaps (left and right), Y gear, X brakes, B
-airbrake, A parking brake, left bumper recover, Back respawn, Start pause. Joystick or HOTAS: axes
-0 and 1 the stick, axis 2 an absolute throttle lever, axis 3 or 5 yaw, the hat trim and flaps,
-buttons 0 to 3 brakes, airbrake, gear and flaps. **Both pad profiles were tested with stubbed
+airbrake, A parking brake, right bumper the gun, left bumper a missile, Back recover, Start pause
+(respawn has no pad binding since v0.1d; it is in the pause menu). Joystick or HOTAS: axes 0 and 1
+the stick, axis 2 an absolute throttle lever, axis 3 or 5 yaw, the hat trim and flaps, button 0
+(the trigger) the gun, 1 a missile, 2 gear, 3 flaps, 4 brakes, 5 airbrake.
+
+**v0.1d moved bindings** (ADR-37 amendment 1, catalogue v3): the weapons took the pad's bumpers
+and the joystick's first two buttons, so recover moved from the left bumper to Back and the
+joystick's brakes and airbrake to buttons 4 and 5. A stored custom profile from catalogue 2 or
+older gains the weapon bindings once, where the inputs are free; an action left with none is named
+in the controls' migration note.
+
+**Ctrl+Space.** `Ctrl` is a throttle-down key, so a player holding it while firing presses
+`Ctrl+Space`, which on macOS switches the input source when more than one is installed. Use `Page
+Down` for the throttle, or rebind the gun. **Both pad profiles were tested with stubbed
 Gamepad API objects only**; no hardware was available (the exit record says so). The joystick
 profile is a guess at the usual layout, and the editor is how a real device gets fixed.
 
@@ -74,7 +86,10 @@ or a message.
   its spawns from 1 again); the pump also adopts the idle core's `spawn_seq` of 0 between sorties, so the
   reset is the second guard and the end-to-end second-Fly test cannot tell it from the first.
 - The `menu` context centres the sticks, holds the throttle and ignores the flight buttons; pause
-  still works. A pad that goes away reads neutral at once (the throttle holds) and the profile
+  still works. In it the page claims only the keys of menu actions (Escape), so `Enter` and `Space`
+  work the menus' buttons; in flight it claims every bound key.
+- The gun's trigger waits for a release after a context change, like a press: closing a menu with
+  `Space` still held does not open fire until `Space` is released and pressed again. A pad that goes away reads neutral at once (the throttle holds) and the profile
   re-binds within a quarter of a second of its return (AC-58.6).
 - It makes no objects, arrays, strings or closures per update. V8 still boxes some fractional
   numbers, so the bound is measured (`pump.garbage.test.ts`: nothing at rest with whole-number

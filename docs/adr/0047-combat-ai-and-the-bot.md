@@ -1,6 +1,6 @@
 # ADR-47: Combat AI: the bandit's state machine, the manoeuvre controller and the bot playtester
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-11-09
 - **Affects:** ADR-33, ADR-34, ADR-45; GDD 19.4, 19.6, 19.9, 19.12, 66.3 (M1), B.5;

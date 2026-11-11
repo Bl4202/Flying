@@ -49,11 +49,11 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-42](0042-flight-audio.md) | Flight audio: synthesis in an AudioWorklet (amendment 2: the duel's sounds) | Accepted |
 | [ADR-43](0043-arenas-abi-v4-and-the-presentation-bundle.md) | Test arenas, session reset (ABI v4), snapshot v4 and the presentation bundle | Accepted |
 | [ADR-44](0044-app-flow-settings-pwa.md) | Application flow, first run, the main menu, settings v2, the PWA and offline | Accepted |
-| [ADR-45](0045-v0-1d-gates.md) | v0.1d gates: weapons, the bandit, the bot playtester, the soak, the debrief and G1 for a solo project | Proposed |
-| [ADR-46](0046-weapons.md) | Weapons: the gun, the director gunsight, the IR seeker, the PN missile and the fuze | Proposed |
-| [ADR-47](0047-combat-ai-and-the-bot.md) | Combat AI: the bandit's state machine, the manoeuvre controller and the bot playtester | Proposed |
-| [ADR-48](0048-combat-in-the-core.md) | Combat in the core: the duel scenario, ABI v5, snapshot v5, events and the combat hash | Proposed |
-| [ADR-49](0049-debrief-statistics-and-the-feel-questionnaire.md) | The dogfight in the app: mode, debrief, statistics and the feel questionnaire | Proposed |
+| [ADR-45](0045-v0-1d-gates.md) | v0.1d gates: weapons, the bandit, the bot playtester, the soak, the debrief and G1 for a solo project (amendment 1: BP1 under Full, MS5's cells; amendment 2: the browser specs as built, G1-c2 as measured) | Accepted |
+| [ADR-46](0046-weapons.md) | Weapons: the gun, the director gunsight, the IR seeker, the PN missile and the fuze | Accepted |
+| [ADR-47](0047-combat-ai-and-the-bot.md) | Combat AI: the bandit's state machine, the manoeuvre controller and the bot playtester (amendment 1: what the gates asked; amendment 2: the bandit's gun puts the pipper on the player) | Accepted |
+| [ADR-48](0048-combat-in-the-core.md) | Combat in the core: the duel scenario, ABI v5, snapshot v5, events and the combat hash | Accepted |
+| [ADR-49](0049-debrief-statistics-and-the-feel-questionnaire.md) | The dogfight in the app: mode, debrief, statistics and the feel questionnaire | Accepted |
 
 ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist before any tuning
 (AC-66.4).

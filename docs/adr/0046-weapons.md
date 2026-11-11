@@ -1,6 +1,6 @@
 # ADR-46: Weapons: the gun, the director gunsight, the IR seeker, the PN missile and the fuze
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-11-09
 - **Affects:** ADR-10, ADR-29, ADR-30, ADR-45; GDD 15.4, 15.5, 15.6, 15.7, 15.12, 18.2, 18.8.2, C.1,
