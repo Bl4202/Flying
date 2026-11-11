@@ -2,9 +2,10 @@
  * The duel in the browser, from the merge (the bandit starts 3 km ahead on the same heading, a
  * Recruit that never fires): the HUD's target and gunsight follow the core's cues (HU5's live half;
  * the pixels are the renderer contract's), the bandit and the tracers are drawn, the weapon keys
- * fire (CT3), and the duel's one-shot sounds start on time (AU3, on the audio self-test page). A
- * missile in flight is drawn by the scene's tests: hands off the stick no lock comes at the merge
- * (the Recruit turns past the seeker's 35° aspect before it is inside its 2°).
+ * fire (CT3), the page keeps its DOM budget (DOM), and the duel's one-shot sounds start on time
+ * (AU3, on the audio self-test page). A missile in flight is drawn by the scene's tests: hands off
+ * the stick no lock comes at the merge (the Recruit turns past the seeker's 35° aspect before it is
+ * inside its 2°).
  */
 import { expect, test, type Page } from '@playwright/test';
 import { byId, CHEAP, COUNTER, HEADERS_BASE, openGame, watchErrors } from './support.ts';
@@ -116,6 +117,24 @@ test('Space fires the gun (the rounds fall, the tracers draw), and M reaches the
     expect(after?.missiles).toBe(missiles - 1);
   else expect(after?.missiles).toBe(missiles);
   expect(problems).toEqual([]);
+});
+
+test('in flight in a duel with the overlay open, the page stays within 150 DOM nodes (DOM)', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await merge(page);
+  // The overlay (open with ?debug=1) shows the duel's row.
+  await expect(byId(page, 'ov-combat')).toHaveAttribute('data-value', /\d/, { timeout: 10_000 });
+  // AC-53.4: the page as a whole, text nodes included.
+  const nodes = await page.evaluate(() => {
+    const walker = document.createTreeWalker(document, NodeFilter.SHOW_ALL);
+    let n = 0;
+    while (walker.nextNode()) n += 1;
+    return n;
+  });
+  test.info().annotations.push({ type: 'DOM nodes', description: String(nodes) });
+  expect(nodes).toBeLessThanOrEqual(150);
 });
 
 test("the duel's one-shot sounds start within 100 ms of the counter that rose (AU3)", async ({

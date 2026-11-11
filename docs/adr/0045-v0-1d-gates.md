@@ -266,3 +266,7 @@ from 3.39 to 2.99°/s (-12 %). The gate, a change of at least 5 %, holds either 
 turn would give no change. At M 0.5 the rate is 5.51°/s, 63 % above M 0.85's (gate ≥ 10 %). The
 structural audit (G1-c1) made 24 000 calls, 800 of them on the wheels; the control system changed
 only the pitch trim (9 081 times).
+
+**Where two gates are tested.** ST6's unit tests are in `packages/ui/src/debrief.test.ts` ("ST6:
+the feel questionnaire"), not a `feel-survey.test.ts` of their own. The DOM budget in a duel, with
+the overlay open, is a test in `combat.spec.ts`. `overlay.spec.ts` keeps its free-flight one.
