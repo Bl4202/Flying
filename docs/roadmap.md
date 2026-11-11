@@ -85,7 +85,7 @@ Durations are the GDD's planning estimates for a core team of 8–12 (§66). The
 | v0.1a | 5 weeks | — | 2026-10-14 (ADR-31) | ✅ tagged `v0.1a` |
 | v0.1b | 4 weeks | ≈ 13 engineer-weeks | 2026-10-22 (ADR-32, ADR-33) | ✅ tagged `v0.1b` (2026-10-28) |
 | v0.1c | 4 weeks | ≈ 14.5 engineer-weeks | 2026-11-03 (ADR-39) | ✅ tagged `v0.1c` (2026-11-08) |
-| v0.1d | 3 weeks | ≈ 13.6 engineer-weeks | 2026-11-09 (ADR-45) | ▶ |
+| v0.1d | 3 weeks | ≈ 13.6 engineer-weeks | 2026-11-09 (ADR-45) | ✅ tagged `v0.1d` (2026-11-11) |
 
 The month figures below are kept as relative sizes. They will be replaced once OQ-02 (team size and release scale) is decided.
 
@@ -126,7 +126,7 @@ Several GDD gates need people the project does not have. v0.1d set the precedent
 | Version | Name | GDD milestone | Outline phase | Priorities | Sub-milestones | Est. duration | Status | Playable result |
 |---|---|---|---|---|---|---|---|---|
 | **v0.0** | Foundations | M0 | — (§125) | infrastructure | a, b | 2 mo | v0.0a done; v0.0b exit open on two owner runs | Tech demo: render + sim + input + CI loop |
-| **v0.1** | Flight Prototype | M1 | §126 | P1 | a, b, c, d | 4 mo | a ✅ b ✅ c ✅ d ▶ | One aircraft that flies well, a gun, an IR missile, one bandit |
+| **v0.1** | Flight Prototype | M1 | §126 | P1 | a, b, c, d | 4 mo | a ✅ b ✅ c ✅ d ✅ (M1 complete on bot evidence; G1(a) open, OQ-11) | One aircraft that flies well, a gun, an IR missile, one bandit |
 | **v0.2** | Geographic Sandbox | M2 | §127 | P2 | a, b, c, d | 5 mo | ○ | Pick two places on Earth and fly between them |
 | **v0.3** | Combat | M3 | §128, §132, §133 | P3, P4 | a, b, c, d | 6 mo | ○ | **First Playable** (v0.3b), **Second Playable** (v0.3d) |
 | **v0.4** | Procedural Missions | M4 | §129 | P5 (P4) | a, b, c | 5 mo | ○ | Generated, escalating missions anywhere; 14 mission types |
@@ -241,8 +241,8 @@ Era variants: the **Kestrel G3 variant** (Appendix D.7) arrives at v0.4b with th
 
 | ID | Name | Class | Era | Version | Needed by |
 |---|---|---|---|---|---|
-| `gs27` | GS-27 | Revolver gun, 27 mm | G4 | ✅ v0.1d (in progress) | The Kestrel's gun (ADR-46) |
-| `dart1` | Dart-1 | SRM, rear-aspect IR | G3 | ✅ v0.1d (in progress) | The v0.1d missile (simple proportional navigation) |
+| `gs27` | GS-27 | Revolver gun, 27 mm | G4 | ✅ v0.1d | The Kestrel's gun (ADR-46) |
+| `dart1` | Dart-1 | SRM, rear-aspect IR | G3 | ✅ v0.1d | The v0.1d missile (simple proportional navigation) |
 | `lance4` | Lance-4 | MRM, active radar | G4 | v0.3a | FP1's radar missile (§67.1 step 9) |
 | `lance2` | Lance-2 | MRM, semi-active radar | G3/G4 | v0.3a | The SARH illumination model; the G3 era |
 | `dart4` | Dart-4 | SRM, all-aspect imaging IR, HOBS | G4.5 | v0.3a | The Peregrine's WVR missile (§67.2) |
@@ -560,7 +560,7 @@ Each cell says what the version adds to the chapter: **stub** (interface and a d
 
 **Note (2026-11-09):** the gates are fixed first in [ADR-45](adr/0045-v0-1d-gates.md), before any weapon, AI or combat code. Owner decisions (2026-11-08): **D1** the automated gates decide the tag (the conformance suite, an audit of the flight-control system, and a bot playtester that takes off, kills a bandit and lands under every assist level), the owner's own ratings are recorded and do not block, and the 12-tester blind study is dropped from this milestone and kept open as OQ-11; **D2** the weapon and AI data go into the sim pack and the four existing goldens are re-blessed once, proven by a checker that only the `content` and `combined` columns changed; **D3** the bandit fires its gun by skill (the Recruit never does) and has no missiles. The scope is larger than the 3-week slot (about 13.6 engineer-weeks): expect the slot to slip. Work is on branch `v0.1d`. The exit checklist is [docs/exit/v0.1d.md](exit/v0.1d.md).
 
-**Status (2026-11-10):** on branch `v0.1d` (draft PR #15). The weapons crate (GS-27 ballistics and gunsight, the Dart-1's IR seeker, PN guidance and proximity fuze; [ADR-46](adr/0046-weapons.md)), the bandit and the bot playtester ([ADR-47](adr/0047-combat-ai-and-the-bot.md)), combat in the core with ABI v5 ([ADR-48](adr/0048-combat-in-the-core.md)), the one re-bless of the goldens and the host side of combat are committed. The bot playtester's gate (BP1) passes under Standard, Reduced and Manual; Full is informational by owner decision (2026-11-10). The HUD and presentation work is next.
+**Status (2026-11-11): done on bot evidence**, with G1(a) open as OQ-11; the tag `v0.1d` goes on merge 2's commit once its pipeline and staging are green. The code is PR #15 (merge 1, `261d08b`), the evidence and documents merge 2; the exit checklist is [docs/exit/v0.1d.md](exit/v0.1d.md). One gun and one rear-aspect IR missile ([ADR-46](adr/0046-weapons.md)), one bandit at three skills and the bot playtester ([ADR-47](adr/0047-combat-ai-and-the-bot.md)), combat in the core with ABI v5 ([ADR-48](adr/0048-combat-in-the-core.md)), and the Dogfight mode, debrief, statistics and feel questionnaire ([ADR-49](adr/0049-debrief-statistics-and-the-feel-questionnaire.md)). The bot takes off, shoots a Recruit down and lands in 44, 41 and 43 of 50 sorties under Standard, Reduced and Manual (gate 40; Full 37, informational by owner decision); the NN-2 audit shows the control system never moves the aircraft. On the M4 the dogfight holds the display's 120 FPS at 1920 x 1080, High, frame interval p99 9.5 ms, with control latency p95 16.75 ms during a duel; the 30-minute soak passes all of L1 to L7 on the M4 (60.02 Hz, a heap slope of 0.03 MB per 10 minutes, and no growth in DOM, WebAssembly memory, GPU buffers or audio nodes over 7 sortie starts) and in CI's nightly. The four older determinism goldens moved only in their `content` column (one proven re-bless). The pre-merge walkthrough found the bandit's gun unable to hit (it chased its own pipper); it was fixed before merge 1. The owner's checklist is open and does not block.
 
 ## 6.5 Delivered by v0.1
 
@@ -580,12 +580,12 @@ Each cell says what the version adds to the chapter: **stub** (interface and a d
 |---|---|
 | G1 (a) blind panel | Deferred by D1; open as OQ-11 |
 | G1 (b) conformance | ✅ `AC-3.2` 12 of 12 |
-| G1 (c) no fixed-rate-turn fallback (NN-2) | ADR-45 G1-c1 and G1-c2 |
+| G1 (c) no fixed-rate-turn fallback (NN-2) | ✅ v0.1d (ADR-45 G1-c1 and G1-c2) |
 | `AC-3.2` | ✅ |
-| 60 FPS on Recommended in the arena | ✅ v0.1c |
-| Input-to-control ≤ 25 ms p95 | ✅ v0.1b (17.25 ms) |
-| 30-minute soak with no leaks | v0.1d |
-| `AC-4.5` precursor | v0.1d (bot playtester, D1) |
+| 60 FPS on Recommended in the arena | ✅ v0.1c; v0.1d in the dogfight (PF1) |
+| Input-to-control ≤ 25 ms p95 | ✅ v0.1b (17.25 ms); v0.1d with a duel running (16.75 ms) |
+| 30-minute soak with no leaks | ✅ v0.1d (the M4 and the nightly run) |
+| `AC-4.5` precursor | ✅ v0.1d (the bot playtester, BP1, D1) |
 
 **Carried forward from M1:** the hero Kestrel model (v0.2c, section 3.10); head tracking (§58.7, part of M1's chapter but not of M1's scope in §66.3; now v0.4c); the owner's look-and-listen checklist from v0.1c and the owner's feel questionnaire from v0.1d (recorded, not blocking).
 
