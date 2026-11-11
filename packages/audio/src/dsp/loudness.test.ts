@@ -78,8 +78,9 @@ describe('AU5: the 60 s combat mix', () => {
     );
   });
 
-  it('peaks at no more than -1 dBTP (its loudness is reported)', () => {
-    for (const cockpit of [true, false]) {
+  // One view per test: each renders 60 s of audio, slow on a shared CI runner.
+  for (const cockpit of [true, false]) {
+    it(`peaks at no more than -1 dBTP in the ${cockpit ? 'cockpit' : 'chase'} view (its loudness is reported)`, () => {
       const dsp = new FlightDsp(profile);
       const { left, right } = render(dsp, combat.length / 10, (_block, t) => {
         const row = combat[Math.min(Math.floor(t * 10), combat.length - 1)];
@@ -94,6 +95,6 @@ describe('AU5: the 60 s combat mix', () => {
         `AU5 ${cockpit ? 'cockpit' : 'chase'}: ${lufs.toFixed(2)} LUFS, ${tp.toFixed(2)} dBTP`,
       );
       expect(tp).toBeLessThanOrEqual(-1);
-    }
-  }, 60_000);
+    }, 120_000);
+  }
 });
