@@ -979,7 +979,7 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
               assistRequest: controls.pump.assistRequest,
               stats: controls.pump.stats,
             },
-      menu: () => menus?.current ?? null,
+      menu: () => debriefFlow.current ?? menus?.current ?? null,
       flow: () => ctx.flow.state().name,
       audio: () => ({
         kind: audio.kind,

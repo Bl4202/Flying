@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { CONTENDED, type SnapshotSource } from '@flying/sim-bridge';
+import { BANDIT_LIFE, MISSILE_STATE } from '@flying/sim-bridge/layout';
 import { SnapshotInterpolator } from './interp.ts';
 import { NullRenderer } from './null-renderer.ts';
 import { RenderLoop } from './render-loop.ts';
 import { FRAME_AT, SceneBuilder } from './scene.ts';
-import { makeSnapshot } from './snapshot-fixture.ts';
+import { type FixtureCombat, makeSnapshot } from './snapshot-fixture.ts';
 import { FIXTURE_COCKPIT, FIXTURE_FONT, FIXTURE_HUD, FIXTURE_MODEL } from './model-fixture.ts';
 import { makeTestPatch } from './terrain-test-patch.ts';
 
@@ -352,5 +353,36 @@ describe('RenderLoop', () => {
       expect([u?.[16], u?.[24]]).toEqual([1, 1]);
       expect(u?.[19]).toBeCloseTo(0.6, 6);
     });
+  });
+
+  it('counts the frames that draw the bandit, a missile in flight and a tracer', () => {
+    const t = rig();
+    t.loop.setPresentation({
+      hud: FIXTURE_HUD,
+      cockpit: FIXTURE_COCKPIT,
+      model: FIXTURE_MODEL,
+      font: FIXTURE_FONT,
+    });
+    const draw = (n: number, combat: FixtureCombat) => {
+      t.advance(16);
+      t.publish(n, { combat });
+      t.loop.frame();
+    };
+    draw(1, {});
+    draw(2, { bandit: { pos: [0, -5000, 1500], life: BANDIT_LIFE.ALIVE } });
+    draw(3, {
+      bandit: { pos: [0, -5000, 1500], life: BANDIT_LIFE.ALIVE },
+      tracers: [{ pos: [0, -5800, 1500], vel: [0, 1000, 0], id: 0 }],
+    });
+    draw(4, {
+      missileSlots: [
+        // A burst missile is its explosion, not a missile in flight.
+        { pos: [0, -5500, 1500], vel: [0, 600, 0], state: MISSILE_STATE.BURST },
+      ],
+    });
+    draw(5, {
+      missileSlots: [{ pos: [0, -5500, 1500], vel: [0, 600, 0], state: MISSILE_STATE.COAST }],
+    });
+    expect(t.loop.report().drawnFrames).toEqual({ bandit: 2, missiles: 1, tracers: 1 });
   });
 });

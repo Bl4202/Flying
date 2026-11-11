@@ -460,6 +460,227 @@ export async function runRendererContract(
         return px;
       };
 
+      /**
+       * HU5's pixels: a picture from the cockpit with the bandit 400 m ahead and 40 m right (about
+       * 100 mrad off the nose) and only the duel's HUD layers, at a narrow field of view so the
+       * symbols are tens of pixels across. Returns the picture and the bandit's centroid.
+       */
+      const drawDuelHud = async (
+        flags: number,
+      ): Promise<{
+        px: Uint8Array;
+        w: number;
+        h: number;
+        bandit: [number, number] | undefined;
+      }> => {
+        const [w, h] = [960, 540];
+        renderer.resize(w, h);
+        renderer.setMesh('exterior', buildModelMesh(FIXTURE_MODEL));
+        const [ahead, right] = [400, 40];
+        const east = quatFromColumns([1, 0, 0], [0, -1, 0], [0, 0, -1]);
+        const at: [number, number, number] = [right, -6000 + ahead, 1500];
+        const interp = new SnapshotInterpolator();
+        interp.push(
+          makeSnapshot({
+            publishMs: 1000,
+            ownship: { pos: [0, -6000, 1500], quat: NORTH },
+            combat: {
+              flags,
+              // Past the ring's full scale (1 800 m): a whole circle, so its centroid is its centre.
+              tgtRange: 2000,
+              tgtClosure: 50,
+              pipper: at,
+              bandit: { pos: at, quat: east },
+            },
+          }),
+        );
+        const state = interp.sample(2000);
+        if (!state) throw new Error('no scene state');
+        const rig = new CameraRig(
+          { eyeBodyM: FIXTURE_COCKPIT.eyePointM, headLimits: DEFAULT_COCKPIT.headLimits },
+          { heightAt: () => Number.NaN },
+        );
+        const view = { ...newViewState(), camera: 'cockpit' as const };
+        for (let i = 0; i < 400; i++) rig.step(state, view, 1 / 60);
+        const pose = { ...rig.pose, fovY: 0.5 };
+        const terrain = patchAt(0);
+        upload(terrain);
+        const frame = scene.build(state, {
+          aspect: w / h,
+          zRange: renderer.zRange,
+          timeS: 0,
+          terrain,
+          camera: pose,
+          banditModel: new ModelRig(FIXTURE_MODEL),
+          debugView: 'classify',
+        });
+        const spec = {
+          ...FIXTURE_HUD,
+          layers: [
+            {
+              type: 'target_box' as const,
+              id: 'target',
+              sizeMrad: 40,
+              locatorRadiusMrad: 130,
+              showWithinM: 20_000,
+            },
+            {
+              type: 'gun_reticle' as const,
+              id: 'gun',
+              pipperMrad: 3,
+              ringMrad: 25,
+              ringMaxM: 1800,
+              shootM: 1000,
+            },
+          ],
+        };
+        const hud = new Hud(spec, FIXTURE_COCKPIT, FIXTURE_FONT);
+        const status = newAircraftStatus();
+        status.assist = 2;
+        const rotation = new Float32Array(16);
+        bodyToRender(rotation, state.ownshipQuat);
+        hud.fillFrame(
+          frame,
+          {
+            posBf: state.ownshipPosBf,
+            quatBf: state.ownshipQuat,
+            velBf: [0, 200, 0],
+            status,
+            warnings: 0,
+            timeS: 0,
+            eyeBf: pose.eyeBf,
+            combat: state,
+          },
+          rotation,
+          {
+            declutter: 0,
+            brightness: 1,
+            palette: 'green',
+            overlay: false,
+            overlayScale: 1,
+            widthPx: w,
+            heightPx: h,
+            fovY: pose.fovY,
+            eyeBf: pose.eyeBf,
+          },
+        );
+        renderer.render(frame);
+        const px = await renderer.debugReadPixels();
+        renderer.setMesh('exterior', undefined);
+        renderer.resize(width, height);
+        let n = 0;
+        let sx = 0;
+        let sy = 0;
+        for (let i = 0; i < w * h; i++) {
+          if (!isKey(px, i * 4, CLASSIFY_KEYS.model)) continue;
+          n += 1;
+          sx += i % w;
+          sy += Math.floor(i / w);
+        }
+        return { px, w, h, bandit: n < 20 ? undefined : [sx / n, sy / n] };
+      };
+
+      /**
+       * The HUD pixels of a picture: how many, and of those within `radius` of `c` how many, in how
+       * many quadrants around it, and their centroid's distance from it.
+       */
+      const hudAround = (
+        d: { px: Uint8Array; w: number; h: number },
+        c: [number, number],
+        radius: number,
+      ): { n: number; near: number; quadrants: number; off: number } => {
+        let n = 0;
+        let near = 0;
+        let sx = 0;
+        let sy = 0;
+        const seen = new Set<number>();
+        for (let i = 0; i < d.w * d.h; i++) {
+          if (!isKey(d.px, i * 4, CLASSIFY_KEYS.hud)) continue;
+          n += 1;
+          const dx = (i % d.w) - c[0];
+          const dy = Math.floor(i / d.w) - c[1];
+          if (Math.hypot(dx, dy) <= radius) {
+            near += 1;
+            sx += dx;
+            sy += dy;
+            seen.add((dx < 0 ? 1 : 0) + (dy < 0 ? 2 : 0));
+          }
+        }
+        const off = near === 0 ? Number.POSITIVE_INFINITY : Math.hypot(sx / near, sy / near);
+        return { n, near, quadrants: seen.size, off };
+      };
+
+      await check(
+        "the duel's HUD marks the bandit where it is drawn, and rings the gunsight's aim (HU5)",
+        async () => {
+          const active = COMBAT_FLAG.ACTIVE;
+          const none = await drawDuelHud(active);
+          const target = await drawDuelHud(active | COMBAT_FLAG.TARGET);
+          const gun = await drawDuelHud(active | COMBAT_FLAG.PIPPER);
+          const c = target.bandit;
+          if (c === undefined) return 'no bandit drawn';
+          // The bandit about 100 mrad right of the centre: f = (h / 2) / tan(fov / 2).
+          const f = target.h / 2 / Math.tan(0.25);
+          const mrad = f / 1000;
+          const wantX = target.w / 2 + f * (40 / 400);
+          if (Math.abs(c[0] - wantX) > 8) {
+            return `the bandit is drawn at x ${c[0].toFixed(0)}, not ${wantX.toFixed(0)}`;
+          }
+          const quiet = hudAround(none, c, 1e9).n;
+          // The ring (25 mrad) and the pipper on the gunsight's aim, which is the bandit's reference
+          // point here: near the model's centroid (a broadside model's area is centred a metre or so
+          // from its reference point, 2 to 3 mrad at 400 m).
+          const ring = hudAround(gun, c, 30 * mrad);
+          const centre = (d: typeof gun, around: [number, number], r: number): [number, number] => {
+            let n = 0;
+            let sx = 0;
+            let sy = 0;
+            for (let i = 0; i < d.w * d.h; i++) {
+              if (!isKey(d.px, i * 4, CLASSIFY_KEYS.hud)) continue;
+              const x = i % d.w;
+              const y = Math.floor(i / d.w);
+              if (Math.hypot(x - around[0], y - around[1]) > r) continue;
+              n += 1;
+              sx += x;
+              sy += y;
+            }
+            return n === 0 ? around : [sx / n, sy / n];
+          };
+          // The aim: every HUD pixel of that picture is the ring or the pipper.
+          const aim = centre(gun, c, 1e9);
+          // The box (40 mrad a side) on the same point, found by its left and top edges, the two
+          // with no text near them (its range is written under it, its closure to its right).
+          const edge = (vertical: boolean): number => {
+            let n = 0;
+            let sum = 0;
+            for (let i = 0; i < target.w * target.h; i++) {
+              if (!isKey(target.px, i * 4, CLASSIFY_KEYS.hud)) continue;
+              const dx = ((i % target.w) - aim[0]) / mrad;
+              const dy = (Math.floor(i / target.w) - aim[1]) / mrad;
+              const [across, along] = vertical ? [dx, dy] : [dy, dx];
+              if (Math.abs(along) > 15 || across > -15 || across < -26) continue;
+              n += 1;
+              sum += across;
+            }
+            return n === 0 ? Number.NaN : sum / n + 20;
+          };
+          const boxOff = Math.hypot(edge(true), edge(false));
+          const boxWide = hudAround(target, aim, 100 * mrad);
+          const ok =
+            quiet === 0 &&
+            ring.near > 40 &&
+            ring.near === ring.n &&
+            ring.quadrants === 4 &&
+            Math.hypot(aim[0] - c[0], aim[1] - c[1]) < 4 * mrad &&
+            boxOff < 1.5 &&
+            boxWide.near === boxWide.n &&
+            boxWide.quadrants === 4;
+          return ok
+            ? undefined
+            : `HUD pixels: ${String(quiet)} with no target; ring ${String(ring.near)}/${String(ring.n)} in ${String(ring.quadrants)} quadrants, its centre ${(Math.hypot(aim[0] - c[0], aim[1] - c[1]) / mrad).toFixed(1)} mrad from the model's; the box ${boxOff.toFixed(1)} mrad from the aim, ${String(boxWide.near)}/${String(boxWide.n)} within 100 mrad`;
+        },
+      );
+
       await check('the chase view draws the aircraft, canopy and all', async () => {
         const px = await drawAircraft('chase', { debugView: 'classify' });
         // From 45 m behind and 9 m above, the aircraft is a few dozen pixels across at this size.

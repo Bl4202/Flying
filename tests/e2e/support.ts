@@ -223,6 +223,7 @@ declare global {
               terrainLevels?: number;
               backend: string;
               frameMsRun: { count: number; max: number };
+              drawnFrames: { bandit: number; missiles: number; tracers: number };
             }
           | undefined;
       };
@@ -239,7 +240,7 @@ declare global {
             stats: { sent: number; refused: number; heartbeats: number; changed: number };
           }
         | undefined;
-      menu(): null | 'pause' | 'controls';
+      menu(): null | 'pause' | 'controls' | 'debrief' | 'feel';
       flow(): string;
       audio(): {
         kind: string;
@@ -262,8 +263,86 @@ declare global {
         freeLook: boolean;
       };
       presentationError(): string | undefined;
+      combat(): FlyingCombat | undefined;
+      debrief(): FlyingDebrief | null;
+      memory(): Promise<FlyingMemory>;
     };
   }
+}
+
+/** The duel's status from the page's test hook (`CombatStatus` in `sim-bridge`), as JSON. */
+export interface FlyingCombat {
+  flags: number;
+  seeker: number;
+  /** `LAUNCH_INHIBIT` of the last refused launch, and how long ago (s). */
+  inhibit: number;
+  inhibitAge: number;
+  rounds: number;
+  missiles: number;
+  signal: number;
+  tgtRange: number;
+  health: number;
+  /** `COMBAT_COUNTER` order (a typed array in the page: copy it with `Array.from` there). */
+  counters: ArrayLike<number>;
+  eventSeq: number;
+  banditLife: number;
+  banditAi: number;
+  banditSkill: number;
+  banditPosBf: ArrayLike<number>;
+  banditRange: number;
+}
+
+/** `COMBAT_COUNTER` (`sim-bridge`), for reading `FlyingCombat.counters`. */
+export const COUNTER = {
+  ROUNDS_FIRED: 0,
+  ROUND_HITS: 1,
+  MISSILES_FIRED: 2,
+  MISSILE_HITS: 3,
+  KILLS: 4,
+  GUN_KILLS: 5,
+  MISSILE_KILLS: 6,
+  DEATHS: 7,
+  HITS_TAKEN: 8,
+  BANDIT_ROUNDS: 9,
+  EXPLOSIONS: 10,
+  BANDIT_SPAWNS: 11,
+} as const;
+
+/** The open debrief's numbers (`DebriefNumbers` in `ui`). */
+export interface FlyingDebrief {
+  missionId: string;
+  outcome: 'landed' | 'ended' | 'died';
+  airborneS: number;
+  kills: number;
+  gunKills: number;
+  missileKills: number;
+  gunRounds: number;
+  gunHits: number;
+  missilesFired: number;
+  missileHits: number;
+  deaths: number;
+  hitsTaken: number;
+  landings: number;
+  maxAltM: number;
+  maxTasMps: number;
+  maxMach: number;
+  taskS: number | null;
+}
+
+/** One soak sample (`MemorySample` in `app-shell`). */
+export interface FlyingMemory {
+  jsBytes: number;
+  jsSource: 'uasm' | 'heap';
+  wasmBytes: number;
+  liveBuffers: number;
+  liveTextures: number;
+  liveAudioNodes: number;
+  silences: number;
+  workerErrors: number;
+  deviceLosses: number;
+  workers: number;
+  simHz: number;
+  sorties: number;
 }
 
 /** The aircraft's state from the page's test hook (waits until there is one). */

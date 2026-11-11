@@ -3,10 +3,12 @@
 /** The name the processor is registered under. */
 export const PROCESSOR_NAME = 'fg-flight';
 
-/** Sent through the worklet's port when a warning tone starts. */
+/**
+ * Sent through the worklet's port when a warning tone, or one of the duel's one-shot sounds, starts.
+ */
 export interface ToneOnsetMessage {
   readonly type: 'onset';
-  /** `TONE` value. */
+  /** `TONE` value, or an `ONSET` code for one of the duel's one-shot sounds. */
   readonly tone: number;
   /** The audio clock, seconds, at the start of the tone. */
   readonly time: number;

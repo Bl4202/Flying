@@ -108,6 +108,8 @@ export class RenderLoop {
   gappedFrames = 0;
   snappedFrames = 0;
   contendedReads = 0;
+  /** Frames drawn with the bandit, with a missile in flight, and with a tracer, since the start. */
+  readonly #drawn = { bandit: 0, missiles: 0, tracers: 0 };
 
   constructor(deps: RenderLoopDeps, renderer: Renderer) {
     this.#d = deps;
@@ -310,6 +312,9 @@ export class RenderLoop {
 
     this.frames += 1;
     this.#windowFrames += 1;
+    if (frame.bandit) this.#drawn.bandit += 1;
+    if (frame.missiles > 0) this.#drawn.missiles += 1;
+    if (frame.tracers > 0) this.#drawn.tracers += 1;
     this.#cpu.record(spent);
     this.#cpuRun.record(spent);
     if (!Number.isNaN(this.#lastFrameAt)) {
@@ -356,6 +361,7 @@ export class RenderLoop {
       gappedFrames: this.gappedFrames,
       snappedFrames: this.snappedFrames,
       contendedReads: this.contendedReads,
+      drawnFrames: { ...this.#drawn },
       ...liveResources(this.#renderer.resources()),
     };
     this.#interval.reset();

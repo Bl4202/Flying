@@ -128,6 +128,7 @@ function render(): RenderStats {
     gappedFrames: 1,
     snappedFrames: 0,
     contendedReads: 0,
+    drawnFrames: { bandit: 0, missiles: 0, tracers: 0 },
     liveBuffers: 0,
     liveTextures: 0,
   };
