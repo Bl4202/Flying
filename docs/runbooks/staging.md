@@ -60,6 +60,20 @@ To check by hand: open the staging URL, close DevTools' network to *Offline*, re
 the menu and a flight come back, the shell is cached. `tests/e2e/offline.spec.ts` and `staging-smoke` do this
 in CI.
 
+## The dogfight on staging (v0.1d)
+
+The main menu's **Mode** (Free flight or Dogfight) and **Bandit** (Recruit, Regular, Veteran) choose the
+sortie; both are stored settings. A link can choose them for one visit: `?scenario=duel&skill=2` flies a
+duel against a Regular from the runway, `?scenario=merge&skill=1` starts in the air with a Recruit 3 km
+ahead (a test start), and `?scenario=duel&skill=1&script=sortie` lets the bot playtester fly the whole
+sortie (take-off, the kill, the landing and the debrief). With `?debug=1` the overlay's `Combat` row shows
+the bandit's state, the range, the health and the stores.
+
+`staging-smoke` does not fly a duel. The same build's duel is checked by the e2e job before it deploys
+(`combat.spec.ts`, `dogfight.spec.ts`, `debrief.spec.ts`, `stats.spec.ts`), and the nightly soak flies one
+for 30 minutes against `main`. The owner's checklist on staging is in
+[reference-machines.md](reference-machines.md).
+
 ## Rolling back
 
 Re-run the **deploy-staging** job of an earlier successful run (Actions, pick the run, "Re-run

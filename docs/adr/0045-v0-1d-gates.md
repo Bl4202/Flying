@@ -1,6 +1,6 @@
 # ADR-45: v0.1d gates: weapons, the bandit, the bot playtester, the soak, the debrief and G1 for a solo project
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-11-09
 - **Affects:** GDD 4.5, 15, 16.6.2, 18, 19, 54.4, 54.5, 56, 58.5, 60.9, 65, 66.4; `crates/weapons`,
@@ -270,3 +270,24 @@ only the pitch trim (9 081 times).
 **Where two gates are tested.** ST6's unit tests are in `packages/ui/src/debrief.test.ts` ("ST6:
 the feel questionnaire"), not a `feel-survey.test.ts` of their own. The DOM budget in a duel, with
 the overlay open, is a test in `combat.spec.ts`. `overlay.spec.ts` keeps its free-flight one.
+
+**L7 judges the sim's rate while it runs.** The first full soak on the M4 (2026-11-11, staging
+`261d08b`) passed L1 to L6 and failed L7: 56.24 Hz against 59.5. Two of its 32 samples read 0 Hz, and
+both were taken as a sortie ended. The browser's memory measurement can take a second or more, and
+in that time the debrief opened and held the simulation, as it is meant to. Every other sample read
+59.1 to 61.7 Hz. The harness now samples only while the simulation runs (no debrief, the core
+running, at least 2 s after Fly again) and takes the sample again if a debrief opened while it was
+being taken. The gate is unchanged. The debrief's hold is not a silence: L4 counts those, and it
+read 0. The first run's report is kept in `docs/exit/v0.1d/soak/m4-first/`. The re-run with the fixed harness
+(the same day and build) passed L1 to L7: 60.02 Hz, 59.31 to 60.72 a sample, report in
+`docs/exit/v0.1d/soak/m4/`.
+
+**Two seeded faults are caught by another check than the one the plan named.** Fault 10 (DEFEND_GUN
+disabled) does not fail AI2. Without the rule, the bandit sees the bot behind it and turns to pursue
+it, and any turn beats a bandit holding course: the Veteran's median rose from 0.00 to 4.38 s, still
+below 10.23 s. AI2 shows that the bandit manoeuvres against a gun. The rule test
+`rule_5_defend_the_gun_after_the_reaction_delay` holds that DEFEND_GUN is the rule that does it, and
+it fails with the fault. Fault 13 (`spawn_air_at` 1 m higher) does not fail DT1. No older suite calls
+`spawn_air_at`. Their air spawn, `spawn_trimmed`, sets the height above the ground and shares only the
+trim with `spawn_air_at`. So `golden-diff --against v0.1c` sees nothing move. DT2 catches it: the
+`combat` golden diverges at tick 0. Neither gate changes.

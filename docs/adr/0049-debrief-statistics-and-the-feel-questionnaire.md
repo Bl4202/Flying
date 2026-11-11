@@ -1,6 +1,6 @@
 # ADR-49: The dogfight in the app: mode, debrief, statistics and the feel questionnaire
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-11-10
 - **Affects:** GDD 4.5, 53.3, 59, 64.6, 65, 66.4; ADR-37 (amendment 1), ADR-41 (amendment 1),

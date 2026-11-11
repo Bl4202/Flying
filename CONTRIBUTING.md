@@ -4,8 +4,10 @@
 
 Lower layers never import higher ones. `simmath` depends on nothing but `libm`; `flight` on
 `simmath` and `content`; `fcs` (the control laws) on `flight`, `simmath` and `content`;
-`flight-test` on `flight`, `simmath`, `content` and `serde_json`; `sim-core` on `content`,
-`simmath`, `flight` and `fcs`; `cli` additionally on `flight-test` and `serde_json`; `protocol` and
+`flight-test` on `flight`, `simmath`, `content` and `serde_json`; `weapons` (weapon physics) on
+`content`, `flight` and `simmath`; `ai-pilot` (the bandit and the bot playtester) on `content`,
+`fcs`, `flight` and `simmath`; `sim-core` on `content`, `simmath`, `flight`, `fcs`, `weapons` and
+`ai-pilot`; `cli` additionally on `flight-test` and `serde_json`; `protocol` and
 `content` depend on no other crate. `cargo xtask check-layers` enforces an explicit allow-list per crate (the table is in
 `crates/xtask/src/layers.rs`).
 
@@ -42,7 +44,7 @@ them with the change that needs them.
 | `packages/sim-bridge/src/layout.gen.ts`, `tests/vectors/*.json` | `crates/sim-core/src/layout.rs` | `cargo xtask gen-abi` |
 | `content/schemas/*.schema.json` | `tools/content-bake/src/model.rs` | `cargo xtask content --schemas` |
 | `packages/render/shaders/gen/*` | `packages/render/shaders/*.wgsl` | `pnpm wgsl:gen` |
-| `tests/golden/determinism.json`, `tests/golden/flight60.json`, `tests/golden/circuit.json`, `tests/golden/plain-circuit.json` | the simulation | `cargo xtask determinism --bless` (see below) |
+| `tests/golden/determinism.json`, `tests/golden/flight60.json`, `tests/golden/circuit.json`, `tests/golden/plain-circuit.json`, `tests/golden/combat.json` | the simulation | `cargo xtask determinism --bless` (see below) |
 | `content-out/core.present.json` is **not** committed; `tests/vectors/present_bundle.json` and `tests/vectors/rugged_heights.bin` are | the presentation files, and the `rugged` arena's terrain | `cargo xtask gen-abi` |
 | `content/core/aero/kestrel.json` | `content/core/aero/kestrel_gen.rs` | `KESTREL_AERO_WRITE=1 cargo test -p content-bake --test kestrel_aero` |
 
@@ -125,12 +127,18 @@ use `CHEAP` (`res=480x270&quality=low`) and hold the renderer to a floor, not to
 `tests/golden/flight60.json` (the 60 s scripted flight, `AC-11.7`, air spawn, Manual assist) and
 `tests/golden/circuit.json` (the virtual tester's circuit from the runway, Standard assist) and
 `tests/golden/plain-circuit.json` (the same circuit for two minutes over the `plain` arena, so the second
-arena's ground contact is covered; bless it alone with `--suite plain-circuit`) hold the expected state
-hashes. Each suite names its session (spawn, assist, g-effects) in
+arena's ground contact is covered; bless it alone with `--suite plain-circuit`) and
+`tests/golden/combat.json` (v0.1d: the bot playtester's 10-minute sortie against a Regular from the
+runway, every 600 ticks) hold the expected state hashes. Each file has seven columns plus `combined`:
+`tick_h`, `rng`, `bodies`, `ownship`, `input`, `content` and `combat`. Without a duel the `combat`
+column is a constant (the hash of the tag `NOCOMBAT`), so free flight's goldens move only when free
+flight does; any change to the bandit, the weapons or the bot moves `combat.json` alone. Each suite names its session (spawn, assist, g-effects) in
 `crates/xtask/src/determinism.rs`. A change that alters sim
 behaviour must re-bless them (`cargo xtask determinism --bless`), in a commit of its own whose
 message says why and which hash columns changed. Never bless to make CI green without
-understanding the diff.
+understanding the diff. When new sim data changes only the pack (a new weapon, a skill, an
+aircraft value), `cargo xtask golden-diff --against <ref> [--fresh]` proves the re-bless moved
+only the `content` and `combined` columns of the free-flight goldens.
 
 While a change is in progress, `cargo xtask determinism --compare-only` checks that native, debug
 and both WASM builds agree with each other without comparing them to the goldens. Use it to keep
@@ -156,8 +164,15 @@ frames that carry a change: CI holds it to two ticks (`tests/e2e/latency.spec.ts
 
 The simulation crates never name content: they find an aircraft by handle and kind, not by id
 (`AC-12.4`). `cargo xtask check-content-ids` (in `pnpm lint`) fails on a content id in a string, or
-on any content entry's name used as a word, anywhere in `simmath`, `flight`, `fcs`,
-`flight-test`, `sim-core` or `sim-wasm` outside comments and tests.
+on any content entry's name used as a word, anywhere in `simmath`, `flight`, `fcs`, `weapons`,
+`ai-pilot`, `flight-test`, `sim-core` or `sim-wasm` outside comments and tests. Weapons are found
+through the aircraft's `internal_weapons` and `loadout` references, and skills by their `rank`
+(1 to 3), never by id or name: a weapon called `gs27` or a skill called `regular` must not appear in
+the simulation's code.
+
+The duel has its own gate, `cargo xtask sortie` (CI `conformance`): the bot playtester's sorties
+(BP1, BP2), the missile sweep (MS5) and the bandit's gates (AI1, AI2, AI4, AI5, AI8), ADR-45. Weapon
+data is tuned in `content/core/weapons/` with its log in that README, never by changing a gate.
 
 ## Decisions
 

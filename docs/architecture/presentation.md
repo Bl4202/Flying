@@ -1,10 +1,12 @@
-# Presentation architecture, as built in v0.1c
+# Presentation architecture, as built in v0.1d
 
 What is drawn, where the code is, and how to test it. The decisions are in
 [ADR-40](../adr/0040-custom-renderer-stays.md) (the renderer, the sky, the terrain levels, the quality
 presets), [ADR-41](../adr/0041-cameras-hud-and-models.md) (cameras, view input, the HUD, the aircraft
 and the cockpit) and [ADR-43](../adr/0043-arenas-abi-v4-and-the-presentation-bundle.md) (arenas and the
-presentation bundle); the gates are in [ADR-39](../adr/0039-v0-1c-gates.md). The threads and the bytes
+presentation bundle); the gates are in [ADR-39](../adr/0039-v0-1c-gates.md). v0.1d added the duel: the
+bandit, the missile, tracer and explosion markers and the HUD's weapon symbols (ADR-41 amendment 1,
+gates HU1 to HU5 in [ADR-45](../adr/0045-v0-1d-gates.md)). The threads and the bytes
 between them are in [runtime.md](runtime.md); the sound is in [audio.md](audio.md). Everything here is
 render-side: **nothing in the presentation reaches the simulation**, and the sim pack's hash does not
 depend on any of it.
@@ -19,8 +21,8 @@ swapchain.
 |---|---|---|
 | 1 | Sky and the analytic globe: one fullscreen triangle, no depth write. A ray below the horizon (the dip is `acos(Rg / (Rg + h))` at any height) meets the globe; one above is sky | `shaders/sky.wgsl`, `src/sky.ts` |
 | 2 | Terrain, four nested levels, finest first: L0 250 m posts (32 km), L1 1 km (128 km), L2 4 km (512 km), L3 16 km (2 048 km); each coarser level has a hole where the finer one lies and skirts down from its outer and hole edges, so no crack can show the globe | `shaders/terrain_patch.wgsl`, `src/terrain-levels.ts`, `src/terrain-mesh.ts` |
-| 3 | The exterior model (the Kestrel; not drawn in the cockpit view with its canopy) and the cockpit interior | `shaders/mesh.wgsl`, `src/model-mesh.ts`, `src/model-rig.ts` |
-| 4 | Probe markers and the mouse-aim cues (as v0.1b) | `shaders/marker.wgsl`, `src/markers.ts` |
+| 3 | The exterior model (the Kestrel; not drawn in the cockpit view with its canopy), the bandit (the same mesh drawn again with its own uniform and rig, canopy and all, while it is alive or a falling wreck) and the cockpit interior | `shaders/mesh.wgsl`, `src/model-mesh.ts`, `src/model-rig.ts` |
+| 4 | Probe markers, the mouse-aim cues and the duel's markers: missiles in flight as 3 m white darts, tracers as 12 m streaks along their velocity, explosions as four streaks each growing for 0.6 s (`tint.w` 2 is a streak) | `shaders/marker.wgsl`, `src/markers.ts`, `src/scene.ts` |
 | 5 | The HUD: segments in the HUD's tangent plane, projected as **directions at infinity** (`w = 0`), so moving the eye moves nothing; an analytic combiner aperture and eye-box fade in the cockpit, a plain overlay in the chase view | `shaders/hud.wgsl`, `src/hud/` |
 | 6 | The screen effect (the pilot's grey-out and red-out), unchanged | `shaders/screen_fx.wgsl` |
 
@@ -57,7 +59,9 @@ frame. Default keys are in [controls.md](controls.md).
 `packages/render/src/hud/`: `state.ts` derives local up, east and north in body axes, pitch, bank, true
 heading and the flight-path marker from the snapshot; `elements.ts` is a registry of element types
 (boresight, flight-path marker, pitch ladder, heading, speed and altitude tapes, vertical speed, G meter,
-AoA bracket, bank scale, engine and fuel block, mode line, warnings) that write segments into a
+AoA bracket, bank scale, engine and fuel block, mode line, warnings, and from v0.1d the duel's
+`gun_reticle`, `target_box`, `seeker`, `weapon_status` and `kill_cue`, drawn only while a duel runs)
+that write segments into a
 preallocated array; `graph.ts` is the segment buffer and the stroke-font layout; `texts.ts` holds the
 words (the app hands the shipped language over from the string table). The layout (`hud/1`), the stroke
 font (`stroke_font/1`), the exterior model (`model/1`) and the cockpit (`cockpit_layout/1`) are content,
@@ -65,6 +69,14 @@ validated by `content-bake` with file, JSON pointer and hint, and baked into the
 not the sim pack. To add an element type: register it in `elements.ts`, add it to the schema and the
 validator's list in `tools/content-bake`, give it a worked-example unit test and a place in the layout
 file, and check that the font covers every character of its strings (a test does).
+
+The duel's symbols read the snapshot's combat block. The pipper is drawn at the direction from the
+eye to the interpolated aim point (HU2); the target box sits on the bandit inside the field of
+view and becomes an arrow on the locator circle outside it; the seeker's circle is caged at the
+boresight, with a diamond on the bandit when locked; `weapon_status` shows the stores, arming,
+`TONE`/`LOCK`, `SHOOT`/`IN RNG`, and a refused launch's reason for 1.5 s; `kill_cue` shows `HIT` and
+`SPLASH`. The render stats count the frames drawn with the bandit, a missile and a tracer
+(`drawnFrames`, for the e2e specs).
 
 ## Quality
 
@@ -96,9 +108,17 @@ directions against world directions (10^4 states), collimation (100 eye position
 camera rig (terrain clearance on 1 000 random low-level paths) and the allocation of the camera, scene and
 model rig (a handful of boxed numbers a frame, no arrays or objects).
 
+The duel (v0.1d) is judged in the renderer contract (`src/renderer-contract.ts`, run in both backends
+by `?selftest=renderer`): the bandit drawn broadside 50 m ahead lands where the projection puts it,
+and HU5's case draws the gun reticle and the target box on a bandit 400 m ahead and finds the ring and
+the box centred on its model within 4 and 1.5 mrad. `tests/e2e/combat.spec.ts` checks the live cues,
+that the bandit and the tracers are drawn (`drawnFrames`) and the DOM budget. Unit tests cover each
+weapon symbol's worked example (HU1), the pipper's direction (HU2), the markers and the second model's
+uniforms, and the HUD's garbage bound with a duel running.
+
 ## What is not here
 
-Free, weapon, padlock and tower cameras, head tracking, the MFDs (the HUD's render-to-texture of ADR-20
+Free, weapon, padlock and tower cameras, head tracking, smoke and fire on a hit aircraft, the MFDs (the HUD's render-to-texture of ADR-20
 waits for them), atmosphere, clouds, ocean and biomes (v0.2c), geomorphing between levels, dynamic
 resolution, glTF aircraft and an SSIM image regression. The cockpit's glare shield and panel are
 placeholders that look heavy.

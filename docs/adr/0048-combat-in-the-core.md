@@ -1,6 +1,6 @@
 # ADR-48: Combat in the core: the duel scenario, ABI v5, snapshot v5, events and the combat hash
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Owner:** Bl4202
 - **Date:** 2026-11-10
 - **Affects:** GDD 15, 18.8, 19.12, 65.2, 65.3; ADR-10, ADR-16, ADR-23 (amendment 1), ADR-43,

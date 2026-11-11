@@ -4,8 +4,8 @@
 | | |
 |---|---|
 | **Working Title** | TBD |
-| **Document Version** | 0.2.3 (Draft 2 — technical expansion of `GDD_Outline.md`, retargeted to run in a web browser) |
-| **Document Date** | 2026-11-08 |
+| **Document Version** | 0.2.4 (Draft 2 — technical expansion of `GDD_Outline.md`, retargeted to run in a web browser) |
+| **Document Date** | 2026-11-11 |
 | **Primary Platform** | Desktop web browser (installable PWA). WebGPU renderer, WebAssembly simulation core. |
 | **Multiplayer** | LAN / VLAN / direct-connect co-op and 1v1 over WebRTC |
 | **World** | Real-world Earth geography (WGS84), fictional factions |
@@ -2301,6 +2301,8 @@ Every weapon shares a common header; class-specific blocks follow.
 
 (Illustrative; shipped values are tuned in §15.12 and Appendix D.)
 
+*Clarified in 0.2.4 (ADR-46): `weapon/1` as built in v0.1d.* Two classes exist, `gun` and `srm` (a short-range missile), and a file carries exactly the block of its class (`gun` or `missile`). Ids have the type `wpn` (`core:wpn/gs27`) and the name is a locale key (`name_key`). Every number carries its unit in its key (`_m`, `_kg`, `_s`, `_mps`, `_deg`, `_mrad`; `rpm` and `rounds` are their own units), and a drag table is `{ "axis": "mach", "points": [[mach, coefficient], ...] }`. The missile block has one motor stage of constant thrust (`thrust_n`, `burn_s`, `propellant_kg`), `aero` (`s_ref_m2`, boost and coast drag tables, `cn_max`, `k_induced`), `autopilot`, `guidance` (`pn` and `n_prime`), an `ir_rear` `seeker` with `ref_intensity` and `max_aspect_deg` in place of `ref_rcs_m2` and `eccm`, `fuze`, `warhead` with `damage_j`, `launch` with `min_range_m` and no `eject_mps`, `limits` (self-destruct time and speed, and the time after the target is gone) and `visual` (the eye's `L_eff` while the motor burns and after). Header fields for carriage, radar cross-section, mounts, factions and threat value wait for the stores system (§14). Weapons are sim data: they are in the sim pack and its hash.
+
 ## 15.3 Weapon categories
 
 | Class | Gameplay role | Guidance family | Typical engagement |
@@ -2347,6 +2349,8 @@ Per 60 Hz tick, each projectile is integrated analytically with 2 sub-steps (RK2
 
 Projectile state is stored in struct-of-arrays pools (`pos[]`, `vel[]`, `age[]`, `shooter[]`, `type[]`) with free lists; zero allocation during play.
 
+*Clarified in 0.2.4 (ADR-46):* in v0.1d each round's segment for the tick is taken into the target's body axes relative to the path of the target's reference point and tested against the target's **capsules** (`damage.capsules` of `aircraft/1`), so nothing tunnels; there is no spatial hash or box narrowphase yet (one target). A round dies after 3 s, below 300 m/s or under the terrain; there is no sea in the arenas. The pool is a fixed array of 192 rounds per duel; dispersion is a Gaussian of `dispersion_mrad` on two axes about the harmonised gun axis, drawn from a named random stream.
+
 ### 15.4.3 Gunsight (Lead Computing Optical Sight)
 
 For target position `p_t` and velocity `v_t` relative to the shooter `p_s`, the sight solves for time-of-flight `t` such that the projectile reaches the target:
@@ -2361,6 +2365,8 @@ The HUD draws the **pipper** (lead solution) and a **range-to-target** bracket; 
 ### 15.4.4 Damage per hit
 
 A hit deposits energy-based damage into the struck component (§18.3): `dmg = k_type · (½ m v_impact²)^{0.7} · cos θ_incidence_factor` modified by component armour class and ricochet at grazing angles `θ > 70°` with probability `1 − 1/(1 + e^{(θ−75°)/4°})`. Calibration targets (design): 20 mm HEI hits needed to destroy a light fighter's wing: ~8–12; 30 mm AP hits to stop a CAS-class armoured engine nacelle: ~15–20.
+
+*Clarified in 0.2.4 (ADR-46):* until the component damage of §18 arrives, damage is **aggregate and linear in impact energy**: a hit deals `½ m |v_round − v_target|²` joules, and the aircraft's `joules_per_hp` turns them into hit points of one pool (the Kestrel: 100 hp, 6 370 J per hp). There is no exponent, incidence, armour or ricochet. So a GS-27 round at 600 m/s of relative speed does about 7.3 hp, and 14 such hits destroy the Kestrel (ADR-45 GN6).
 
 ## 15.5 Missile flight model (game fidelity)
 
@@ -2390,6 +2396,8 @@ a_lat tracks a_cmd through a first-order lag τ_ap
 The missile loses manoeuvrability as speed and density fall (the aerodynamic limit scales with `q̄`), reproducing the "missile energy" mechanic that rewards forcing missiles to turn at long range or high altitude. Mass decreases with propellant burn via the motor's mass-flow curve.
 
 Integration rate: 120 Hz when within 8 km of the target or in launch/terminal phases; otherwise 60 Hz (§0.6.1). Position error accumulates less than 0.2 m over 60 s versus a 480 Hz reference (`AC-15.3`).
+
+*Clarified in 0.2.4 (ADR-46):* v0.1d integrates the missile with **RK4 at 120 Hz always** (two sub-steps of every 60 Hz tick, whatever the range); it holds the 0.2 m bound of `AC-15.3` (ADR-45 MS1). The motor has one stage of **constant thrust**, and the mass falls linearly with the propellant over the burn. The lateral acceleration's command is held through each sub-step and its lag `τ_ap` applied per sub-step.
 
 ### 15.5.3 Guidance laws
 
@@ -2448,6 +2456,8 @@ Fragments are not simulated individually; instead, per detonation, the hit volum
 
 **Rule check for NN-3:** a unit test fires 10 000 missiles with randomised realistic geometry against a competent evader AI and requires a hit rate that varies with the conditions as intended (§15.14), never ~100 %.
 
+*Clarified in 0.2.4 (ADR-46):* the v0.1d fuze is **swept**: each tick the missile's segment is taken into the target's body axes and its closest distance to the target's capsules found, so no closest approach is missed between samples. Armed after `arm_dist_m` of flight and `safe_sep_s`, it fires at the first closest approach within `trigger_radius_m`, and the warhead delivers `damage_j · (1 − d / R_lethal)²` joules inside the lethal radius to the aggregate hit points (§15.4.4); there is no fragment cone or component roll, and `R_lethal` and `damage_j` are set in the data, not scaled from `he_kg`.
+
 ## 15.7 Seekers
 
 | Seeker | Detection model (gameplay) | Susceptibilities | Lock behaviour |
@@ -2467,6 +2477,8 @@ Fragments are not simulated individually; instead, per detonation, the hit volum
 **Radar seeker model.** Detection range vs. a target of RCS σ: `R = R_ref (σ/σ_ref)^{1/4} · f_aspect · f_clutter · f_jam`; track quality (§16.5) governs guidance noise: `σ_los = σ_0 / √(SNR_ratio)`.
 
 **Gimbal and slew.** Seeker boresight is limited to `gimbal_deg` from the missile axis; if the target leaves FOV the seeker breaks lock (and the missile continues inertially). Pre-launch **cueing** (radar slave, IRST, helmet cue if equipped) slews the seeker; time to acquire lock is `t_lock = t_0 + k·(angular error)`.
+
+*Clarified in 0.2.4 (ADR-46):* the v0.1d seeker (`ir_rear`) acquires when the target is within its caged half field of view (`fov_deg / 2`, 2°), **within `max_aspect_deg` (35°) of the target's tail**, with a clear terrain line of sight and a signal `s = (I / I_ref)(R_ref / R)²` of at least 1; it locks after `lock_time_s` (0.5 s) of tone and keeps the lock within its gimbal (30°), within 40° of the tail and while `s ≥ 0.8`. There is no atmospheric transmittance and no flare yet (§17.5). Intensity follows C.11, not the relative units above: the engine term runs from `engine_idle` to `engine_mil` with the core thrust and to `engine_ab` with the afterburner (Kestrel 0.1, 0.5, 1.0), times the aspect factor (rear 1, side 0.45, front 0.15, linear in the aspect angle between), plus `skin_per_mach2 · M²` (0.05). Altitude and temperature do not scale it yet.
 
 ## 15.8 Countermeasure interaction (summary)
 
@@ -2518,6 +2530,8 @@ Targets have `armour_class` and `hp`. Damage: `dmg(r) = W_dmg · exp(−(r/R0)²
 | Salvo | Ripple interval 0.15–0.5 s; consecutive launches from alternating stations to preserve lateral balance |
 | Jettison | Bombs/tanks/pods can be jettisoned; emergency jettison drops all external stores |
 | Station state | `Loaded`, `Empty`, `Hung`, `Damaged`, `Jettisoned` |
+
+*Clarified in 0.2.4 (ADR-46, ADR-48):* in v0.1d a launch outside the constraints is **refused in every assist level**, with no misfire or hung store: the HUD names the reason for 1.5 s (`SAFE`, `EMPTY`, `NO LOCK`, `TOO CLOSE` inside `min_range_m`, `G LIMIT`, `AOA LIMIT`, `SLOW`). Arming is **automatic**: the weapons arm 1.0 s after the wheels leave the ground and no round or missile leaves before; there is no master-arm switch yet. The new missile cannot fuze for `safe_sep_s` and `arm_dist_m`; there is no ejection impulse, salvo, jettison or station state beyond loaded and empty.
 
 ## 15.11 Performance and networking
 
@@ -2766,6 +2780,8 @@ R_size = L_eff / θ_min;     R_contrast = ln(C₀ / C_min) / β;     R_vis = min
 Example: L_eff = 15 m, V_meteo = 40 km, C₀ = 0.5 → `R_size = 16.7 km`, `β = 9.78×10⁻⁵ m⁻¹`, `R_contrast = 23.5 km`, `R_vis = 16.7 km`. Identification (type recognised) at `R_vis/3`. Modifiers: sun glare ×0.5 within 20° of the sun; night ×(0.1…0.3) unless lit by lights, afterburner glow, moonlight, or flares; clouds block LOS if the integrated cloud density along the ray exceeds a threshold; contrails and smoke trails extend `L_eff`.
 
 **Rendering link.** The renderer draws a minimum-size "spot" for any visually detectable contact beyond the point where its true projected size is below ~1.5 px, scaled to represent what a human eye would see (up to `R_vis`), so what the player sees matches what the AI "sees" (§19.9).
+
+*Clarified in 0.2.4 (ADR-48):* v0.1d's **perception stub** uses this model for the bandit's eye: `R_vis = min(L_eff / 0.0009, ln(0.5 / 0.05) · V_meteo / 3.912)` with `V_meteo` 40 km (23.5 km for contrast), `L_eff` from the aircraft's `signatures.visual_l_eff_m` (the Kestrel's 7 m gives 7.8 km) and a missile's `visual` lengths (3 m burning, 0.5 m coasting), the line of sight checked against the terrain only (no clouds yet), and the result delayed by the skill's perception delay. There are no sun, night or afterburner modifiers yet, and no rendering spot.
 
 ## 16.7 Missile-approach warning
 
@@ -3208,6 +3224,8 @@ At `D ≥ 0.8` creaking/buffet cues and a 5 % per second failure chance; at `D =
 
 Overlapping hit volumes produce an impulse using reduced mass `μ = m₁m₂/(m₁ + m₂)` and relative velocity `v_rel`: collision energy `E = ½ μ v_rel²`. Damage to each colliding component is proportional to `E` and its HP; a threshold (e.g. `E > 200 kJ` or tail/wing involvement) means destruction. Pieces that detach follow the break-up model.
 
+*Clarified in 0.2.4 (ADR-48):* in v0.1d two aircraft collide when their **capsules overlap** (`damage.capsules`, the same as the hit volumes); both are destroyed and nobody is credited (the player's crash cause `COLLISION`). There is no impulse or partial damage yet.
+
 ### 18.8.3 Break-up and wreckage
 
 On destruction the aircraft becomes a **Wreck** with a short phase of degraded flight (ballistic with a tumbling aerodynamic model from the post-stall tables) and spawns 4–8 debris pieces (wing sections, tail, engine, cockpit section) with simple ballistic + drag physics (no per-piece collision with active aircraft except the biggest pieces tagged `hazard` which can damage aircraft in their path, mainly for formation flying). Constraints:
@@ -3542,6 +3560,8 @@ Total AI budget ≤ 1.5 ms per tick for 75 aircraft. Staggering: each pilot deci
 - `AC-19.6` **Terrain safety:** AI controlled flight into terrain < 0.5 % of aircraft-hours on a mountainous test set (non-damaged aircraft).
 - `AC-19.7` **Performance:** budget in §19.15 met for 75 AI on the Recommended profile.
 - `AC-19.8` **Human assessment:** ≥ 70 % of playtesters say that AI "fly like pilots rather than homing missiles" in a blind test.
+
+*Clarified in 0.2.4 (ADR-47, ADR-48): the pilot AI at M1.* v0.1d builds one bandit with a **state machine**, not the utility selection of §19.4: PATROL, INTERCEPT, PURSUE, GUN, DEFEND_GUN, DEFEND_MISSILE, EXTEND, RECOVER, RETURN and WRECK, decided at 5 Hz with a commitment time, flown every tick through a manoeuvre controller (a goal direction and a load cap turned into the player's own stick) on the player's aircraft under Standard assist. **Three skills** (`ai_skill/1`: Recruit, Regular, Veteran, found by `rank`) set its perception delay, notice probability, load, aim error, reaction times and tactics; **the Recruit never fires**. There is no morale, retreat or fuel logic (a bandit fighting for six minutes in afterburner runs dry), and the AI's **g-effects are off**. Its knowledge is a stub of §19.9: GCI reports every 4 s with 300 m of noise, and the eye of §16.6.2; when it sees the player by eye, its gunsight solves against the player's true state. The `PerceptionAudit` of §19.17 waits for the full sensor model (M3). An invalid percept puts it in RECOVER within a tick (fail-soft).
 
 ---
 
@@ -8203,6 +8223,8 @@ pipper_angle = angle(û_aim, boresight) projected into HUD coordinates (az, el)
 - **Air-to-ground:** CCIP (continuously computed impact point) for unguided bombs and rockets, CCRP (release point) for dive/level: the CCIP marker is the ballistic impact point of the current velocity and release conditions (drag-modified trajectory integrated at 10 ms steps up to the ground or 40 s; ground intersection via the sim terrain layer, §44.6); the **bomb fall line** and release cue appear when the impact point is within the target designator.
 - **Radar/target designator box:** a box around the locked target (bracket size ~ 40 mrad), with a range/closure/aspect readout (e.g. `R 8.4  Vc +310  A 20`), IFF symbol, and target ID if identified.
 
+*Clarified in 0.2.4 (ADR-41, ADR-46):* v0.1d's gunsight is a **director computed in the sim**: a virtual round flown at 120 Hz along the gun line gives the point where the target must be now for the rounds to meet it, and the HUD draws the pipper at the direction from the eye to that point, with a ring whose arc shows the range. Ranging is a **stub** (no radar): a target within 20 km is designated, and the sight ranges it within 2.5 km and 30° of the nose. There is no gun funnel and no manual ranging yet; `SHOOT` shows while the target is within 6 mrad of the pipper and 1 000 m.
+
 ## 54.5 Weapons display and launch-zone indicators (DLZ)
 
 Per selected weapon the HUD shows: weapon name, quantity, mode (e.g. `AAM-IR 4`, `GUN 480`), seeker status (`TONE` for IR lock / `SEEK` / `LOCK`), master arm state, and the **Dynamic Launch Zone (DLZ)** ladder beside the target box:
@@ -8215,6 +8237,8 @@ range scale 0 – R_scale (auto-ranged to 1.25·Rmax) ;  markers:  Rmin ▸  Rne
 - "**SHOOT**" appears inside `Rne` with valid lock; "**IN RANGE**" between `Rne` and `Rmax`; "**OUT**" beyond. For semi-active missiles an additional "**ILLUM**/SUPPORT" indicator (continuous STT required) and a time-to-impact countdown after launch ("TTI 14"); for active missiles "**PITBULL**" (active) after seeker activation. For IR missiles the audio growl and the cage box convey seeker lock (§56).
 - Launch authorisation logic: master arm on; weapon selected; stores ready; lock criteria; own-ship constraints (g-limits, AoA); an "**Launch aborted**" message names the reason (e.g. `NO LOCK`, `TOO CLOSE`, `OFF BORESIGHT 45°`).
 - Weapons-camera option (outline §96): see §54.11.
+
+*Clarified in 0.2.4 (ADR-41, ADR-46):* v0.1d shows `GUN <rounds>  SRM <missiles>`, `ARM` or `SAFE`, the seeker (`TONE`, `LOCK`) and `IN RNG` from a **fly-out prediction** (the next missile flown at 60 Hz against the target at constant velocity, with a perfect lock, every 30 ticks), and `SHOOT` when locked, in range and uninhibited. There is no DLZ ladder or baked table yet (no DLZ Baker). A refused launch shows its reason for 1.5 s.
 
 ## 54.6 RWR, radar and notch indicators
 
@@ -8494,6 +8518,8 @@ Team knowledge is merged through the datalink model (fused tracks from teammates
 
 **Aircraft distinctiveness (outline requirement).** Each aircraft gets a unique parameter set and at least two signature samples (AB light-off, spool). Validation: a blind-listening test with 8 testers must identify ≥ 80 % of aircraft pairs as different at equal throttle (art/audio gate, §66.4).
 
+*Clarified in 0.2.4 (ADR-42 amendment 2):* v0.1d's weapons and impacts are **synthesised** like the engine: the gun (a pulse per round at the gun's rate), the bandit's gun (filtered, quieter with distance), the launch, a hit taken and an explosion (quieter with distance), from the audio profile's `weapons` block. There is no missile in flight, spin-up, dry fire or Doppler yet.
+
 ## 56.4 Propagation model
 
 For a sound emitter at distance `d` with source level `L₀` (dB SPL at 1 m) and speed of sound `c = 20.05·√T` m/s (T in kelvin, from the atmosphere model §11.3; ≈ 340.3 m/s at sea level ISA):
@@ -8571,6 +8597,8 @@ event → { speaker, channel, priority, params } → template selection (weights
 | Master warning/caution | Distinct tones (red/amber priorities, §54.8) | Centre |
 
 All cues respect mute filters (RWR volume/mute, threat-only filters, §16.10), accessibility remaps (visual-only mode), and hearing-aid mode (limit dynamic range, boost 1–4 kHz).
+
+*Clarified in 0.2.4 (ADR-42 amendment 2):* v0.1d has the **IR seeker tone**: a growl whose pitch rises with the signal while searching or tracking, replaced by a steady lock tone when locked, on the warnings bus. The RWR, missile and radar tones wait for those systems.
 
 ## 56.8 Music director
 
@@ -8826,6 +8854,8 @@ Defaults:
 *Gamepad scheme:* modifier layers (`LB` held = secondary function set), radial menus for infrequent actions, auto-managed countermeasures if enabled. *HOTAS scheme:* ships with named presets for common device families (identified by `vendorId:productId` and `id` strings); unknown devices use the generic wizard ("move the axis you want to assign").
 
 *Clarified in 0.2.3 (ADR-41):* the view actions are `C` camera cycle (cockpit and chase), `X` held for free look (the mouse moves the head, or orbits the chase camera), the right mouse button held for zoom, `ArrowUp` and `ArrowDown` to look up and down, `,` and `.` to look left and right, `/` to recentre, `I` for the HUD's three detail levels and `-` and `=` for its brightness; a gamepad's right-stick press cycles the camera. The `C` for free look and the digit keys for the cameras above change, because Ctrl is throttle-down and Ctrl and a digit switches browser tabs, which a page cannot block. View actions never enter the input frame. A stored profile gains the new actions' default bindings where those inputs are free.
+
+*Clarified in 0.2.4 (ADR-37 amendment 1):* v0.1d's weapon actions are fire the gun (held) and fire a missile (pressed): `Space` or the primary mouse button (while the pointer is locked) fires the gun, and `M`, `Enter` or the middle button launches; the right button stays zoom, so `M` is not the map. On a gamepad the right bumper fires the gun and the left a missile (the triggers stay yaw), so recover moves to Back; on a joystick the trigger fires the gun and button 1 a missile, and the brakes and airbrake move to buttons 4 and 5. Holding `Ctrl` (throttle down) and pressing `Space` may switch the input source on macOS.
 
 ## 58.6 Binding editor, profiles and conflict handling
 
@@ -9219,6 +9249,8 @@ At first run (and on demand) a **30-second benchmark** (headless scene, fixed ca
 | **PS-9 Microbench** | Per-system benchmarks (flight tier steps, LOS, DLZ lookup, tile decode, mesh build, netcodec) | No regression > 5 % vs the baseline commit |
 
 Metrics collection: `performance.mark/measure`, `PerformanceObserver` (longtask, event-timing, layout-shift), WebGPU timestamp queries, WASM-side cycle counters (via `performance.now()` deltas), `measureUserAgentSpecificMemory`, Chrome DevTools protocol traces on lab runners. Nightly runs on three hardware classes; any gate failure blocks the release branch; trend dashboards track p50/p99 per scenario. **A regression budget** of 5 % per milestone is allowed only with a documented justification.
+
+*Clarified in 0.2.4 (ADR-45):* M1 has a **30-minute soak** as the precursor of PS-7: the bot playtester flies a duel's sortie again and again, and the gates are the JavaScript heap's slope (at most 1 MB per 10 minutes), the DOM, WebAssembly memory, GPU buffers and audio nodes holding steady at sortie starts, no worker error or lost device, and the sim at 59.5 Hz on the reference machine. Two seeded leaks prove the gates catch one.
 
 ## 60.10 Visual regression and screenshot tests
 
@@ -10067,6 +10099,8 @@ Statistics count only when the session is **eligible**:
 - `AC-65.5` All 14 outline statistics are present in the Career screen and in the exports with correct values after a scripted 20-mission campaign of known outcomes.
 - `AC-65.6` Import/export of statistics round-trips (§64.6) and merges by summing totals while retaining the better personal bests.
 
+*Clarified in 0.2.4 (ADR-49): the subset built in v0.1d.* A local **mission recorder** follows §65.2's sortie, landing and record definitions on the simulation's clock, counts the duel's kills, deaths, rounds and missiles from the core's session counters, and writes a `mission_result/1` subset (mode, assist, skill, arena, sorties, combat numbers, the take-off-kill-landing time, outcome) at the mission's end. The **statistics store** (`stats/1`) aggregates each result once by its id, holds totals, bests and the newest 50 results, and exports and imports (`stats_export/1`, merged by summing totals and keeping the better bests). The **debrief** shows the mission's numbers; a three-question **feel questionnaire** (`feel/1`: believable, satisfying, easy to learn, 1 to 5, and a comment) is kept with the statistics. Eligibility flags, the logbook, the career screen and RI wait for those systems.
+
 ---
 
 # 66. DEVELOPMENT ROADMAP
@@ -10155,6 +10189,8 @@ See §66.7.
 | **G9 Release readiness** | Before each public release | All AC for the milestone green; no P0/P1 bugs; performance gates; security/CSP audit (AC-61.6); crash-free session rate ≥ 99.5 % in beta (opt-in telemetry) |
 
 Playtest programme: weekly internal sessions from M1; monthly external sessions from M2; structured protocol (script, think-aloud, SUS usability score ≥ 75 target at M4, telemetry with consent). Findings feed the design priorities (§68).
+
+*Clarified in 0.2.4 (ADR-45, owner decision D1 of 2026-11-08, OQ-11):* for a **solo project at M1**, G1 is (b) the Kestrel's conformance test, (c) the NN-2 audit (the control system never moves the aircraft, and its turn depends on speed) and the **bot playtester's** sorties (take off, shoot the bandit down and land, at least 40 of 50 under Standard, Reduced and Manual), with the owner's own questionnaire and 10-minute task recorded and not blocking. G1(a), the blind panel of 12 testers, is open as OQ-11 and is not scheduled; it does not block M2.
 
 ## 66.5 Workstreams and critical path
 
@@ -10757,6 +10793,8 @@ This appendix is the normative index of data formats. Schemas are written in a T
 | `mission_result/1`, `campaign_run/1`, `saves_manifest/1` | §65.4, §64.7 | |
 | `locale/1`, `datapack/1`, `gpk` | A.15, §45.5 | |
 
+*Clarified in 0.2.4 (ADR-46, ADR-47, ADR-49):* `weapon/1` is as built in v0.1d (§15.2: classes `gun` and `srm`). New: `ai_skill/1` (one AI skill level: rank, whether it fires the gun, perception delay, notice probability, load fraction, aim error, reaction times, tactics; sim pack, `content/core/skills/`), and two local records that are not content, `stats/1` (the statistics store) and `feel/1` (the feel questionnaire's answers), exported together as `stats_export/1` (§65).
+
 ## A.2 `aircraft/1`
 
 ```ts
@@ -10821,6 +10859,8 @@ normative for the fields that exist; the interface above remains the target. Dif
 
 *Clarified in 0.2.3 (ADR-43):* the `cockpit?`, `hud?` and `audio?` references and the `model` block of this schema live in the **presentation bundle** (`core.present.json`), which maps `core:ac/kestrel` to its `core:hud/`, `core:cpt/`, `core:aud/`, `core:mdl/` and font ids; none of it is in the sim pack, whose hash is part of the state hash.
 
+*Clarified in 0.2.4 (ADR-46): what v0.1d adds to `aircraft/1`.* `internal_weapons.gun` is `{ ref, rounds, muzzle_m, harmonisation_mrad }` (the gun's position and its angle above the body axis); `loadout.rails[]` is `{ station, pos_m, store }`, a missile per rail, in place of loadout references; `signatures` is `{ ir: { engine_idle, engine_mil, engine_ab, aspect_side, aspect_front, skin_per_mach2 }, visual_l_eff_m }` (no RCS or acoustic reference yet); `damage` is **aggregate**, `{ hp, joules_per_hp, capsules[] }` with capsules `{ id, a_m, b_m, radius_m }` in body axes (the hit volumes, §18), in place of components and fire rules.
+
 ## A.3 `engine/1`
 
 ```ts
@@ -10868,6 +10908,8 @@ interface Fuze    { type: "impact"|"proximity"|"delay"|"altitude"; arm_dist_m: n
 interface Warhead { kind: "frag"|"blast"|"shaped"|"ap"|"incendiary"|"cluster"; he_kg: number; lethal_radius_m: number; frag_cone_deg?: number; pen_mm?: number }
 interface LaunchConstraints { min_speed_mps: number; max_g: number; max_alpha_deg: number; eject_mps: number; safe_sep_s: number; min_alt_m?: number }
 ```
+
+*Clarified in 0.2.4 (ADR-46):* v0.1d builds the `gun` block (with `drag_cd` a Mach table, `ammo_types` `{ id, tracer_every }`, and `max_age_s` and `min_speed_mps`, without heat or penetration) and the `missile` block of an `srm` as §15.2's clarification lists; the other blocks wait for their weapons.
 
 ## A.5 `sensor/1` and `ew_system/1`
 
@@ -11445,6 +11487,8 @@ the point is reported as deferred. `config` is one of `clean`, `clean_mil`, `cle
 
 Interference: a ≥ 900 kg store on S5 limits S4/S6 to ≤ 250 kg stores and bans SARH missiles there. Station numbering is illustrative; the data file is authoritative (general rules in §14.4).
 
+*Clarified in 0.2.4 (ADR-46):* v0.1d loads the Kestrel with its internal GS-27 (150 rounds, muzzle at `(3, −0.6, 0.1)` m) and a Dart-1 on each wingtip rail, S1 and S9 (at `(−1, ∓4.95, 0.35)` m); the other stations are empty until the stores system.
+
 ## C.11 Sensors, signatures, countermeasures
 
 | Item | Value |
@@ -11457,9 +11501,13 @@ Interference: a ≥ 900 kg store on S5 limits S4/S6 to ≤ 250 kg stores and ban
 | IR signature (*target*) | engine dry 0.5, AB 1.0 (relative); skin heating ∝ M² |
 | Countermeasures | 120 chaff + 60 flares; programs: single, salvo-4, auto |
 
+*Clarified in 0.2.4 (ADR-46):* the v0.1d IR signature is `engine_idle` 0.1, `engine_mil` 0.5, `engine_ab` 1.0, aspect side 0.45 and front 0.15, skin 0.05 per M² (§15.7), and the eye's `L_eff` 7 m (§16.6.2). The radar, RWR, RCS and countermeasures are not built.
+
 ## C.12 Damage components (*targets*)
 
 Wing L/R (HP 100 each, with fuel tanks inside), fuselage fwd/mid/aft (80/120/80), engine (HP 70, fire probability 0.35 on hit), vertical tail (60), horizontal stabilisers L/R (50), canopy/cockpit (40), radar (40), hydraulic systems A/B (30 each), avionics bay (40), fuel tanks (4), gear (3), control surfaces (6). Damage effects: §18.
+
+*Clarified in 0.2.4 (ADR-46):* v0.1d's damage is one pool of 100 hit points at 6 370 J per point, struck through five capsules (fuselage, both wings, the tailplane and the fin); the components above wait for §18.
 
 ## C.13 Cockpit, HUD, audio
 
@@ -11911,7 +11959,7 @@ Each template has ≥ 6 weighted variants and urgency variants (calm/urgent/pani
 | Format | Single Markdown file (`GDD.md`), headings per the table of contents; Appendices A–I |
 | Roadmap companion | `roadmap.md` (version plan v0.0 → v1.0) |
 | Version scheme | `MAJOR.MINOR.PATCH`: MAJOR = change of vision/platform; MINOR = new or changed chapters/ADRs; PATCH = corrections/clarifications |
-| Current version | 0.2.3 (v0.1c presentation clarifications) |
+| Current version | 0.2.4 (v0.1d combat clarifications) |
 
 ## I.2 Change log
 
@@ -11922,6 +11970,7 @@ Each template has ≥ 6 weighted variants and urgency variants (calm/urgent/pani
 | 0.2.1 | Clarifications from building the v0.1a flight model (ADR-29, ADR-30, ADR-31): §11.2.4 sign of the side-force term of `Z`; §11.6.3 post-stall blend is a data-driven smoothstep; §11.19 sustained load factor is wind-axis, `mach` and `requires` on envelope points; §61.5 Aero seam wired; A.2 and A.3 notes on what `aircraft/1` and `engine/1` implement now; C.3 spool figures against §11.8.2; C.7 rate of climb is the maximum 1 g P_s; C.8 altitude datum and 0.01 Mach floor; C.9 envelope fields; OQ-01 closed. No gate or target changed |
 | 0.2.2 | Clarifications from building the v0.1b control and ground work (ADR-32 to ADR-38): §11.11.2 the control laws are incremental dynamic inversion; §11.11.3 Full Assist is a bank-angle command and the recovery button's behaviour; §11.13.2 tanh-regularised, additive friction; §11.13.3 how the touchdown thresholds are judged, and that they govern over §18.8.1; §11.13.4 the debounce; §11.14 `n_z` at the CG, the dial, the AC-11.9 figures; §11.15 lateral tables against α, `C_nβ,dyn` and no break-up before §18; §48.2 Runway hot as built; §54.9 the Auto-GCAS timing conflict; §58.2 InputFrame v3; §58.4 mouse-aim runs in the sim; AC-58.3 measured from the source event; AC-58.4 scaled to the aircraft (owner decision, ADR-33 amendment 1); A.1 `fcs/1`; A.2 gear, contacts, `n_max_by_config`, `fcs.gains_ref`; C.8 the ground-roll segments and the C.7/C.8 landing-roll note (target kept). The header version, left at 0.2.0 in 0.2.1, is corrected. No gate or target changed except as the owner decided (AC-58.4) |
 | 0.2.3 | Clarifications from building the v0.1c presentation work (ADR-39 to ADR-44): §7.4.4 the render-only level L3 passes the 1 000 km extent; §44 "basic" is four levels from the sim's terrain function plus an analytic globe; §53.11 the first run ends at the main menu and the runway start; §54.2 the HUD is drawn directly as directions at infinity with an analytic aperture and a stroke font, the render target deferred to the MFDs; AC-54.1 compares against the horizon plus its dip; §54.3 the Mach rule, the G meter's shape cue, radar altitude and the AoA bracket; §54.11 the chase camera's height, lag and near plane; §56.2 the worklet is TypeScript and the state travels as AudioParams; §56.9 tones stand in for voice; §58.5 the view keys; §60.10 the screenshot tests are measurements at 1280 x 720, SSIM goldens not built; §61.12 update on request; A.1 `model/1` and `stroke_font/1`; A.2 presentation references and A.11 `hud_glass` corners live in the presentation bundle. No gate or target changed except as ADR-39 records (S6 cut, A1 and A7 methods).
+| 0.2.4 | Clarifications from building the v0.1d combat stub (ADR-45 to ADR-49): §15.2 and A.4 `weapon/1` as built; §15.4.2 the swept round test against capsules; §15.4.4 aggregate damage linear in impact energy; §15.5.2 RK4 at 120 Hz always and constant thrust; §15.6 the swept fuze and `damage_j`; §15.7 the rear-aspect cut-off and the C.11 intensities; §15.10 refusal in every assist and automatic arming; §16.6.2 the perception stub; §18.8.2 capsule overlap; §19 the M1 state machine, three skills, the Recruit's held fire, no morale or fuel logic, AI g-effects off; §54.4 the director pipper computed in the sim, a ranging stub, no funnel; §54.5 `IN RNG` from a fly-out prediction, no DLZ ladder; §56.3 and §56.7 the combat voices; §58.5 the weapon keys and the moved pad and joystick bindings; §60.9 the 30-minute soak as M1's precursor of PS-7; §65 the subset as built (`stats/1`, `feel/1`); §66.4 G1 at M1 for a solo project (D1, OQ-11); A.1 index rows `weapon/1` (as built), `ai_skill/1`, `stats/1`, `feel/1`; A.2 `internal_weapons.gun`, `loadout.rails`, `signatures` (as built), `damage` (aggregate); C.10 to C.12 the Kestrel's v0.1d data. No gate or target changed except as the owner decided (G1 at v0.1d, ADR-45). |
 
 ## I.3 Ownership
 

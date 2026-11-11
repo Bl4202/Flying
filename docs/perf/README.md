@@ -61,6 +61,50 @@ CI runs the arena spec at 480 x 270 and the lowest preset on its software raster
 and the report to its shape; the frame gates are for a machine with a GPU. A headed run needs mains power.
 The report adds `longTasks` and `deviceLosses` to `metrics`, and a gate can be `informational`.
 
+## The COMBAT scenario and the soak (v0.1d)
+
+`?perf=combat` measures the dogfight: the bot playtester's sortie from the merge (an air start, the
+bandit 3 km ahead) against a Regular over the rugged arena, for 120 s after a 5 s warm-up, with the
+bandit, the duel's markers, the HUD's weapon symbols and the combat sound on, in the cockpit at High in a
+1920 x 1080 buffer. It is judged by the arena's gates (ADR-45 PF1 to PF4). With `--scenario combat`,
+`perf:local` measures the control latency with a duel running (the merge against a Regular), so one
+command is runs A and L.
+
+```text
+pnpm perf:local --name a-combat-cockpit --class recommended --scenario combat --latency 500   # PF1, PF2
+pnpm perf:local --name b-combat --class minimum --scenario combat --renderer webgl2 --throttle 4  # PF3
+PERF_SECONDS=120 PERF_STRICT=1 pnpm perf:smoke     # includes tests/e2e/perf/combat.spec.ts (PF4)
+```
+
+**The soak** (ADR-45 section 4.7, L1 to L7) flies the bot's duel sortie from the runway against a
+Regular, again and again through the debrief's Fly again, for 30 minutes after a 2-minute warm-up, at
+640 x 360 and the Low preset. It samples memory every 60 s and the DOM's counters and the GPU's live
+buffers and textures at every sortie start (`tests/e2e/soak/soak.spec.ts`, Playwright project `soak`;
+the verdict is `packages/perf/src/soak.ts`).
+
+| Gate | Rule |
+|---|---|
+| L1 | the JavaScript heap's slope at most 1 MB per 10 minutes |
+| L2 | at the last sortie start, DOM nodes at most 20 and event listeners at most 2 above the second start's (after a full garbage collection) |
+| L3 | the WebAssembly memory the same in every sample from the first sortie start |
+| L4 | no sim silence of a second or more, no worker error, no lost device, the same number of workers throughout |
+| L5 | the GPU's live buffers and textures the same at the second and every later sortie start (so at least 3 starts) |
+| L6 | the live audio nodes the same in every sample from the first sortie start |
+| L7 | the sim's average at least 59.5 Hz on the reference machine (57 in CI), no console error, at least 4 sortie starts in a full run |
+
+```text
+SOAK_SECONDS=1800 PW_CHANNEL=chrome pnpm soak --headed       # the full soak, on a reference machine
+SOAK_SECONDS=120 SOAK_WARMUP_SECONDS=30 SOAK_GATES=quick pnpm soak   # CI's check of the harness
+```
+
+`SOAK_BASE_URL` points it at staging (default the local headers preview) and `SOAK_REPORT_DIR` says where
+`soak-report.json` goes. CI's `perf-smoke` runs the two-minute quick soak (L3, L4, L6, L7); the nightly
+workflow runs the full one (the `soak` job, `soak_seconds` on a manual run). Two seeded faults prove the
+gates catch a leak (debug builds only): `?fault=leak-js` keeps 2 KB of JavaScript every frame (L1 must
+fail; `SOAK_FAULT=leak-js SOAK_SECONDS=300`), and `?fault=leak-gpu` makes a GPU buffer at each new
+session and never frees it (L5 must fail; it needs three sortie starts, so `SOAK_FAULT=leak-gpu
+SOAK_WARMUP_SECONDS=0 SOAK_SECONDS=900`). A browser sortie takes about 5.3 minutes.
+
 ## First-run benchmark (prototype)
 
 `?bench=quick` (about 4 s) or `?bench=full` (about 25 s), or the Benchmark button in the debug

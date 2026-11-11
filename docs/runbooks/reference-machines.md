@@ -13,9 +13,13 @@ and what each run only approximates, is ADR-28.
 | L | Mac M4, WebGPU, the control-latency gate | Recommended | `m4-latency` | scripted by the maintainer (v0.1b) |
 | A-arena | Mac M4, WebGPU, the arena scenario in the cockpit and in the chase view (ADR-39 P1, P2) | Recommended | `a-arena-cockpit`, `a-arena-chase` | scripted by the maintainer (v0.1c) |
 | B-arena | Mac M4, `renderer=webgl2`, 4x CPU throttle, the arena scenario (P3) | Minimum, emulated | `b-arena` | scripted by the maintainer (v0.1c) |
+| A-combat, L | Mac M4, WebGPU, the COMBAT scenario in the cockpit, and the control latency with a duel running (ADR-45 PF1, PF2) | Recommended | `a-combat-cockpit` | scripted by the maintainer (v0.1d) |
+| B-combat | Mac M4, `renderer=webgl2`, 4x CPU throttle, the COMBAT scenario (PF3) | Minimum, emulated | `b-combat` | scripted by the maintainer (v0.1d) |
+| Soak | Mac M4, WebGPU, headed, the 30-minute soak (L1 to L7) | Recommended | `docs/exit/v0.1d/soak/m4/` | scripted by the maintainer (v0.1d) |
 
-Reports go to `docs/exit/v0.0b/machines/<folder>/` for v0.0b, to `docs/exit/v0.1b/machines/<folder>/` for v0.1b
-and to `docs/exit/v0.1c/machines/<folder>/` from v0.1c (the scripted route's default).
+Reports go to `docs/exit/v0.0b/machines/<folder>/` for v0.0b, to `docs/exit/v0.1b/machines/<folder>/` for v0.1b,
+to `docs/exit/v0.1c/machines/<folder>/` for v0.1c and to `docs/exit/v0.1d/machines/<folder>/` from v0.1d (the
+scripted route's default).
 
 ## Before any run
 
@@ -55,7 +59,16 @@ pnpm perf:local --name m4-latency --class recommended --latency 500   # the AC-5
 pnpm perf:local --name a-arena-cockpit --class recommended --scenario arena           # P1 (v0.1c)
 pnpm perf:local --name a-arena-chase --class recommended --scenario arena --camera chase   # P2
 pnpm perf:local --name b-arena --class minimum --scenario arena --renderer webgl2 --throttle 4   # P3
+pnpm perf:local --name a-combat-cockpit --class recommended --scenario combat --latency 500   # PF1, PF2 (v0.1d)
+pnpm perf:local --name b-combat --class minimum --scenario combat --renderer webgl2 --throttle 4  # PF3
+SOAK_SECONDS=1800 SOAK_BASE_URL=https://bl4202.github.io/Flying/ SOAK_REPORT_DIR=docs/exit/v0.1d/soak/m4 \
+  PW_CHANNEL=chrome pnpm soak --headed                                    # the soak, 32 minutes
 ```
+
+With `--scenario combat` the control latency is measured with a duel running (the merge against a
+Regular), so one command makes runs A and L. The soak flies the bot's sortie from the runway against a
+Regular again and again; leave the machine alone, on mains, with the window visible, for its 32 minutes
+(`docs/perf/README.md` has its gates and the seeded leak faults).
 
 The arena runs need **mains power**: a headed run at 1920 x 1080 with 4x MSAA is the heaviest thing the game
 does, and a laptop on battery or in low-power mode is not a reference machine. `--base http://127.0.0.1:4173/Flying/`
@@ -117,6 +130,22 @@ provisional and these reports are what they will be tuned against.
 | FPS is half the display rate | the page is on the wrong GPU, or the tab is throttled; read the `Device` row |
 | Compat verdict fatal, `SYS-103` | hardware acceleration is off, or the GPU is on the browser's blocklist (`chrome://gpu`) |
 | A "graphics device was lost" notice | note when it happened; the renderer rebuilds once, then falls back to WebGL2. Send the console log |
+
+## The owner's dogfight checklist (v0.1d, not blocking)
+
+The bots gate the tag (owner decision, 2026-11-08); this is recorded in `docs/exit/v0.1d.md` and does not
+block it. On staging, on the Mac with a keyboard and mouse:
+
+1. For each assist level (Full, Standard, Reduced, Manual): main menu, Mode **Dogfight**, Bandit
+   **Recruit**, Fly. Take off, find the bandit, shoot it down (gun or missile), land and stop. Note the
+   debrief's "Take-off, kill and landing" time. Then **Rate this flight** (three answers, and a comment if
+   you like).
+2. After the four: Statistics, **Export**, and send the file (it holds the four answers and times).
+3. Look and listen: the tracers against the sky and the ground; the missile and its explosion; the bandit's
+   wreck; the HUD's box, arrow, pipper, ring, seeker circle and diamond, readable in daylight; the seeker's
+   growl rising as you line up and the lock tone; the gun; being hit by a **Regular** bandit.
+4. Hold `Ctrl` (throttle down) and press `Space`: does the gun fire, or does macOS switch the input source?
+5. Anything that felt wrong, one line each.
 
 ## The owner's look-and-listen checklist (v0.1c, not blocking)
 
