@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_BASE,
+  firstPageQuery,
   judgeRun,
   parseLocalArgs,
   renderSummary,
@@ -57,6 +58,19 @@ describe('the dogfight run and the soak (v0.1d)', () => {
     expect(parseLocalArgs(['--name', 'x', '--class', 'high']).soak).toBe(false);
     expect(() => parseLocalArgs(['--name', 'x', '--class', 'high', '--scenario', 'war'])).toThrow(
       /combat/,
+    );
+  });
+
+  it('measures the control latency of the dogfight run with a duel running (PF2)', () => {
+    const args = ['--name', 'x', '--class', 'recommended'];
+    expect(firstPageQuery(parseLocalArgs([...args, '--scenario', 'combat']))).toBe(
+      'debug=1&fly=1&spawn=air&scenario=merge&skill=2',
+    );
+    expect(firstPageQuery(parseLocalArgs([...args, '--scenario', 'arena']))).toBe(
+      'debug=1&fly=1&spawn=air',
+    );
+    expect(firstPageQuery(parseLocalArgs([...args, '--spawn', 'runway']))).toBe(
+      'debug=1&fly=1&spawn=runway',
     );
   });
 
@@ -121,7 +135,7 @@ describe('parseLocalArgs', () => {
       seconds: 120,
       fly: 60,
       headless: false,
-      out: 'docs/exit/v0.1c/machines',
+      out: 'docs/exit/v0.1d/machines',
       scenario: 'ps0',
       spawn: 'air',
       latency: 0,

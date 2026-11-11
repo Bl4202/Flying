@@ -26,6 +26,10 @@ const BASE = process.env['SOAK_BASE_URL'] ?? HEADERS_BASE;
 const REPORT_DIR = process.env['SOAK_REPORT_DIR'] ?? 'test-results/soak';
 const FAULT = process.env['SOAK_FAULT'];
 const SAMPLE_EVERY_S = 60;
+/** A sample waits this long after Fly again: the sim's rate report must cover running time only. */
+const SETTLE_AFTER_FLY_MS = 2000;
+/** `CORE_STATE.RUNNING` (`sim-bridge`). */
+const CORE_RUNNING = 2;
 
 const PAGE = `${BASE}?debug=1&fly=1&scenario=duel&skill=2&script=sortie&res=640x360&quality=low${
   FAULT === undefined ? '' : `&fault=${FAULT}`
@@ -37,6 +41,18 @@ function sample(page: Page) {
     (globalThis as { gc?: () => void }).gc?.();
     return window.__flying?.memory();
   });
+}
+
+/**
+ * Whether the simulation is running: no debrief holds it. L7 judges the sim's rate while it runs;
+ * the debrief's hold between sorties is deliberate (its rate reads 0) and is not a silence (L4
+ * counts those).
+ */
+function simRunning(page: Page): Promise<boolean> {
+  return page.evaluate((RUNNING) => {
+    const f = window.__flying;
+    return f !== undefined && f.debrief() === null && f.stats().sim?.coreState === RUNNING;
+  }, CORE_RUNNING);
 }
 
 /** The DOM's counters after a full collection (CDP), and the GPU resources, at a sortie start. */
@@ -69,6 +85,17 @@ test('the soak: sortie after sortie with no leak (L1 to L7)', async ({ page }) =
   const starts: SortieStart[] = [await sortieStart(page, cdp, since())];
   const samples: SoakSample[] = [];
   let nextSample = windowStart;
+  let flewAgainAt = 0;
+  /**
+   * A sample taken while the sim runs, or `undefined` if it is held now or was held by the time
+   * the sample came back (the browser's memory measurement can take a second or more, and a
+   * sortie can end meanwhile): the caller tries again a second later.
+   */
+  const runningSample = async () => {
+    if (Date.now() - flewAgainAt < SETTLE_AFTER_FLY_MS || !(await simRunning(page))) return;
+    const m = await sample(page);
+    return m !== undefined && (await simRunning(page)) ? m : undefined;
+  };
 
   while (Date.now() < end) {
     // The debrief opens after each stop: fly again, and that is a sortie start.
@@ -77,18 +104,31 @@ test('the soak: sortie after sortie with no leak (L1 to L7)', async ({ page }) =
       await expect
         .poll(() => page.evaluate(() => window.__flying?.debrief() ?? null), { timeout: 10_000 })
         .toBeNull();
+      flewAgainAt = Date.now();
       starts.push(await sortieStart(page, cdp, since()));
     }
     if (Date.now() >= nextSample) {
-      const m = await sample(page);
-      if (m !== undefined) samples.push({ tS: since(), ...m });
-      nextSample += SAMPLE_EVERY_S * 1000;
+      const m = await runningSample();
+      if (m !== undefined) {
+        samples.push({ tS: since(), ...m });
+        nextSample += SAMPLE_EVERY_S * 1000;
+      }
     }
     await page.waitForTimeout(1000);
   }
-  // The window's last sample, at its end.
-  const last = await sample(page);
-  if (last !== undefined) samples.push({ tS: since(), ...last });
+  // The window's last sample, at its end (a few tries, in case a debrief holds the sim).
+  for (let i = 0; i < 15; i++) {
+    const last = await runningSample();
+    if (last !== undefined) {
+      samples.push({ tS: since(), ...last });
+      break;
+    }
+    if ((await page.evaluate(() => window.__flying?.debrief() ?? null)) !== null) {
+      await page.locator('[data-testid="debrief-fly-again"]').click();
+      flewAgainAt = Date.now();
+    }
+    await page.waitForTimeout(1000);
+  }
 
   const build = await page.evaluate(
     () => document.querySelector('[data-testid="ov-build"]')?.getAttribute('data-value') ?? '',

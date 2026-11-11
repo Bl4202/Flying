@@ -1,0 +1,306 @@
+{
+  "schema": "soak_report/1",
+  "build": "261d08b6ded9 · ABI 5",
+  "url": "https://bl4202.github.io/Flying/?debug=1&fly=1&scenario=duel&skill=2&script=sortie&res=640x360&quality=low&fault=leak-gpu",
+  "warmupS": 0,
+  "seconds": 900,
+  "samples": [
+    {
+      "tS": 29.04,
+      "jsBytes": 28219619,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 23,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 59.90654576347119,
+      "sorties": 0
+    },
+    {
+      "tS": 78.315,
+      "jsBytes": 28102814,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 23,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 59.86231667806298,
+      "sorties": 0
+    },
+    {
+      "tS": 139.314,
+      "jsBytes": 28410261,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 23,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 59.700378725339725,
+      "sorties": 0
+    },
+    {
+      "tS": 192.62,
+      "jsBytes": 28467552,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 23,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 59.73477758410851,
+      "sorties": 0
+    },
+    {
+      "tS": 258.969,
+      "jsBytes": 28532793,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 23,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 61.30268199233716,
+      "sorties": 0
+    },
+    {
+      "tS": 318.239,
+      "jsBytes": 28529192,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 23,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 0,
+      "sorties": 1
+    },
+    {
+      "tS": 376.512,
+      "jsBytes": 28604046,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 24,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 61.11768976023322,
+      "sorties": 1
+    },
+    {
+      "tS": 439.773,
+      "jsBytes": 28648262,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 24,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 61.16091055646642,
+      "sorties": 1
+    },
+    {
+      "tS": 498.033,
+      "jsBytes": 28614174,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 24,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 59.26745425746468,
+      "sorties": 1
+    },
+    {
+      "tS": 556.283,
+      "jsBytes": 28751705,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 24,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 59.71099878524069,
+      "sorties": 1
+    },
+    {
+      "tS": 618.538,
+      "jsBytes": 28811946,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 24,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 59.7609561752988,
+      "sorties": 1
+    },
+    {
+      "tS": 675.755,
+      "jsBytes": 28841002,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 25,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 59.92090439591129,
+      "sorties": 2
+    },
+    {
+      "tS": 738.157,
+      "jsBytes": 28848698,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 25,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 60.500642837874615,
+      "sorties": 2
+    },
+    {
+      "tS": 798.515,
+      "jsBytes": 28810453,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 25,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 59.883825375345246,
+      "sorties": 2
+    },
+    {
+      "tS": 857.806,
+      "jsBytes": 28760901,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 25,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 59.55807904891315,
+      "sorties": 2
+    },
+    {
+      "tS": 918.321,
+      "jsBytes": 28657405,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 25,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 59.895781325641906,
+      "sorties": 2
+    }
+  ],
+  "sortieStarts": [
+    {
+      "tS": 0,
+      "nodes": 337,
+      "listeners": 36,
+      "liveBuffers": 23,
+      "liveTextures": 1
+    },
+    {
+      "tS": 319.288,
+      "nodes": 337,
+      "listeners": 34,
+      "liveBuffers": 24,
+      "liveTextures": 1
+    },
+    {
+      "tS": 635.687,
+      "nodes": 337,
+      "listeners": 34,
+      "liveBuffers": 25,
+      "liveTextures": 1
+    }
+  ],
+  "consoleErrors": [],
+  "gates": "all",
+  "fault": "leak-gpu",
+  "verdict": {
+    "L1": {
+      "pass": true,
+      "detail": "0.40 MB per 10 min (uasm, 16 samples; limit 1.00 MB)"
+    },
+    "L2": {
+      "pass": true,
+      "detail": "nodes 337 -> 337, listeners 34 -> 34"
+    },
+    "L3": {
+      "pass": true,
+      "detail": "WebAssembly memory 16.78 MB"
+    },
+    "L4": {
+      "pass": true,
+      "detail": "0 silences, 0 worker errors, 0 device losses, workers 2"
+    },
+    "L5": {
+      "pass": false,
+      "detail": "buffers 24, 25; textures 1, 1"
+    },
+    "L6": {
+      "pass": true,
+      "detail": "audio nodes 4"
+    },
+    "L7": {
+      "pass": false,
+      "detail": "56.33 Hz (need 59.5), 0 console errors, 3 sortie starts (need 4)"
+    },
+    "pass": false
+  }
+}

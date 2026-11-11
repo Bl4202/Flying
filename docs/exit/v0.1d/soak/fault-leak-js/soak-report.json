@@ -1,0 +1,149 @@
+{
+  "schema": "soak_report/1",
+  "build": "261d08b6ded9 · ABI 5",
+  "url": "https://bl4202.github.io/Flying/?debug=1&fly=1&scenario=duel&skill=2&script=sortie&res=640x360&quality=low&fault=leak-js",
+  "warmupS": 120,
+  "seconds": 300,
+  "samples": [
+    {
+      "tS": 13.642,
+      "jsBytes": 63150539,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 23,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 60.30340147790261,
+      "sorties": 0
+    },
+    {
+      "tS": 77.884,
+      "jsBytes": 79628090,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 23,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 60.36255256841163,
+      "sorties": 0
+    },
+    {
+      "tS": 138.141,
+      "jsBytes": 95023926,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 23,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 59.5359913662249,
+      "sorties": 0
+    },
+    {
+      "tS": 198.436,
+      "jsBytes": 111058512,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 23,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 0,
+      "sorties": 1
+    },
+    {
+      "tS": 256.717,
+      "jsBytes": 126672004,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 23,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 60.73604495786568,
+      "sorties": 1
+    },
+    {
+      "tS": 315.011,
+      "jsBytes": 141659703,
+      "jsSource": "uasm",
+      "wasmBytes": 16777216,
+      "liveBuffers": 23,
+      "liveTextures": 1,
+      "liveAudioNodes": 4,
+      "silences": 0,
+      "workerErrors": 0,
+      "deviceLosses": 0,
+      "workers": 2,
+      "simHz": 59.986802887346585,
+      "sorties": 1
+    }
+  ],
+  "sortieStarts": [
+    {
+      "tS": -120,
+      "nodes": 337,
+      "listeners": 36,
+      "liveBuffers": 23,
+      "liveTextures": 1
+    },
+    {
+      "tS": 199.468,
+      "nodes": 337,
+      "listeners": 34,
+      "liveBuffers": 23,
+      "liveTextures": 1
+    }
+  ],
+  "consoleErrors": [],
+  "gates": "all",
+  "fault": "leak-js",
+  "verdict": {
+    "L1": {
+      "pass": false,
+      "detail": "156.77 MB per 10 min (uasm, 6 samples; limit 1.00 MB)"
+    },
+    "L2": {
+      "pass": false,
+      "detail": "2 sortie starts: need at least 3"
+    },
+    "L3": {
+      "pass": true,
+      "detail": "WebAssembly memory 16.78 MB"
+    },
+    "L4": {
+      "pass": true,
+      "detail": "0 silences, 0 worker errors, 0 device losses, workers 2"
+    },
+    "L5": {
+      "pass": false,
+      "detail": "2 sortie starts: need at least 3"
+    },
+    "L6": {
+      "pass": true,
+      "detail": "audio nodes 4"
+    },
+    "L7": {
+      "pass": false,
+      "detail": "50.15 Hz (need 59.5), 0 console errors, 2 sortie starts (need 4)"
+    },
+    "pass": false
+  }
+}
