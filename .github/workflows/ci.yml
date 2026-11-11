@@ -158,7 +158,7 @@ jobs:
   perf-smoke:
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
@@ -170,6 +170,12 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm perf:smoke
       - run: pnpm bench
+      # The soak harness, briefly (ADR-45 4.7 (b)): a check of the harness, with L3, L4, L6 and L7.
+      - run: pnpm soak
+        env:
+          SOAK_SECONDS: '120'
+          SOAK_WARMUP_SECONDS: '30'
+          SOAK_GATES: quick
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
