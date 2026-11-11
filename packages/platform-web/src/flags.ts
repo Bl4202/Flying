@@ -11,7 +11,7 @@
  * | `flags` | comma list of `transfer`, `mainrender`, `timer`, `stall` (test switches) |
  * | `compat` | `1`: show the compat screen even if it was acknowledged |
  * | `selftest` | `1` (golden hash), `renderer` (renderer contract), `audio` (the flight audio in this browser), `screens` (the screenshot gates; `case=horizon` or `terrain`) |
- * | `perf` | `ps0` (the empty loop) or `arena` (the circuit over the rugged arena, with the HUD and the sound): run that scenario |
+ * | `perf` | `ps0` (the empty loop), `arena` (the circuit over the rugged arena, with the HUD and the sound) or `combat` (the bot's dogfight from the merge): run that scenario |
  * | `seconds` | duration of a perf run, 1 to 3600 |
  * | `bench` | `quick` or `full`: run the first-run benchmark |
  * | `spawn` | `runway` (default) or `air`: where the aircraft starts |
@@ -26,7 +26,7 @@
  * | `res` | `WxH`, for example `1920x1080`: fixes the drawing buffer's size (perf and screenshot runs) |
  * | `quality` | `low`, `medium` or `high`: the graphics preset, in place of the one chosen (a test aid) |
  * | `view` | `classify`: draws flat key colours instead of the picture, so a test can tell from a pixel what drew it |
- * | `fault` | `flat-earth`, `no-skirts` or `hud-body-axes`: a seeded render fault the screenshot tests must catch; needs `debug` |
+ * | `fault` | `flat-earth`, `no-skirts` or `hud-body-axes`: a seeded render fault the screenshot tests must catch; `leak-js` or `leak-gpu`: a seeded leak the soak must catch (ADR-45 L1, L5); needs `debug` |
  */
 
 export type RendererChoice = 'auto' | 'webgpu' | 'webgl2' | 'null';
@@ -35,7 +35,14 @@ export type AssistChoice = 'full' | 'standard' | 'reduced' | 'manual';
 export type GEffectsChoice = 'off' | 'reduced' | 'full';
 export type ArenaChoice = 'rugged' | 'plain';
 export type QualityChoice = 'low' | 'medium' | 'high';
-export type FaultChoice = 'flat-earth' | 'no-skirts' | 'hud-body-axes';
+export type FaultChoice = 'flat-earth' | 'no-skirts' | 'hud-body-axes' | 'leak-js' | 'leak-gpu';
+const FAULTS: readonly FaultChoice[] = [
+  'flat-earth',
+  'no-skirts',
+  'hud-body-axes',
+  'leak-js',
+  'leak-gpu',
+];
 export type ScenarioChoice = 'free' | 'duel' | 'merge';
 export type ScriptChoice = 'circuit' | 'sortie';
 
@@ -56,7 +63,7 @@ export interface Flags {
   stall: boolean;
   compat: boolean;
   selftest: false | 'hash' | 'renderer' | 'audio' | 'screens';
-  perf: false | 'ps0' | 'arena';
+  perf: false | 'ps0' | 'arena' | 'combat';
   seconds: number | undefined;
   bench: false | 'quick' | 'full';
   /** Where the aircraft starts, if the URL says; otherwise the game's default (the runway). */
@@ -219,10 +226,10 @@ export function parseFlags(search: string): Flags {
   }
 
   const perf = params.get('perf');
-  if (perf === 'ps0' || perf === 'arena') {
+  if (perf === 'ps0' || perf === 'arena' || perf === 'combat') {
     flags.perf = perf;
   } else if (perf !== null) {
-    bad('perf', perf, 'ps0 or arena');
+    bad('perf', perf, 'ps0, arena or combat');
   }
 
   const seconds = params.get('seconds');
@@ -332,11 +339,13 @@ export function parseFlags(search: string): Flags {
   }
 
   const fault = params.get('fault');
-  if (fault === 'flat-earth' || fault === 'no-skirts' || fault === 'hud-body-axes') {
-    if (flags.debug === false) bad('fault', fault, 'combined with debug=1 (faults are test aids)');
-    else flags.fault = fault;
+  const faultChoice = FAULTS.find((f) => f === fault);
+  if (faultChoice !== undefined) {
+    if (flags.debug === false)
+      bad('fault', faultChoice, 'combined with debug=1 (faults are test aids)');
+    else flags.fault = faultChoice;
   } else if (fault !== null) {
-    bad('fault', fault, 'flat-earth, no-skirts or hud-body-axes');
+    bad('fault', fault, FAULTS.join(', '));
   }
 
   const view = params.get('view');

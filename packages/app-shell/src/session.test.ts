@@ -1,7 +1,7 @@
 import { defaultFlags, type Flags } from '@flying/platform-web';
 import { ARENA, ASSIST_LEVEL, G_EFFECTS, SCENARIO, SPAWN_KIND } from '@flying/sim-bridge/layout';
 import { describe, expect, it } from 'vitest';
-import { ARENA as ARENA_SCENARIO, PS0 } from '@flying/perf';
+import { ARENA as ARENA_SCENARIO, COMBAT, PS0 } from '@flying/perf';
 import { DEFAULT_SETTINGS } from '@flying/ui';
 import { sessionFromFlags, sessionOverrides } from './session.ts';
 
@@ -172,6 +172,20 @@ describe('sessionOverrides', () => {
       gEffects: G_EFFECTS.FULL,
       arena: ARENA.RUGGED,
       ...FREE,
+    });
+    // The dogfight run: the merge against a Regular, whatever the settings' mode and bandit.
+    expect(
+      sessionFromFlags(flags({ scenario: 'free' }), COMBAT, {
+        ...DEFAULT_SETTINGS,
+        banditSkill: 3,
+      }),
+    ).toEqual({
+      spawn: SPAWN_KIND.AIR,
+      assist: ASSIST_LEVEL.STANDARD,
+      gEffects: G_EFFECTS.FULL,
+      arena: ARENA.RUGGED,
+      scenario: SCENARIO.DUEL_MERGE,
+      skill: 2,
     });
   });
 

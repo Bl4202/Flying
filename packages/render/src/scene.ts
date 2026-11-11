@@ -86,8 +86,11 @@ export interface LevelSet {
 /** `normal` is the picture; `classify` flat key colours by what drew each pixel (see `classify.ts`). */
 export type DebugView = 'normal' | 'classify';
 
-/** A seeded render fault, for the screenshot tests that must fail (ADR-39). Honoured in debug only. */
-export type RenderFault = 'flat-earth' | 'no-skirts' | 'hud-body-axes';
+/**
+ * A seeded render fault, for the screenshot tests that must fail (ADR-39), or the soak's GPU leak
+ * (`leak-gpu`: a buffer made and never freed at each new session, ADR-45 L5). Honoured in debug only.
+ */
+export type RenderFault = 'flat-earth' | 'no-skirts' | 'hud-body-axes' | 'leak-gpu';
 
 /** Most copies of the terrain patch one frame may draw (the benchmark's heaviest load level). */
 export const MAX_PATCH_INSTANCES = 64;

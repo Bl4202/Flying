@@ -943,6 +943,17 @@ export async function startDemo(ctx: DemoContext): Promise<Demo> {
   // Tests (and the curious) can tell that everything is wired and the loop is going.
   roots.stage.dataset['state'] = 'running';
 
+  // The seeded `leak-js` fault (debug only): 2 KB kept every frame, which the soak's L1 must catch.
+  if (flags.fault === 'leak-js') {
+    const kept: Uint8Array[] = [];
+    (window as unknown as { __flyingLeak?: Uint8Array[] }).__flyingLeak = kept;
+    const leak = (): void => {
+      kept.push(new Uint8Array(2048).fill(kept.length & 0xff));
+      requestAnimationFrame(leak);
+    };
+    requestAnimationFrame(leak);
+  }
+
   if (flags.debug !== false || flags.stall) {
     const hooks: TestHooks = {
       stallSim: (ms) => {

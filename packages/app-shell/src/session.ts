@@ -49,7 +49,7 @@ export type OverridableSettings = Pick<
 export function sessionFromFlags(
   flags: Flags,
   /** A performance run: `true` for the bare scripted session, or the scenario whose start it flies. */
-  perf: boolean | { start: { spawn: number; arena: number } },
+  perf: boolean | { start: Pick<SessionConfig, 'spawn' | 'arena' | 'scenario' | 'skill'> },
   settings?: SessionSettings,
 ): SessionConfig {
   if (perf !== false) {

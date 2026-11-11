@@ -4,3 +4,4 @@ export * from './machine.ts';
 export * from './report.ts';
 export * from './runner.ts';
 export * from './scenarios.ts';
+export * from './soak.ts';

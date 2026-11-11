@@ -617,6 +617,15 @@ export class WebGpuRenderer implements Renderer {
     return this.#tally.snapshot();
   }
 
+  /** Kept, never destroyed: the `leak-gpu` fault. */
+  readonly #leaked: GPUBuffer[] = [];
+
+  debugLeakBuffer(): void {
+    this.#leaked.push(
+      this.#tally.gpuBuffer(this.#device, { size: 65_536, usage: GPUBufferUsage.VERTEX }),
+    );
+  }
+
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;

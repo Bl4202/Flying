@@ -77,8 +77,15 @@ export class NullRenderer implements Renderer {
     this.#lost.push(listener);
   }
 
+  /** Buffers the `leak-gpu` fault has leaked (the null renderer only counts them). */
+  leaked = 0;
+
   resources(): GpuResources {
-    return { buffers: 0, textures: 0 };
+    return { buffers: this.leaked, textures: 0 };
+  }
+
+  debugLeakBuffer(): void {
+    this.leaked += 1;
   }
 
   /** Test hook: behave as if the device was lost. */

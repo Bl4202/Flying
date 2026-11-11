@@ -34,11 +34,16 @@ export interface LocalOptions {
   res: string | undefined;
   /** The graphics preset of an arena run; the scenario's own (High) when absent. */
   quality: 'low' | 'medium' | 'high' | undefined;
+  /** Run the soak (`pnpm soak`) after the scenario, its report into the run's directory. */
+  soak: boolean;
 }
 
 export type SpawnArg = 'air' | 'runway';
-/** The scenario the measured run flies (`?perf=`): the bare loop, or the arena circuit (v0.1c). */
-export type ScenarioArg = 'ps0' | 'arena';
+/**
+ * The scenario the measured run flies (`?perf=`): the bare loop, the arena circuit (v0.1c), or the
+ * bot's dogfight (v0.1d).
+ */
+export type ScenarioArg = 'ps0' | 'arena' | 'combat';
 export type CameraArg = 'cockpit' | 'chase';
 
 /** The gate of AC-58.3: the 95th percentile of the control latency, ms (strict, reference machine). */
@@ -49,7 +54,8 @@ export const DEFAULT_BASE = 'https://bl4202.github.io/Flying/';
 const USAGE = `usage: node perf-local.ts --name NAME --class minimum|recommended|high
   [--base URL] [--renderer auto|webgl2|webgpu] [--throttle N] [--seconds N] [--fly N]
   [--spawn air|runway] [--latency SAMPLES] [--headless] [--out DIR]
-  [--scenario ps0|arena] [--camera cockpit|chase] [--res WxH] [--quality low|medium|high]`;
+  [--scenario ps0|arena|combat] [--camera cockpit|chase] [--res WxH] [--quality low|medium|high]
+  [--soak]`;
 
 export function parseLocalArgs(argv: readonly string[]): LocalOptions {
   const opts: LocalOptions = {
@@ -68,6 +74,7 @@ export function parseLocalArgs(argv: readonly string[]): LocalOptions {
     camera: undefined,
     res: undefined,
     quality: undefined,
+    soak: false,
   };
   let sawClass = false;
   let sawFly = false;
@@ -134,8 +141,8 @@ export function parseLocalArgs(argv: readonly string[]): LocalOptions {
         break;
       case '--scenario': {
         const sc = value();
-        if (sc !== 'ps0' && sc !== 'arena') {
-          throw new Error(`--scenario must be ps0 or arena, not ${sc}`);
+        if (sc !== 'ps0' && sc !== 'arena' && sc !== 'combat') {
+          throw new Error(`--scenario must be ps0, arena or combat, not ${sc}`);
         }
         opts.scenario = sc;
         break;
@@ -169,6 +176,9 @@ export function parseLocalArgs(argv: readonly string[]): LocalOptions {
       case '--headless':
         opts.headless = true;
         break;
+      case '--soak':
+        opts.soak = true;
+        break;
       default:
         throw new Error(`unknown argument ${flag ?? ''}\n${USAGE}`);
     }
@@ -179,8 +189,9 @@ export function parseLocalArgs(argv: readonly string[]): LocalOptions {
   if (!sawClass) {
     throw new Error(`--class is required\n${USAGE}`);
   }
-  // The arena run flies its own scripted circuit; the hands-on manoeuvre before it is for PS-0 runs.
-  if (opts.scenario === 'arena' && !sawFly) opts.fly = 0;
+  // The arena and dogfight runs fly their own scripted pilots; the hands-on manoeuvre before them is
+  // for PS-0 runs.
+  if (opts.scenario !== 'ps0' && !sawFly) opts.fly = 0;
   return opts;
 }
 
@@ -230,6 +241,8 @@ export interface RunFacts {
   /** Samples the run was asked for (0: no latency measurement was asked for). */
   latencyWanted: number;
   latency: LatencySummary | null;
+  /** The soak's verdict (`--soak`), or null when it was not run. */
+  soak: 'pass' | 'fail' | null;
 }
 
 export interface Check {
@@ -277,6 +290,13 @@ export function judgeRun(facts: RunFacts, cls: MachineClass): { checks: Check[];
       l !== null && l.count >= facts.latencyWanted && l.p95 <= LATENCY_P95_MS,
     );
   }
+  if (facts.soak !== null) {
+    add(
+      'soak',
+      'the soak holds its leak gates (L1 to L7, soak-report.json)',
+      facts.soak === 'pass',
+    );
+  }
   const fps = facts.perf?.renderFps ?? facts.flight?.fpsAvg ?? 0;
   if (cls === 'minimum') {
     add('fps', `at least 30 FPS on a Minimum-class run (${fps.toFixed(1)})`, fps >= 30);
@@ -297,7 +317,7 @@ export function reportFile(opts: LocalOptions): string {
 
 /** What an arena run was looking through, for the summary: `, cockpit, 1920x1080, high`. */
 function scenarioView(opts: LocalOptions): string {
-  if (opts.scenario !== 'arena') return '';
+  if (opts.scenario === 'ps0') return '';
   return `, ${opts.camera ?? 'cockpit'}, ${opts.res ?? '1920x1080'}, ${opts.quality ?? 'high'}`;
 }
 
@@ -342,6 +362,7 @@ export function renderSummary(
     facts.benchmark === null
       ? '- Benchmark: not run'
       : `- Benchmark: profile ${facts.benchmark.profile}, preset ${facts.benchmark.preset}`,
+    `- Soak: ${facts.soak === null ? 'not run' : facts.soak.toUpperCase()}`,
     `- Console errors: ${facts.consoleErrors.length === 0 ? 'none' : String(facts.consoleErrors.length)}`,
     '',
     `## Pass criteria: ${judgement.pass ? 'PASS' : 'FAIL'}`,

@@ -2,10 +2,11 @@
  * The performance scenarios (GDD 60.9). PS-0 is the empty loop, which measures the skeleton so later
  * milestones can see what each system adds. `ARENA` (v0.1c) is the first with something in it: the
  * circuit flown from the runway over the rugged arena with the sky, the terrain to the horizon, the
- * HUD and the sound on, which is what the v0.1c exit's 60 FPS is measured on. PS-1 onwards need
- * content that does not exist yet.
+ * HUD and the sound on, which is what the v0.1c exit's 60 FPS is measured on. `COMBAT` (v0.1d) is the
+ * bot's dogfight from the merge against a Regular bandit, with the guns, the missiles and their
+ * sounds. PS-1 onwards need content that does not exist yet.
  */
-import { ARENA as ARENAS, INPUT_SCRIPT, SPAWN_KIND } from '@flying/sim-bridge/layout';
+import { ARENA as ARENAS, INPUT_SCRIPT, SCENARIO, SPAWN_KIND } from '@flying/sim-bridge/layout';
 
 /** Which set of gates a scenario is judged by (`gates.ts`). */
 export type GateSet = 'ps0' | 'arena';
@@ -19,8 +20,8 @@ export interface Scenario {
   defaultSeconds: number;
   /** The in-core pilot (`INPUT_SCRIPT`), so no person is needed and every run flies the same way. */
   script: number;
-  /** The sortie the scripted pilot flies: where it starts and in which arena. */
-  start: { spawn: number; arena: number };
+  /** The sortie the scripted pilot flies: where it starts, in which arena, and against whom. */
+  start: { spawn: number; arena: number; scenario: number; skill: number };
   /** The gates the run is judged by. */
   gates: GateSet;
   /**
@@ -42,7 +43,7 @@ export const PS0: Scenario = {
   warmupS: 3,
   defaultSeconds: 60,
   script: INPUT_SCRIPT.ERRATIC,
-  start: { spawn: SPAWN_KIND.AIR, arena: ARENAS.RUGGED },
+  start: { spawn: SPAWN_KIND.AIR, arena: ARENAS.RUGGED, scenario: SCENARIO.FREE, skill: 0 },
   gates: 'ps0',
 };
 
@@ -56,12 +57,33 @@ export const ARENA: Scenario = {
   warmupS: 5,
   defaultSeconds: 120,
   script: INPUT_SCRIPT.CIRCUIT,
-  start: { spawn: SPAWN_KIND.RUNWAY, arena: ARENAS.RUGGED },
+  start: { spawn: SPAWN_KIND.RUNWAY, arena: ARENAS.RUGGED, scenario: SCENARIO.FREE, skill: 0 },
   gates: 'arena',
   view: { camera: 'cockpit', quality: 'high', res: { width: 1920, height: 1080 }, audio: true },
 };
 
-export const SCENARIOS: readonly Scenario[] = [PS0, ARENA];
+/**
+ * The v0.1d dogfight run (ADR-45): the bot playtester from the merge (the bandit 3 km ahead) against
+ * a Regular, which shoots back: both guns, tracers, missiles, explosions and their sounds. Judged
+ * by the arena's gates.
+ */
+export const COMBAT: Scenario = {
+  id: 'COMBAT',
+  name: 'Dogfight against a Regular bandit',
+  warmupS: 5,
+  defaultSeconds: 120,
+  script: INPUT_SCRIPT.SORTIE,
+  start: {
+    spawn: SPAWN_KIND.AIR,
+    arena: ARENAS.RUGGED,
+    scenario: SCENARIO.DUEL_MERGE,
+    skill: 2,
+  },
+  gates: 'arena',
+  view: { camera: 'cockpit', quality: 'high', res: { width: 1920, height: 1080 }, audio: true },
+};
+
+export const SCENARIOS: readonly Scenario[] = [PS0, ARENA, COMBAT];
 
 export function findScenario(id: string): Scenario | undefined {
   return SCENARIOS.find((s) => s.id.toLowerCase() === id.toLowerCase());

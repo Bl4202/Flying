@@ -48,6 +48,28 @@ function rig() {
 }
 
 describe('RenderLoop', () => {
+  it('leaks one GPU buffer at each new session only with the seeded leak-gpu fault (ADR-45 L5)', () => {
+    for (const fault of ['leak-gpu', undefined] as const) {
+      const t = rig();
+      t.loop.setSettings({ gfxStrength: 100, ...(fault === undefined ? {} : { fault }) });
+      const step = (publication: number, tick: number): void => {
+        t.advance(16);
+        t.publish(publication, { tick });
+        t.loop.frame();
+      };
+      step(1, 500);
+      step(2, 501);
+      expect(t.renderer.leaked).toBe(0);
+      // Fly again: a fresh core, its tick back near zero.
+      step(3, 1);
+      step(4, 2);
+      step(5, 3);
+      expect(t.renderer.leaked).toBe(fault === undefined ? 0 : 1);
+      step(6, 1);
+      expect(t.renderer.resources().buffers).toBe(fault === undefined ? 0 : 2);
+    }
+  });
+
   it('has nothing to draw until a snapshot arrives', () => {
     const t = rig();
     expect(t.loop.frame()).toBe(false);

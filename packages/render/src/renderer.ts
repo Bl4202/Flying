@@ -53,6 +53,8 @@ export interface Renderer {
   onLost(listener: (reason: string) => void): void;
   /** The buffers and textures it holds now (the soak's leak gate L5, ADR-45). */
   resources(): GpuResources;
+  /** The seeded `leak-gpu` fault: makes one small buffer and never frees it (debug runs only). */
+  debugLeakBuffer(): void;
   /** Releases GPU resources. Safe to call twice; drawing after it does nothing. */
   dispose(): void;
 }
