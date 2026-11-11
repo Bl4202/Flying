@@ -99,6 +99,8 @@ export interface RenderStats {
   snappedFrames: number;
   /** Reads of the shared snapshot buffer that gave up. */
   contendedReads: number;
+  /** Frames drawn since the start with the bandit, with a missile in flight, with a tracer. */
+  drawnFrames: { bandit: number; missiles: number; tracers: number };
   /** The GPU buffers and textures the backend holds now (the soak's leak gate L5, ADR-45). */
   liveBuffers: number;
   liveTextures: number;

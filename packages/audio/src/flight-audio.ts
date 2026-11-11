@@ -2,9 +2,9 @@ import type { AircraftStatus, CombatStatus } from '@flying/sim-bridge';
 import type { AudioBackend } from './backend.ts';
 import type { BusLevels, CameraMode } from './feed.ts';
 
-/** A warning tone that has just started sounding, on the audio clock. */
+/** A warning tone, or one of the duel's one-shot sounds, that has just started (audio clock). */
 export interface ToneOnset {
-  /** `TONE` value. */
+  /** `TONE` value, or an `ONSET` code for one of the duel's one-shot sounds. */
   readonly tone: number;
   /** Seconds on the audio context's clock. */
   readonly time: number;

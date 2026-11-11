@@ -7,7 +7,14 @@
  * Built by Vite as a same-origin module (`?worker&url`) and loaded through `scriptUrl()`. It knows
  * nothing but the DSP and the profile it is given in `processorOptions`.
  */
-import { FlightDsp, PARAM_COUNT, PARAM_NAMES, PARAM_RANGE } from '../dsp/flight-dsp.ts';
+import {
+  FlightDsp,
+  ONE_SHOT,
+  ONSET,
+  PARAM_COUNT,
+  PARAM_NAMES,
+  PARAM_RANGE,
+} from '../dsp/flight-dsp.ts';
 import type { AudioProfile } from '../profile.ts';
 import { PROCESSOR_NAME, type ToneOnsetMessage } from './protocol.ts';
 
@@ -75,7 +82,20 @@ class FlightProcessor extends AudioWorkletProcessor {
       dsp.onsetFrame = -1;
       this.port.postMessage(message);
     }
+    // The duel's one-shot sounds start at the block's start (AU3 times them).
+    const shots = dsp.oneShots;
+    if (shots !== 0) {
+      dsp.oneShots = 0;
+      if ((shots & ONE_SHOT.LAUNCH) !== 0) this.#onset(ONSET.LAUNCH);
+      if ((shots & ONE_SHOT.HIT) !== 0) this.#onset(ONSET.HIT);
+      if ((shots & ONE_SHOT.EXPLOSION) !== 0) this.#onset(ONSET.EXPLOSION);
+    }
     return true;
+  }
+
+  #onset(tone: number): void {
+    const message: ToneOnsetMessage = { type: 'onset', tone, time: currentTime };
+    this.port.postMessage(message);
   }
 }
 

@@ -151,6 +151,13 @@ const CAUTION_BITS = WARNING.ALPHA | WARNING.OVERSPEED | WARNING.GEAR_SPEED | WA
 /** Which tone is sounding. */
 export const TONE = { NONE: 0, PULL_UP: 1, STALL: 2, OVER_G: 3, GEAR: 4, CAUTION: 5 } as const;
 
+/**
+ * The duel's one-shot sounds, as bits of `FlightDsp.oneShots` and, as `ONSET` codes, in the onset
+ * messages the worklet sends (the same channel as a warning tone's, ADR-45 AU3).
+ */
+export const ONE_SHOT = { LAUNCH: 1, HIT: 2, EXPLOSION: 4 } as const;
+export const ONSET = { LAUNCH: 16, HIT: 17, EXPLOSION: 18 } as const;
+
 // State slots (Float64Array).
 const S_RPM = 0;
 const S_CORE = 1;
@@ -249,6 +256,8 @@ export class FlightDsp {
   duckDb = 0;
   /** Set when a warning tone has just started: the frame count since the last block start, or -1. */
   onsetFrame = -1;
+  /** The duel's one-shot sounds (`ONE_SHOT` bits) that started at this block's start. */
+  oneShots = 0;
 
   readonly #profile: AudioProfile;
   readonly #fs: number;
@@ -394,6 +403,7 @@ export class FlightDsp {
     this.tone = TONE.NONE;
     this.duckDb = 0;
     this.onsetFrame = -1;
+    this.oneShots = 0;
   }
 
   /** The engine's shaft speed now, rpm (for tests and the overlay). */
@@ -747,9 +757,16 @@ export class FlightDsp {
     const hits = p[P.HITS_TAKEN] as number;
     const booms = p[P.EXPLOSIONS] as number;
     if ((s[S_SEEN] as number) !== 0) {
-      if (launches > (s[S_LAUNCHES] as number)) s[S_LAUNCH_ENV] = 1;
-      if (hits > (s[S_HITS] as number)) s[S_HIT_SINCE] = 0;
+      if (launches > (s[S_LAUNCHES] as number)) {
+        s[S_LAUNCH_ENV] = 1;
+        this.oneShots |= ONE_SHOT.LAUNCH;
+      }
+      if (hits > (s[S_HITS] as number)) {
+        s[S_HIT_SINCE] = 0;
+        this.oneShots |= ONE_SHOT.HIT;
+      }
       if (booms > (s[S_BOOMS] as number)) {
+        this.oneShots |= ONE_SHOT.EXPLOSION;
         s[S_BOOM_ENV] = 1;
         s[S_BOOM_PH] = 0;
         // Its level by its distance, fixed when it starts.

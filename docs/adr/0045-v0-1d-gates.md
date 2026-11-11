@@ -219,3 +219,40 @@ marked `IN RNG` and the defending target saw launches (4 of the 6); `fg sortie` 
 as "no launch". After the Dart-1's tuning (`content/core/weapons/README.md`) the result is:
 non-manoeuvring 100 % in all four judged cells; defending 80 % at 0°/1 km and 0 % at 0°/2 km,
 0°/3 km and 30°/2 km.
+
+## Amendment 2 (2026-11-10): the browser specs as built
+
+**No lock comes at the merge with the stick hands off, so no browser test sees a missile launch.**
+The merge starts the bandit 3 km ahead on the player's heading, tail-on. The player's nose sits
+2.85° above the bandit (the angle of attack), outside the Dart-1's caged 2° half-angle. The Recruit
+turns into the player at once, so its aspect passes the seeker's 35° limit at 1.9 s, before the
+nose comes within 2° of it at 2.0 s (seed `1f1e5eed00000001`; the `fg` probe that measured this is
+not committed). The bot playtester never launches either: 0 missiles in 44 sorties (20 against the
+Recruit, 12 each against the Regular and the Veteran, Standard). Its kills are all gun kills
+(ADR-47's known limits). The launch path is judged where its geometry is fixed: CT2 and the core's
+missile tests, MS1 to MS5 in `fg sortie`, and the scene's tests for drawing a missile in flight.
+So:
+
+- **CT3** checks that M reaches the launch: either a missile leaves, or the core refuses it with
+  `NO LOCK` and keeps it on the rail. Space must still lower the rounds.
+- **HU5** in `combat.spec.ts` checks the core's cue, not the pixels. The `PIPPER` flag must be set
+  while the range is inside 2.5 km, the gunsight's ranging (ADR-48), rather than 2 km: hands off,
+  the bandit leaves the nose soon after 2.5 km. The pixels around the bandit's projected position,
+  and the reticle and target box drawn on it, are the renderer contract's `HU5` case. It is a fixed
+  scene (the bandit 400 m ahead, 40 m right) run on both backends.
+- `combat.spec.ts` also checks that the bandit and the tracers are drawn. It reads them from the
+  render stats' new `drawnFrames` counters: frames drawn with the bandit, with a missile in flight,
+  and with a tracer.
+
+**The dogfight spec's bot kill flies the sortie from the runway, not the merge.** The bot is built
+for its sortie: take-off, climb, attack (ADR-47). From the merge's tail chase it circles the
+Recruit without a kill (5 rounds in 7 minutes). `dogfight.spec.ts` (b) is
+`scenario=duel&skill=1&script=sortie` and needs a kill within 5 minutes of wall time. In the CLI,
+17 of 20 seeds kill the Recruit, 15 of them between 53 and 79 s of simulated time. The browser's
+run took 1.2 minutes of wall time, including the page load.
+
+**The `leak-gpu` proof needs three sortie starts.** L5 compares the GPU resources at every sortie
+start after the second. The browser's sortie, from take-off to the stop, takes about 5.3 minutes.
+`SOAK_SECONDS=300` after a 120 s warm-up holds only two starts, so it cannot fail L5. The seeded
+`leak-gpu` run uses `SOAK_WARMUP_SECONDS=0` and `SOAK_SECONDS=900`, and `leak-js` keeps
+`SOAK_SECONDS=300`.

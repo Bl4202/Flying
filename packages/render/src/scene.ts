@@ -183,6 +183,9 @@ export interface FrameData {
   hudUniform: Float32Array;
   instances: Float32Array;
   instanceCount: number;
+  /** Of those, the missiles in flight and the tracers (what the e2e specs see of the duel). */
+  missiles: number;
+  tracers: number;
   /** Copies of the terrain patch to draw, laid out on a grid; 1 for normal frames. */
   patchInstances: number;
   /** The g and red-out effects have something to draw: the screen pass runs. */
@@ -208,6 +211,8 @@ export class SceneBuilder {
     hudUniform: new Float32Array(0),
     instances: new Float32Array(MARKER_INSTANCE_CAPACITY * MARKER_INSTANCE_FLOATS),
     instanceCount: 0,
+    missiles: 0,
+    tracers: 0,
     patchInstances: 1,
     fx: false,
   };
@@ -452,9 +457,12 @@ export class SceneBuilder {
    */
   #combat(f: FrameData, state: SceneState): void {
     const d = this.#dir;
+    f.missiles = 0;
+    f.tracers = state.tracerCount;
     for (let i = 0; i < state.missileCount; i++) {
       const st = state.missileState[i];
       if (st !== MISSILE_STATE.BOOST && st !== MISSILE_STATE.COAST) continue;
+      f.missiles += 1;
       relativeToEye(
         f.instances,
         f.instanceCount * MARKER_INSTANCE_FLOATS,

@@ -10,7 +10,7 @@ import { SEEKER_MODE, WARNING } from '@flying/sim-bridge';
 import { levelDb, peakFrequency, render } from '../test-support/analysis.ts';
 import { kestrelProfile } from '../test-support/fixtures.ts';
 import type { AudioProfile, WeaponsProfile } from '../profile.ts';
-import { FlightDsp, P } from './flight-dsp.ts';
+import { FlightDsp, ONE_SHOT, P } from './flight-dsp.ts';
 
 const FS = 48_000;
 const shipped = kestrelProfile();
@@ -221,6 +221,31 @@ describe('the one-shot sounds', () => {
     // Closer than the reference is no louder, and an unknown distance is heard at the reference.
     expect(boom(ref / 5)).toBeCloseTo(boom(ref), 1);
     expect(boom(0)).toBeCloseTo(boom(ref), 1);
+  });
+});
+
+describe('the one-shot reports (AU3)', () => {
+  it('says which one-shot sounds started this block, once per rise, and not on adoption', () => {
+    const dsp = new FlightDsp(profile);
+    const l = new Float32Array(128);
+    const r = new Float32Array(128);
+    const block = (set: (p: Float64Array) => void): number => {
+      idle(dsp.params, 0);
+      set(dsp.params);
+      dsp.process(l, r, 128);
+      const shots = dsp.oneShots;
+      dsp.oneShots = 0; // as the worklet does once it has reported them
+      return shots;
+    };
+    expect(block((p) => (p[P.LAUNCHES] = 3))).toBe(0);
+    expect(
+      block((p) => {
+        p[P.LAUNCHES] = 4;
+        p[P.EXPLOSIONS] = 1;
+      }),
+    ).toBe(ONE_SHOT.LAUNCH | ONE_SHOT.EXPLOSION);
+    expect(block(() => undefined)).toBe(0);
+    expect(block((p) => (p[P.HITS_TAKEN] = 1))).toBe(ONE_SHOT.HIT);
   });
 });
 
