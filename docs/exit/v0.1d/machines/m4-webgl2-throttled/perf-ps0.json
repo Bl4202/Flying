@@ -1,0 +1,106 @@
+{
+  "schema": "perf_report/1",
+  "scenario": "PS-0",
+  "startedAt": "2026-11-11T16:27:34.078Z",
+  "warmupS": 3,
+  "seconds": 120,
+  "build": {
+    "id": "261d08b6ded99385ec11b6e22ee8830c26ef2104",
+    "abi": 5,
+    "contentHash": "3ed9895f0814077e"
+  },
+  "machine": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "platform": "MacIntel",
+    "hardwareConcurrency": 10,
+    "deviceMemoryGb": 8,
+    "screen": "1600x900@1",
+    "adapter": "apple metal-3",
+    "renderer": "webgl2 ANGLE (Apple, ANGLE Metal Renderer: Apple M4, Unspecified Version)"
+  },
+  "modes": {
+    "variant": "threads",
+    "snapshotChannel": "shared",
+    "inputChannel": "shared",
+    "renderHost": "worker",
+    "sleeper": "atomics",
+    "renderer": "webgl2"
+  },
+  "metrics": {
+    "windowS": 119.9994150390625,
+    "ticks": 7200,
+    "simHz": 60.000292481894505,
+    "droppedMs": 0,
+    "droppedEvents": 0,
+    "step": {
+      "count": 7204,
+      "avg": 0.03702665249021235,
+      "p50": 0.05,
+      "p95": 0.1,
+      "p99": 0.15000000000000002,
+      "max": 1.1299999952316284
+    },
+    "frames": 14385,
+    "renderFps": 120.01003643958208,
+    "frameMs": {
+      "count": 14415,
+      "avg": 8.332758584809808,
+      "p50": 8.5,
+      "p95": 10.25,
+      "p99": 10.480000019073486,
+      "max": 10.480000019073486
+    },
+    "renderCpuMs": {
+      "count": 14415,
+      "avg": 0.010043357777339156,
+      "p50": 0.25,
+      "p95": 0.25,
+      "p99": 0.25,
+      "max": 1.2549999952316284
+    },
+    "staleFrames": 0,
+    "gappedFrames": 41,
+    "inputsDropped": 0,
+    "snapshotsDropped": 0,
+    "longTasks": 0,
+    "deviceLosses": 0
+  },
+  "gates": [
+    {
+      "id": "sim-rate",
+      "rule": "sim rate 60 ± 0.1 Hz",
+      "value": 60.000292481894505,
+      "limit": 60,
+      "pass": true
+    },
+    {
+      "id": "dropped",
+      "rule": "no simulated time dropped after warm-up",
+      "value": 0,
+      "limit": 0,
+      "pass": true
+    },
+    {
+      "id": "step-p99",
+      "rule": "tick cost p99 ≤ 7 ms",
+      "value": 0.15000000000000002,
+      "limit": 7,
+      "pass": true
+    },
+    {
+      "id": "step-avg",
+      "rule": "tick cost average ≤ 4 ms",
+      "value": 0.03702665249021235,
+      "limit": 4,
+      "pass": true
+    },
+    {
+      "id": "render-cpu",
+      "rule": "render CPU average ≤ 7 ms",
+      "value": 0.010043357777339156,
+      "limit": 7,
+      "pass": true
+    }
+  ],
+  "verdict": "pass"
+}

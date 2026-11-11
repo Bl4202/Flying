@@ -66,7 +66,7 @@ export function parseLocalArgs(argv: readonly string[]): LocalOptions {
     seconds: 120,
     fly: 60,
     headless: false,
-    out: 'docs/exit/v0.1c/machines',
+    out: 'docs/exit/v0.1d/machines',
     machineClass: 'recommended',
     spawn: 'air',
     latency: 0,
@@ -319,6 +319,16 @@ export function reportFile(opts: LocalOptions): string {
 function scenarioView(opts: LocalOptions): string {
   if (opts.scenario === 'ps0') return '';
   return `, ${opts.camera ?? 'cockpit'}, ${opts.res ?? '1920x1080'}, ${opts.quality ?? 'high'}`;
+}
+
+/**
+ * The query of the first page: the compat verdict, the scripted minute and the control latency.
+ * The dogfight run measures the latency with a duel running (ADR-45 PF2): the merge against a
+ * Regular, the COMBAT scenario's bandit.
+ */
+export function firstPageQuery(opts: LocalOptions): string {
+  const duel = opts.scenario === 'combat' ? '&scenario=merge&skill=2' : '';
+  return `debug=1&fly=1&spawn=${opts.spawn}${duel}`;
 }
 
 /** The query of the measured run's page, past `perf=`: its length and, for the arena, what it shows. */

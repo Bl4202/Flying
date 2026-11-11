@@ -211,6 +211,8 @@ declare global {
               hz: number;
               droppedMs: number;
               droppedEvents: number;
+              /** `CORE_STATE` (`sim-bridge`): 2 running, 3 paused (a menu or the debrief holds it). */
+              coreState: number;
               stepRun: { count: number; max: number };
               aircraft: { quat: number[]; tas: number; abStage: number; flags: number };
             }

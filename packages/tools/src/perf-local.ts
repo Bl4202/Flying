@@ -2,7 +2,7 @@
  * Scripted reference-machine run: opens the build in real Chrome, notes the compat verdict, flies
  * a scripted minute, runs the full benchmark and PS-0 (or, with `--scenario arena`, the v0.1c arena
  * run, or with `--scenario combat` the v0.1d dogfight run; with `--soak`, then the 30-minute soak),
- * and writes the reports and a summary under `docs/exit/v0.1c/machines/<name>/`. Run it on
+ * and writes the reports and a summary under `docs/exit/v0.1d/machines/<name>/`. Run it on
  * the machine being measured:
  *
  *   pnpm perf:local --name m4-webgpu --class recommended
@@ -19,6 +19,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { chromium, type Page } from '@playwright/test';
 import {
+  firstPageQuery,
   judgeRun,
   parseLocalArgs,
   renderSummary,
@@ -246,7 +247,7 @@ async function fly(seconds: number): Promise<FlightSummary> {
 try {
   // 1. Compat screen and a scripted flight. `fly=1` skips the first run and the main menu: a fresh
   // profile would otherwise sit at the first run with the sim idle, and no flight or latency would run.
-  await page.goto(url(`debug=1&fly=1&spawn=${opts.spawn}`));
+  await page.goto(url(firstPageQuery(opts)));
   await passCompat();
   await byId(page, 'stage')
     .and(page.locator('[data-state="running"]'))

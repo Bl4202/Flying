@@ -1,0 +1,1 @@
+The scheduled `perf-nightly` soak on the merge-1 commit `261d08b`: https://github.com/Bl4202/Flying/actions/runs/43009393657 (job `soak`, 2026-11-11 11:08 to 11:42 UTC, ubuntu-24.04, headless Chromium, no GPU). All of L1 to L7 pass.
