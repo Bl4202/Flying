@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Document version** | 2.0 (2026-11-10) |
+| **Document version** | 2.1 (2026-11-12) |
 | **Owner** | Bl4202 |
-| **Status** | Proposed. The content schedule (section 3) and the reconciliation decisions (section 19) wait for the owner's review; until a row is accepted, the GDD stays authoritative for that item |
+| **Status** | Accepted (2026-11-12, [ADR-50](adr/0050-entering-m2.md)). The owner accepted the content schedule (section 3) and every reconciliation row (section 19); the GDD text the rows name is amended in GDD 0.2.5 |
 | **Sources** | [GDD.md](GDD.md) (the specification), [GDD_Outline.md](GDD_Outline.md) (the original intent), the ADRs in [adr/](adr/), [open-questions.md](open-questions.md), the exit records in [exit/](exit/) |
 | **Supersedes** | Roadmap 1.x (the short version-by-version list, last changed 2026-11-09) |
 
@@ -102,13 +102,13 @@ The month figures below are kept as relative sizes. They will be replaced once O
 
 ## 1.6 Human-panel gates in a solo project
 
-Several GDD gates need people the project does not have. v0.1d set the precedent (ADR-45, decision D1): automated proxies gate the tag, the owner's own runs are recorded and do not block, and the panel stays open as an open question (OQ-11). The same choice has to be made, version by version, for every gate below. **Proposed:** each gates ADR states, for each panel, either how it is recruited or which automated proxy replaces it; a new open question **OQ-12** tracks the panels as a group.
+Several GDD gates need people the project does not have. v0.1d set the precedent (ADR-45, decision D1): automated proxies gate the tag, the owner's own runs are recorded and do not block, and the panel stays open as an open question (OQ-11). The same choice has to be made, version by version, for every gate below. **Decided (2026-11-12, OQ-12, [ADR-50](adr/0050-entering-m2.md)):** the owner chose D1's rule for every panel. Each gates ADR names the automated proxy that decides each panel gate; the owner's own runs are recorded and do not block; a real panel stays possible and is recorded beside the proxy.
 
 | Gate or test | Version | What the GDD asks for | Automated proxy available | Note |
 |---|---|---|---|---|
 | G1(a) flight feel | v0.1d | ≥ 12 blind testers, A/B against two references (§66.4) | Conformance, the NN-2 audit, the bot playtester (ADR-45) | Open as OQ-11 |
 | `AC-4.5` precursor | v0.1d | ≥ 80 % of external playtesters take off, shoot a bandit and land in 10 minutes | The bot playtester (BP1) | Decided (D1) |
-| **G2 fun gate** | v0.3b | ≥ 20 external testers; ≥ 70 % would play another sortie | The 11-step script runs automated (`AC-67.1`), but **nothing automates "fun"** | **Recommended: recruit a real panel for G2**, even a small one; it is the project's go/no-go on the core concept (risk R-05) |
+| **G2 fun gate** | v0.3b | ≥ 20 external testers; ≥ 70 % would play another sortie | The 11-step script runs automated (`AC-67.1`), but **nothing automates "fun"** | The roadmap recommended a real panel; the owner chose the automated run plus the owner's own sorties (OQ-12). The owner's sorties are the only signal of "fun"; risk R-05 is accepted |
 | §67.2 run | v0.3d | ≥ 8 of 10 external testers through step 6 | The automated run through step 9 (`AC-67.2`) | |
 | G3 replayability | v0.4b | Paired sessions; ≥ 80 % rate them "substantially different" | `AC-3.4` (mean DNA distance ≥ 0.45) | |
 | Usability | v0.4c | SUS ≥ 75 | First-flight completion (`AC-53.7`) | |
@@ -125,9 +125,9 @@ Several GDD gates need people the project does not have. v0.1d set the precedent
 
 | Version | Name | GDD milestone | Outline phase | Priorities | Sub-milestones | Est. duration | Status | Playable result |
 |---|---|---|---|---|---|---|---|---|
-| **v0.0** | Foundations | M0 | — (§125) | infrastructure | a, b | 2 mo | v0.0a done; v0.0b exit open on two owner runs | Tech demo: render + sim + input + CI loop |
+| **v0.0** | Foundations | M0 | — (§125) | infrastructure | a, b | 2 mo | a done, b done (the owner waived laptop runs C and D on 2026-10-16); not tagged | Tech demo: render + sim + input + CI loop |
 | **v0.1** | Flight Prototype | M1 | §126 | P1 | a, b, c, d | 4 mo | a ✅ b ✅ c ✅ d ✅ (M1 complete on bot evidence; G1(a) open, OQ-11) | One aircraft that flies well, a gun, an IR missile, one bandit |
-| **v0.2** | Geographic Sandbox | M2 | §127 | P2 | a, b, c, d | 5 mo | ○ | Pick two places on Earth and fly between them |
+| **v0.2** | Geographic Sandbox | M2 | §127 | P2 | a, b, c, d | 5 mo | ▶ entry met 2026-11-12 (section 7.0); v0.2a's plan is next | Pick two places on Earth and fly between them |
 | **v0.3** | Combat | M3 | §128, §132, §133 | P3, P4 | a, b, c, d | 6 mo | ○ | **First Playable** (v0.3b), **Second Playable** (v0.3d) |
 | **v0.4** | Procedural Missions | M4 | §129 | P5 (P4) | a, b, c | 5 mo | ○ | Generated, escalating missions anywhere; 14 mission types |
 | **v0.5** | Multiplayer | M5 | §130, §134 | P6, P7, P8 | a, b, c, d, e | 5 mo | ○ | **Third Playable**; public beta of the sandbox product |
@@ -342,7 +342,7 @@ Missile ranges are uncalibrated design targets (Appendix I.6, risk R-24). **Ever
 |---|---|---|
 | Test arenas | ✅ v0.1c | `Rugged` and `Plain` on a sphere of R = 6 371 km, with one test airfield (ADR-35, ADR-43) |
 | Worldwide coverage | v0.2a | The base globe pack plus streamed tiles for the whole Earth; `AC-3.1` ≥ 95 % at v0.2, ≥ 99 % at v0.4 (§66.3) |
-| Pre-packaged regions | v0.2a: 6 | **Proposed pilot set:** the four terrain-character reference regions of `AC-46.7` (Swiss Alps = Alpine, Nevada Basin-and-Range = Rugged, US Great Plains = Flat, Normandy = Rolling), plus Norwegian fjords (coast and sea) and Tokyo Bay (the dense city for PS-4 and `AC-47.1`). The owner picks the final six |
+| Pre-packaged regions | v0.2a: 6 | **Pilot set** (decided 2026-11-12, ADR-50): the four terrain-character reference regions of `AC-46.7` (Swiss Alps = Alpine, Nevada Basin-and-Range = Rugged, US Great Plains = Flat, Normandy = Rolling), plus Norwegian fjords (coast and sea) and Tokyo Bay (the dense city for PS-4 and `AC-47.1`) |
 | | v0.4: 10 | Adds the remaining 1v1 arena regions that need offline packs |
 | | v0.5e: ≥ 20 | The Third Playable's "multiple geographic regions" (outline §134) |
 | Airports | v0.2b | Every airport in the merged OurAirports/OSM data, classified into the six types of §10.2, flattened, completed procedurally; improvised strips anywhere (§10.8) |
@@ -456,10 +456,10 @@ Each cell says what the version adds to the chapter: **stub** (interface and a d
 | Terrain heights | `GeoService` | Procedural + base heights ✅ (v0.0b) | Streamed GeoPack | M2 | v0.2a |
 | Line of sight | `LosService` | Terrain-only ray-march | Max-mip + horizon profiles; then clouds and buildings | M3 / M4 | Max-mip terrain LOS **v0.3a** (§66.3 M3); clouds and buildings v0.4b (R3) |
 | Aerodynamics | `AeroModel` | Table lookup ✅ (v0.1a, ADR-29) | Store and damage effects | M3 | v0.3c–d |
-| Damage | `DamageModel` | Aggregate (v0.1d) | Component and subsystem model | M4 | **v0.3c** (§66.3 M3, R3) |
-| Sensors | `RadarModel` | Range/RCS threshold | Radar equation, Doppler, notch, ECM | M4 | **v0.3a** (§66.3 M3); FP1 uses its simplified modes (§67.1, R3) |
-| Missiles | `MissileModel` | Simple PN (v0.1d) | Seekers, guidance, DLZ | M4 | **v0.3a** (§66.3 M3, R3) |
-| AI pilot | `PilotBrain` | State machine (v0.1d) | Utility AI + predictive BFM | M4 | **v0.3c** (§67.2 "better AI", R3) |
+| Damage | `DamageModel` | Aggregate ✅ (v0.1d) | Component and subsystem model | M3 (was M4; GDD 0.2.5) | **v0.3c** (§66.3 M3, R3) |
+| Sensors | `RadarModel` | Range/RCS threshold | Radar equation, Doppler, notch, ECM | M3 (was M4; GDD 0.2.5) | **v0.3a** (§66.3 M3); FP1 uses its simplified modes (§67.1, R3) |
+| Missiles | `MissileModel` | Simple PN ✅ (v0.1d) | Seekers, guidance, DLZ | M3 (was M4; GDD 0.2.5) | **v0.3a** (§66.3 M3, R3) |
+| AI pilot | `PilotBrain` | State machine ✅ (v0.1d) | Utility AI + predictive BFM | M3 (was M4; GDD 0.2.5) | **v0.3c** (§67.2 "better AI", R3) |
 | Mission source | `MissionProvider` | Hand-written missions | Generator, escalation, bosses | M4 | Stub v0.3b; real v0.4a–b |
 | Persistence | `PersistenceSink` | In-memory ✅ | Campaign save and ledger | M6 | v0.6a |
 | Strategic layer | `StrategicContext` | Stub ✅ | Campaign | M6 | v0.6a |
@@ -496,6 +496,8 @@ Each cell says what the version adds to the chapter: **stub** (interface and a d
 **Exit:** sim runs stably at 60 Hz in a worker while the render runs independently; runs on the three reference machines (Minimum / Recommended / High).
 
 **Status (2026-10-14):** all work packages are merged to `main` and green in CI, and the scripted reference runs on the Mac (A: WebGPU, B: forced WebGL2) pass. The exit is **open on two reference runs on the project owner's laptop**: C (RTX 5060, WebGPU, High) and D (Chrome forced onto the integrated GPU, Minimum-class GPU). The owner will send those reports later; the `v0.0b` tag waits for them. Steps and pass criteria: [docs/runbooks/reference-machines.md](runbooks/reference-machines.md). Evidence so far: [docs/exit/v0.0b.md](exit/v0.0b.md).
+
+**Status (2026-11-12): closed by the owner's waiver.** On 2026-10-16 the owner waived the laptop runs ("just override v0.0b, I don't think we need to know that"), and v0.1a went on without them. Runs C and D were never made, and no `v0.0b` tag exists. The Minimum-class hardware gap stays as ADR-28 records it.
 
 ## 5.3 Delivered by v0.0
 
@@ -562,6 +564,8 @@ Each cell says what the version adds to the chapter: **stub** (interface and a d
 
 **Status (2026-11-11): done on bot evidence**, with G1(a) open as OQ-11; the tag `v0.1d` goes on merge 2's commit once its pipeline and staging are green. The code is PR #15 (merge 1, `261d08b`), the evidence and documents merge 2; the exit checklist is [docs/exit/v0.1d.md](exit/v0.1d.md). One gun and one rear-aspect IR missile ([ADR-46](adr/0046-weapons.md)), one bandit at three skills and the bot playtester ([ADR-47](adr/0047-combat-ai-and-the-bot.md)), combat in the core with ABI v5 ([ADR-48](adr/0048-combat-in-the-core.md)), and the Dogfight mode, debrief, statistics and feel questionnaire ([ADR-49](adr/0049-debrief-statistics-and-the-feel-questionnaire.md)). The bot takes off, shoots a Recruit down and lands in 44, 41 and 43 of 50 sorties under Standard, Reduced and Manual (gate 40; Full 37, informational by owner decision); the NN-2 audit shows the control system never moves the aircraft. On the M4 the dogfight holds the display's 120 FPS at 1920 x 1080, High, frame interval p99 9.5 ms, with control latency p95 16.75 ms during a duel; the 30-minute soak passes all of L1 to L7 on the M4 (60.02 Hz, a heap slope of 0.03 MB per 10 minutes, and no growth in DOM, WebAssembly memory, GPU buffers or audio nodes over 7 sortie starts) and in CI's nightly. The four older determinism goldens moved only in their `content` column (one proven re-bless). The pre-merge walkthrough found the bandit's gun unable to hit (it chased its own pipper); it was fixed before merge 1. The owner's checklist is open and does not block.
 
+**Status (2026-11-11): tagged.** The annotated tag `v0.1d` is on `dab452f` (merge 2, PR #16). Its pipeline ([run 43082009046](https://github.com/Bl4202/Flying/actions/runs/43082009046)) is green, including deploy-staging and staging-smoke. The full 30-minute soak on it in CI's nightly ([run 43082063829](https://github.com/Bl4202/Flying/actions/runs/43082063829)) passes L1 to L7 (59.99 Hz, 7 sortie starts).
+
 ## 6.5 Delivered by v0.1
 
 | Area | Content |
@@ -587,7 +591,7 @@ Each cell says what the version adds to the chapter: **stub** (interface and a d
 | 30-minute soak with no leaks | ✅ v0.1d (the M4 and the nightly run) |
 | `AC-4.5` precursor | ✅ v0.1d (the bot playtester, BP1, D1) |
 
-**Carried forward from M1:** the hero Kestrel model (v0.2c, section 3.10); head tracking (§58.7, part of M1's chapter but not of M1's scope in §66.3; now v0.4c); the owner's look-and-listen checklist from v0.1c and the owner's feel questionnaire from v0.1d (recorded, not blocking).
+**Carried forward from M1:** the hero Kestrel model (v0.2c, section 3.10); head tracking (§58.7, part of M1's chapter but not of M1's scope in §66.3; now v0.4c); the owner's look-and-listen checklist from v0.1c and the owner's feel questionnaire from v0.1d (recorded, not blocking). *2026-11-12:* the owner's four hands-on checklists of v0.1a to v0.1d stay open and non-blocking; they are now one sitting, "The owner's M1 session", in [docs/runbooks/reference-machines.md](runbooks/reference-machines.md).
 
 ---
 
@@ -597,8 +601,12 @@ Each cell says what the version adds to the chapter: **stub** (interface and a d
 
 ## 7.0 Entry, decisions and scope
 
-- **Entry:** v0.1d tagged. G1(a) staying open does not block v0.2 (ADR-45, D1).
-- **Decisions due before M2:** OQ-03 (production hosting, range-request CDN, who pays for tile bandwidth) and OQ-04 (commercial or free release; it decides which attribution and share-alike duties apply to the datasets, §45.9). Both shape the GeoPack delivery model of v0.2a.
+- **Entry:** v0.1d tagged ✅ (2026-11-11, `dab452f`). G1(a) staying open does not block v0.2 (ADR-45, D1).
+- **Decisions due before M2:** OQ-03 (production hosting, range-request CDN, who pays for tile bandwidth) and OQ-04 (commercial or free release; it decides which attribution and share-alike duties apply to the datasets, §45.9). Both shape the GeoPack delivery model of v0.2a. **Decided 2026-11-12 ([ADR-50](adr/0050-entering-m2.md)):**
+  - **OQ-03:** the app stays on GitHub Pages and the GeoPacks are served from a Cloudflare R2 bucket.
+  - **OQ-04:** kept open until the public beta. Until then, packs take only data whose licence allows commercial use.
+  - **The six pilot regions:** as section 3.9.
+  - **OQ-02:** closed (solo).
 - **Decisions due during v0.2 (before M3):** OQ-05 (art budget: kit-bashed or bespoke) and OQ-07 (WebXR stance).
 - **Not in v0.2:** combat on real terrain (v0.3b; the v0.1d duel keeps working in the test arenas), the mission generator, dynamic weather (v0.4b), civilian traffic (v0.4b), multiplayer.
 
@@ -609,7 +617,8 @@ Each cell says what the version adds to the chapter: **stub** (interface and a d
 - **Geodesy and frames** (§7.2–§7.7): geodesy primitives, distances and bearings, the curved battlefield frame (ADR-04), altitude definitions, the world clock, the sim-side geo service; levels of geographic detail (§7.1).
 - **Battlefield system** (§8.1–§8.8): shapes, the playable area against the visible horizon, vertical limits, boundary enforcement, the five size presets of §0.6.4, airport-corridor sizing, the anchor and local frame, the validator.
 - **Geodata pipeline** (§45.5–§45.7, §45.11): the offline `geo-pipeline` (ingest, normalise, water flattening, tile, airport patches, quantise and pack, features, indexes, archive, publish), the `.gpk` GeoPack format, vertical datum normalisation (ADR-05), query services and indexes, versioning and updates.
-- **Licensing** (§45.9, Appendix H): source descriptors, attribution in the UI, the licence audit in every pack build.
+- **Licensing** (§45.9, Appendix H): source descriptors, attribution in the UI, the licence audit in every pack build (which also refuses a descriptor with `commercial_ok: false` while OQ-04 is open, ADR-50).
+- **Hosting** (ADR-50): the GeoPacks in a Cloudflare R2 bucket, with range requests and CORS (the page is isolated with COEP `require-corp`, ADR-22); an upload job in CI with a scoped token.
 - **Streaming** (§44.2–§44.10): streaming levels, quadtree and tile identity (ADR-06), level-of-detail selection, the streaming pipeline and its residency invariant, failure handling, precision, concurrency.
 - **Rendering:** globe rendering and atmosphere (§9.9, §24 basic); the `GeoService` seam's real implementation (§61.5).
 
@@ -1211,12 +1220,12 @@ A gates ADR before each sub-milestone; an exit record after it (`docs/exit/`); a
 | ID | Item | GDD deadline | Needed by (this roadmap) | Status |
 |---|---|---|---|---|
 | OQ-01 | Stack: Rust → WASM sim; renderer | Before M1 | — | Closed (ADR-02 stands; ADR-40) |
-| OQ-02 | Team size and release scale | Before M1 planning | **Now** (it changes every duration) | Open; provisionally solo |
-| OQ-03 | Hosting, CDN, tile bandwidth | Before M2 | **Before v0.2a** | Open; staging on GitHub Pages |
-| OQ-04 | Commercial or free | Before M2 | **Before v0.2a** | Open; all rights reserved |
+| OQ-02 | Team size and release scale | Before M1 planning | **Now** (it changes every duration) | Closed 2026-11-12: solo (ADR-50) |
+| OQ-03 | Hosting, CDN, tile bandwidth | Before M2 | **Before v0.2a** | Decided for M2 2026-11-12: the app on GitHub Pages, the GeoPacks on Cloudflare R2 (ADR-50) |
+| OQ-04 | Commercial or free | Before M2 | Before v0.5e (moved by the owner) | Open; all rights reserved; commercial-safe data only until decided (ADR-50) |
 | OQ-05 | Art budget: kit-bashed or bespoke | Before M3 | During v0.2 (the hero Kestrel, v0.2c) | Open |
 | OQ-07 | WebXR stance | Before M3 | During v0.2 | Open |
-| OQ-12 (proposed) | Human panels for G2, G3, G5, G6, G7 and the §67.2 run (section 1.6) | — | Before v0.3b | Not yet in [open-questions.md](open-questions.md) |
+| OQ-12 | Human panels for G2, G3, G5, G6, G7 and the §67.2 run (section 1.6) | — | Before v0.3b | Closed 2026-11-12: automated proxies decide, the owner's runs are recorded (ADR-50) |
 | OQ-06 | In-game voice chat | Before M5 | During v0.4 | Open; assumed on |
 | OQ-09 | Desktop wrapper | Before M5 | During v0.4 | Open |
 | OQ-08 | Content rating; map and border depiction | Before public release | **Before v0.5e** (the beta is public) | Open |
@@ -1226,10 +1235,12 @@ A gates ADR before each sub-milestone; an exit record after it (`docs/exit/`); a
 
 ## 18.2 Owner decisions this roadmap needs
 
-1. Accept or change the rows of section 19 (each row says which GDD text would be amended).
-2. Decide OQ-03 and OQ-04 before v0.2a, and OQ-02 when possible.
-3. Choose the six pilot regions (proposal in section 3.9).
-4. Decide how G2 is run (section 1.6 recommends a real panel).
+1. ✅ Accept or change the rows of section 19 (each row says which GDD text would be amended). *Accepted in full, 2026-11-12; GDD 0.2.5.*
+2. ✅ Decide OQ-03 and OQ-04 before v0.2a, and OQ-02 when possible. *2026-11-12: R2; OQ-04 kept open with commercial-safe data; solo.*
+3. ✅ Choose the six pilot regions (proposal in section 3.9). *The proposal, 2026-11-12.*
+4. ✅ Decide how G2 is run (section 1.6 recommends a real panel). *Automated proxies and the owner's sorties (OQ-12), 2026-11-12.*
+
+All four are recorded in [ADR-50](adr/0050-entering-m2.md). The next owner decisions are OQ-05 and OQ-07, during v0.2.
 
 ## 18.3 Cut lines
 
@@ -1253,18 +1264,24 @@ The full register is Appendix F of the GDD.
 | v0.0 | Cross-origin isolation or WASM threads unavailable on the host | The degraded single-worker mode, designed in from the start (§61.2, ADR-17) |
 | v0.1 | Flight feel not good enough | G1 blocks content breadth; automated feel proxies (ADR-45) |
 | v0.2 | Streaming holes or hitches; data licensing; tile bandwidth | Residency invariant and sim terrain layer (§44.5, §44.6); the licence audit; OQ-03 and OQ-04 |
-| v0.3 | The core concept is not fun (R-05); missile tuning unvalidated (R-24); art throughput (R-20) | G2 at v0.3b before any breadth; calibration in v0.3a; OQ-05 |
+| v0.3 | The core concept is not fun (R-05); missile tuning unvalidated (R-24); art throughput (R-20) | G2 at v0.3b before any breadth (decided by proxies and the owner's sorties, OQ-12); calibration in v0.3a; OQ-05 |
 | v0.4 | Unsolvable or repetitive missions; v0.4b's size | Solvability validation and DNA metrics in CI; the v0.4b cut line |
 | v0.5 | Browser networking limits; the content volume of the beta | Invite blobs, the WebSocket fallback, the impairment matrix; the ✂ items |
 | v0.6 | Campaign soft-locks; storage eviction | The AI-played soak on every build; persistence requests, export and import (ADR-19) |
 | v0.7–v1.0 | Scope and licensing | Cut lines; G8 |
-| All | Human-panel gates in a solo project | Section 1.6 |
+| All | Human-panel gates in a solo project | Section 1.6; OQ-12 |
 
 ---
 
 # 19. RECONCILIATION WITH THE GDD AND THE OUTLINE
 
 Each row is a place where the sources disagreed. "Decision" is what this roadmap schedules; "GDD amendment" is the text that should change through Appendix I.4 once the owner accepts the row. Rows without an amendment fix the old roadmap only.
+
+**Accepted in full on 2026-11-12** ([ADR-50](adr/0050-entering-m2.md)). The amendments are in GDD 0.2.5. R23's was already in 0.2.4. Some passages next to an amended one were also made consistent with it:
+- §66.3 M3 now reads "navigation (autopilot modes, aids)" and "tactical map (tracks and threats)";
+- M4 gains civilian traffic;
+- M5 gains the carriers and the last two mission types;
+- §61.5 dates the first damage, missile and pilot implementations to v0.1d.
 
 | # | Topic | What the sources say | Decision in this roadmap | GDD amendment |
 |---|---|---|---|---|
@@ -1300,5 +1317,6 @@ Each row is a place where the sources disagreed. "Decision" is what this roadmap
 
 | Version | Date | Change |
 |---|---|---|
+| 2.1 | 2026-11-12 | Accepted by the owner ([ADR-50](adr/0050-entering-m2.md)): the header status, section 19's rows (amended into GDD 0.2.5), section 1.6 and OQ-12 (automated proxies for every panel), section 3.9's pilot regions, sections 7.0 and 7.1 (OQ-02 closed, OQ-03 decided, OQ-04 kept open with commercial-safe data), section 4.2 (the seams' milestones as GDD 0.2.5 now gives them), sections 18.1, 18.2 and 18.4. Status notes added to v0.0b (closed by the owner's waiver) and v0.1d (tagged), and to 6.6 (the owner's M1 session); v0.2 marked as entered |
 | 2.0 | 2026-11-10 | Rewritten in the GDD's format: the reading guide and the human-panel gates (section 1), release channels and modes by version (section 2), the content plan with per-version rosters of aircraft, weapons, units, ships, factions, mission types, twists, events, training, regions, art, audio and localisation (section 3), the system staging matrix and the seams (section 4), systems, content, tests and exit criteria for every sub-milestone (sections 5–15), the M7 track (section 16), cross-cutting tracks (section 17), decisions, cut lines and risks (section 18), and the reconciliation table (section 19). v0.5 is split into five sub-milestones (a–e) so that forces at scale (v0.5d) and the beta (v0.5e) are separate. The finished parts keep their 1.x structure and text word for word (the goal, work list, exit, notes and status of v0.0a, v0.0b and v0.1a–v0.1c, and the version headings), with only section numbers added; v0.0 and v0.1 gain summary tables at the end (5.3, 6.5, 6.6), and v0.1d, in progress, gains a status note for 2026-11-10. The dependency order is kept (2.5) |
 | 1.x | 2026-10-14 to 2026-11-09 | The original version-by-version list, with status notes for v0.0b and v0.1a–v0.1d |

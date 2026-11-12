@@ -4,8 +4,8 @@
 | | |
 |---|---|
 | **Working Title** | TBD |
-| **Document Version** | 0.2.4 (Draft 2 — technical expansion of `GDD_Outline.md`, retargeted to run in a web browser) |
-| **Document Date** | 2026-11-11 |
+| **Document Version** | 0.2.5 (Draft 2 — technical expansion of `GDD_Outline.md`, retargeted to run in a web browser) |
+| **Document Date** | 2026-11-12 |
 | **Primary Platform** | Desktop web browser (installable PWA). WebGPU renderer, WebAssembly simulation core. |
 | **Multiplayer** | LAN / VLAN / direct-connect co-op and 1v1 over WebRTC |
 | **World** | Real-world Earth geography (WGS84), fictional factions |
@@ -220,15 +220,17 @@ Assumptions are the premises this document makes. Open questions (OQ) must be re
 | ID | Item | Needed by |
 |---|---|---|
 | **OQ-01** | Confirm the stack in ADR-02 (Rust → WASM sim) and ADR-18 (Three.js WebGPURenderer + custom passes). If the team prefers TypeScript-only, the sim moves to a Worker using typed arrays; the budgets in §0.6 drop roughly 30–40 % and ADR-10's cross-build hash test is lost. | Before M1. **Closed 2026-10-14 (v0.1a):** the Sim Core stays Rust → WASM (ADR-02 stands); the renderer half is revisited at v0.1c (`docs/open-questions.md`) |
-| **OQ-02** | Team size and target release scale (solo / small team / studio). This document sizes work with relative t-shirt sizes (§66), not calendar estimates. | Before M1 planning |
-| **OQ-03** | Hosting and distribution: static host + CDN with range-request support and the COOP/COEP headers (assumed), who pays for tile bandwidth, and whether a publisher-hosted CDN or a community-mirror model is used. | Before M2 |
-| **OQ-04** | Commercial or free release. Several open datasets have attribution (CC-BY) or share-alike (ODbL) duties that interact with redistribution (§45.9). | Before M2 |
+| **OQ-02** | Team size and target release scale (solo / small team / studio). This document sizes work with relative t-shirt sizes (§66), not calendar estimates. | Before M1 planning. **Closed 2026-11-12 (ADR-50):** solo; the durations of §66 are read as relative sizes |
+| **OQ-03** | Hosting and distribution: static host + CDN with range-request support and the COOP/COEP headers (assumed), who pays for tile bandwidth, and whether a publisher-hosted CDN or a community-mirror model is used. | Before M2. **Decided for M2, 2026-11-12 (ADR-50):** the app stays on a static host (GitHub Pages, ADR-22); the GeoPacks are served from a Cloudflare R2 bucket with range requests and CORS, which charges nothing for traffic [verify] |
+| **OQ-04** | Commercial or free release. Several open datasets have attribution (CC-BY) or share-alike (ODbL) duties that interact with redistribution (§45.9). | Before the public beta (M5); was before M2. **Kept open 2026-11-12 (ADR-50):** all rights reserved until decided; meanwhile a pack takes only data whose licence allows commercial use (§45.9), so both paths stay open |
 | **OQ-05** | Aircraft/weapon art budget: modular kit-bashed aircraft vs fully bespoke models (affects roster size at M3). Browser asset budget (§60.6) also limits fidelity. | Before M3 |
 | **OQ-06** | In-game voice chat. The browser provides WebRTC audio, so this is cheap (assumed on, optional per lobby, §32.9). | Before M5 |
 | **OQ-07** | WebXR/VR support (not in outline; designed-for-compatibility only, §58.8). | Before M3 |
 | **OQ-08** | Target content rating and regional constraints on map/border depiction (§9.8). | Before public release |
 | **OQ-09** | Whether a desktop wrapper (Electron/Tauri) is wanted later for storefront distribution. The architecture keeps this possible and does not depend on it. | Before M5 |
 | **OQ-10** | Community hub scope and moderation for user missions (§51.4): hosted service vs files/links only; moderation policy; abuse handling. | Before M7 |
+| **OQ-11** | G1(a): the blind panel of ≥ 12 testers (§66.4), deferred from M1 by the owner (ADR-45, D1). | Not set (the owner decides); does not block M2 |
+| **OQ-12** | The human panels of the later gates (G2, the §67.2 run, G3, G5, G6, G7, ET-1 to ET-3) in a solo project. | **Decided 2026-11-12 (ADR-50):** each version's gates ADR names the automated proxy that decides the gate; the owner's own runs are recorded and do not block (as for G1, ADR-45) |
 
 Assumptions: desktop browsers only (Chromium-based browsers are the primary test target; Firefox and Safari supported on a best-effort/feature-detected basis [verify]); keyboard/mouse, gamepad, and joystick/HOTAS must all reach full functionality; no cheat protection beyond host authority (LAN/VLAN trust model); online matchmaking and NAT traversal services are out of scope; the user can reach the game URL at least once (to install/cache) before going offline.
 
@@ -467,7 +469,7 @@ The same simulation underlies every mode: the **Sandbox Skirmish**, **1v1**, **L
 ## 1.4 Platform, scope, and deliverables
 
 - **Platform:** desktop web browser, installable as a PWA (ADR-01). Input: keyboard + mouse, gamepad, joystick/HOTAS, optional head tracking (webcam-based, §58.7).
-- **Scope of the first shippable product:** Sandbox Skirmish, 1v1, LAN/VLAN co-op, one base geodata pack plus streamed region packs, ~12 launch aircraft (§13.4), 26 weapons plus 6 non-weapon store types (§15.12), 4 fictional factions (§37). The campaign ships as a later content release but its data model is reserved from M1 (§66.2).
+- **Scope of the first public (beta) product (M5):** Sandbox Skirmish, 1v1, LAN/VLAN co-op, one base geodata pack plus streamed region packs, ~12 launch aircraft (§13.4), 26 weapons plus 6 non-weapon store types (§15.12), 4 fictional factions (§37). The campaign joins the beta later and is part of 1.0 (§71.6); its data model is reserved from M1 (§66.2).
 - **Not in scope:** mobile/touch, online matchmaking, NAT-traversal services, ranked ladders, console ports, real-world nation/political simulation, real aircraft licences.
 
 ## 1.5 Genre positioning
@@ -3567,7 +3569,7 @@ Total AI budget ≤ 1.5 ms per tick for 75 aircraft. Staggering: each pilot deci
 
 # 20. SQUADRON SYSTEM
 
-`P4 · M4` — Aircraft operate as squadrons rather than isolated entities (outline §33–35). A squadron is the unit of tactics, doctrine, identity, and (in the campaign) persistence.
+`P4 · M3 (formations, orders) → M4 (squadrons) → M6 (persistence)` — Aircraft operate as squadrons rather than isolated entities (outline §33–35). A squadron is the unit of tactics, doctrine, identity, and (in the campaign) persistence.
 
 ## 20.1 Intent
 
@@ -3740,7 +3742,7 @@ Squadron AI runs only on the authority. Clients never simulate it. Orders by hum
 
 # 21. GROUND WARFARE
 
-`P3/P5 · M3–M4` — Ground entities exist physically in the world (outline §38). They are targets, threats, objectives, and scenery that reacts. This chapter covers units, movement, air-defence networks, infrastructure, and the simulation tiers that keep them affordable.
+`P3/P5 · M3 (targets, SAM sites) → M4 (IADS, convoys) → M5 (forces at scale)` — Ground entities exist physically in the world (outline §38). They are targets, threats, objectives, and scenery that reacts. This chapter covers units, movement, air-defence networks, infrastructure, and the simulation tiers that keep them affordable.
 
 ## 21.1 Intent
 
@@ -3917,7 +3919,7 @@ The mission generator (§26.7) uses these constraints:
 
 # 22. NAVAL WARFARE
 
-`P10 · M4 (basic ships and carriers) → M6+ (submarines)` — Ships are moving objectives, threats and bases (outline §40–42).
+`P10 · M3 (static ships) → M5 (ships, carriers) → M7 (submarines)` — Ships are moving objectives, threats and bases (outline §40–42).
 
 ## 22.1 Intent
 
@@ -6224,7 +6226,7 @@ Enemy capture of player nodes follows the same rules (auto-resolve or played as 
 
 # 37. FACTIONS
 
-`P9 · M6 (data model from M3)` — Factions are initially **abstract and fictional** (outline §70). Real geography does not require real-world nations (ADR-11).
+`P9 · M3 (data model, 2 factions) → M4 (4 in generation) → M6 (campaign)` — Factions are initially **abstract and fictional** (outline §70). Real geography does not require real-world nations (ADR-11).
 
 ## 37.1 Intent
 
@@ -6964,7 +6966,7 @@ Land is ~29 % of the surface, ocean tiles beyond z8 are mostly constant, and hei
 Therefore (ADR-12):
 
 1. **Base pack (shipped with the app, ≤ 120 MB):** terrain z0–z5, coastlines, airport and place indexes, low-resolution albedo/night lights/stars, climate grid.
-2. **Global archive (hosted):** a single immutable `world.gpk` per data version on a static host/CDN with HTTP range support; clients fetch only the tiles they need and cache them locally.
+2. **Global archive (hosted):** a single immutable `world.gpk` per data version on a static host/CDN with HTTP range support; clients fetch only the tiles they need and cache them locally. *Decided in 0.2.5 (ADR-50, OQ-03):* at M2 the host is a Cloudflare R2 bucket, fetched in CORS mode [verify].
 3. **Region downloads (optional):** 5° × 5° cells (≈ 556 km at the equator) containing z6–z12 land tiles, features and airports: roughly 40–150 MB compressed per cell (varies with land fraction and relief); a Large battlefield spans 1–4 cells.
 4. **Sharing:** exported `.gpk` subsets and host-to-guest relay (§33.4) let a LAN with one internet-connected machine serve everyone.
 
@@ -7051,7 +7053,7 @@ Rules:
 - CC BY sources (WorldCover, GeoNames, ERA5-derived): attribution notices.
 - **Cache policy:** a provider with `cache_allowed: false` can only be used memory-resident for the session; the cache layer enforces this by flag (no OPFS write, no export).
 - **User-supplied providers** (e.g. imagery with the user's own API key) are off by default, clearly marked, and obey their descriptors.
-- The release owner (OQ-04) audits descriptors before each datapack release; a CI gate fails the pack if any descriptor is missing or `terms_checked` is older than 12 months.
+- The release owner (OQ-04) audits descriptors before each datapack release; a CI gate fails the pack if any descriptor is missing or `terms_checked` is older than 12 months. While OQ-04 is open, the gate also fails a pack that holds a descriptor with `commercial_ok: false` (ADR-50).
 
 ## 45.10 Error handling (outline §122)
 
@@ -7851,7 +7853,7 @@ Launch scope is **data-only UGC** (missions, battlefields, bookmarks, liveries).
 
 # 52. REPLAY & PHOTO MODE
 
-`P5 · M5` — Missions are replayable; players can pause or slow combat and use a cinematic camera (outline §104, §105, §137). The design is **snapshot-based** (ADR-09) and reuses the multiplayer snapshot protocol (§33.5), so replays are small, seekable and tolerant of version changes, and cinematic moments emerge from play without scripting.
+`P5 · M4 (SSR, photo mode v1) → M5 (OSR, viewer)` — Missions are replayable; players can pause or slow combat and use a cinematic camera (outline §104, §105, §137). The design is **snapshot-based** (ADR-09) and reuses the multiplayer snapshot protocol (§33.5), so replays are small, seekable and tolerant of version changes, and cinematic moments emerge from play without scripting.
 
 ## 52.1 Intent
 
@@ -8723,7 +8725,7 @@ Closed captions for radio and *sound events* ("[Missile launch – right rear]",
 
 - Automated: axe-core-class checks on DOM screens in CI (zero critical violations), colour-contrast checks on tokens, keyboard-traversal tests, reduced-motion snapshot tests.
 - Manual: checklist per release (screen reader walkthrough, colour-blindness simulation, one-handed play, flash analysis (Harding-type tool) of cinematic sequences).
-- External review: accessibility consultants/playtesters before M5 and M7 (budgeted in §66).
+- External review: accessibility consultants/playtesters before M5 and before 1.0 (budgeted in §66; §71.6).
 
 ## 57.9 Acceptance criteria
 
@@ -8739,7 +8741,7 @@ Closed captions for radio and *sound events* ("[Missile launch – right rear]",
 
 # 58. CONTROLS
 
-`P1 · M1` — Support keyboard and mouse, controllers, HOTAS and joysticks; controls are **fully remappable** (outline §106), and flight assistance presets (Full / Standard / Reduced / Manual, outline §107) select how input becomes control-surface commands (§11.11). This chapter specifies the **browser input stack**, shaping, bindings, mouse-aim, head tracking and the VR-compatibility stance.
+`P1 · M1 (devices) → M4 (head tracking)` — Support keyboard and mouse, controllers, HOTAS and joysticks; controls are **fully remappable** (outline §106), and flight assistance presets (Full / Standard / Reduced / Manual, outline §107) select how input becomes control-surface commands (§11.11). This chapter specifies the **browser input stack**, shaping, bindings, mouse-aim, head tracking and the VR-compatibility stance.
 
 ## 58.1 Intent and device support
 
@@ -9475,12 +9477,12 @@ If a feature is too complex for the first build, create an abstraction that lets
 |---|---|---|---|
 | Weather | `WeatherProvider` | Static cloud layers + uniform wind (M1) | Dynamic fronts, turbulence, orographic effects (M4) |
 | Terrain heights | `GeoService` | Procedural + base-pack heights (M0) | Full streamed GeoPack (M2) |
-| Line of sight | `LosService` | Terrain-only ray-march (M3) | Max-mip + horizon profiles + clouds/buildings (M4) |
+| Line of sight | `LosService` | Terrain-only ray-march (M3) | Max-mip + horizon profiles (M3); clouds and buildings (M4) |
 | Aerodynamics | `AeroModel` | Table lookup (M1). *Wired in v0.1a:* `TableAero` in `crates/flight` (the full §11.6.1 build-up from the `aero/1` tables), re-exported as the seam and called concretely by the aircraft tick (ADR-29) | Full table set with store/damage effects (M3) |
-| Damage | `DamageModel` | Aggregate health bar (M3) | Component/subsystem model (M4) |
-| Sensors | `RadarModel` | Range/RCS threshold detection (M3) | Radar equation + Doppler + notch + ECM (M4) |
-| Missiles | `MissileModel` | Simple proportional navigation (M3) | Seeker/guidance/DLZ models (M4) |
-| AI pilot | `PilotBrain` | State machine (M3) | Utility AI + predictive BFM (M4) |
+| Damage | `DamageModel` | Aggregate health bar (M1: v0.1d, ADR-46) | Component/subsystem model (M3) |
+| Sensors | `RadarModel` | Range/RCS threshold detection (M3) | Radar equation + Doppler + notch + ECM (M3) |
+| Missiles | `MissileModel` | Simple proportional navigation (M1: v0.1d, ADR-46) | Seeker/guidance/DLZ models (M3) |
+| AI pilot | `PilotBrain` | State machine (M1: v0.1d, ADR-47) | Utility AI + predictive BFM (M3) |
 | Mission source | `MissionProvider` | Hand-written missions (M3) | Generator + escalation + bosses (M4) |
 | Persistence | `PersistenceSink` | In-memory (M1) | Campaign save/ledger (M6) |
 | Strategic layer | `StrategicContext` | None / stub (M0) | Campaign (M6) |
@@ -10147,22 +10149,22 @@ Total to Campaign Build ≈ 33 months from the start of M0 on a single team; art
 
 ### M2 — Geographic Sandbox (outline §127)
 
-*Scope (outline):* globe/world map, geographic coordinates, location selection, terrain streaming, airports, battlefield generation, boundaries. *Specifically:* §7 geodesy and frames, §8 battlefield system and validator, §9 world map (search, coordinate entry, bookmarks, selection tools), §10 airports (data merge, flattening, procedural completion, improvised strips), §44 streaming pipeline, `.gpk` GeoPack and the `geo-pipeline` for a pilot set of regions (e.g. 6 regions), §45 offline cache UI, §46 terrain shading/biomes/water, §47 buildings/roads (basic tiers), atmosphere/sky (§24 basic), sandbox configuration (§30 basic), load plan (§44.9).
+*Scope (outline):* globe/world map, geographic coordinates, location selection, terrain streaming, airports, battlefield generation, boundaries. *Specifically:* §7 geodesy and frames, §8 battlefield system and validator, §9 world map (search, coordinate entry, bookmarks, selection tools), §10 airports (data merge, flattening, procedural completion, improvised strips), §44 streaming pipeline, `.gpk` GeoPack and the `geo-pipeline` for a pilot set of regions (e.g. 6 regions), §45 offline cache UI, §46 terrain shading/biomes/water, §47 buildings/roads (basic tiers), atmosphere/sky (§24 basic), sandbox configuration (§30 basic), load plan (§44.9), §50 navigation (basic: position, bearing and distance, waypoints, heading and altitude holds), §55 tactical map (basic).
 *Exit criteria:* the outline's test — **the player can select two geographic locations and fly between them** — with continuous streaming and no holes (`AC-44.1`); `AC-3.1` (1 000 random locations → playable) at ≥ 95 % in M2 (≥ 99 % by M4); horizon dip and curvature visible (screenshot tests); streaming budgets (`AC-44.4`); airport data merge `AC-10.1`.
 
 ### M3 — Combat (outline §128)
 
-*Scope (outline):* guns, missiles, radar, RWR, countermeasures, AI, ground targets, damage. *Specifically:* §15 weapons (26-weapon target; M3 delivers the core set of ≥ 10), missile model with DLZ baker, §16 radar and avionics (modes, LOS service with max-mip, notching), §17 EW basics (chaff/flares, jamming simple), §18 damage model (component), §19 pilot AI (utility + predictive BFM at skill levels), §20 squadrons/formations/wingman orders, §21 ground units and SAM sites, §23 civilian traffic (basic), §48 airbase operations (takeoff, landing, rearm/refuel, scramble basic), §49 long-range operations (autopilot, cruise, time acceleration, AAR), §50 navigation, §54 HUD (DLZ, RWR, radar page), §55 tactical map, §56 audio (weapons, RWR, radio v1), fixed objectives in hand-authored missions.
+*Scope (outline):* guns, missiles, radar, RWR, countermeasures, AI, ground targets, damage. *Specifically:* §15 weapons (26-weapon target; M3 delivers the core set of ≥ 10), missile model with DLZ baker, §16 radar and avionics (modes, LOS service with max-mip, notching), §17 EW basics (chaff/flares, jamming simple), §18 damage model (component), §19 pilot AI (utility + predictive BFM at skill levels), §20 squadrons/formations/wingman orders, §21 ground units and SAM sites, §48 airbase operations (takeoff, landing, rearm/refuel, scramble basic), §49 long-range operations (autopilot, cruise, time acceleration, AAR), §50 navigation (autopilot modes, aids), §54 HUD (DLZ, RWR, radar page), §55 tactical map (tracks and threats), §56 audio (weapons, RWR, radio v1), fixed objectives in hand-authored missions.
 *Exit criteria:* **First Playable Build** (§67.1) at the middle of M3; **Second Playable Build** (§67.2) at the end; hit-rate sweeps within targets (`AC-15.5`); AI never exceeds the authored envelope (`AC-3.3`); sensor budgets (`AC-16.*`); damage model tests (`AC-18.*`); Gate G2 (fun gate) passes at the First Playable Build.
 
 ### M4 — Procedural Missions (outline §129)
 
-*Scope (outline):* objectives, reinforcement logic, mission phases, friendly forces, enemy forces, boss encounters, dynamic events. *Specifically:* §25 mission model/DSL/VM, §26 generator with solvability checks, §27 mission types (16), §28 escalation and the intensity director, §29 bosses and aces, §69 anti-repetition (DNA, history, twists, approach diversity), §30 sandbox configuration complete, §31 1v1 geographic arenas (single-machine vs AI), seeds and share links (§26.3), debrief and statistics (§65), replay (SSR) and photo mode v1 (§52), difficulty dials (§59), accessibility baseline (§57).
+*Scope (outline):* objectives, reinforcement logic, mission phases, friendly forces, enemy forces, boss encounters, dynamic events. *Specifically:* §25 mission model/DSL/VM, §26 generator with solvability checks, §27 mission types (14; Carrier Defense and Fleet Battle at M5), §28 escalation and the intensity director, §29 bosses and aces, §69 anti-repetition (DNA, history, twists, approach diversity), §24 full weather (fronts, dynamic changes), §23 civilian traffic (ambient traffic, air corridors), §30 sandbox configuration complete, §31 1v1 geographic arenas (single-machine vs AI), seeds and share links (§26.3), debrief and statistics (§65), replay (SSR) and photo mode v1 (§52), difficulty dials (§59), accessibility baseline (§57).
 *Exit criteria:* 10⁴-seed batch validity ≥ 99.5 % (`AC-26.*`); diversity (`AC-3.4`: mean DNA distance ≥ 0.45); solvability; escalation tests (`AC-28.*`); Gate G3 (replayability): playtesters report "substantially different battle" at the same location in ≥ 80 % of paired sessions (§71.3).
 
 ### M5 — Multiplayer (outline §130)
 
-*Scope (outline):* LAN, VLAN/direct IP, co-op, synchronisation, player aircraft, weapons, AI replication, lobby. *Specifically (browser):* §33 transport stack (WebRTC primary, WebSocket LAN fallback, WebTransport where available), serverless invite blobs and QR, listen-server in a tab and the dedicated server build, prediction/reconciliation/lag compensation, snapshot replication with relevance filtering, voice, §32 lobby/roles/co-op, §31 1v1 online modes, ground/naval forces (§21–§22), larger battles (Huge) and the Performance Governor (§60.7.3), additional regions (≥ 20), improved procedural generation, replay completeness (OSR), UGC editor v1 (§51).
+*Scope (outline):* LAN, VLAN/direct IP, co-op, synchronisation, player aircraft, weapons, AI replication, lobby. *Specifically (browser):* §33 transport stack (WebRTC primary, WebSocket LAN fallback, WebTransport where available), serverless invite blobs and QR, listen-server in a tab and the dedicated server build, prediction/reconciliation/lag compensation, snapshot replication with relevance filtering, voice, §32 lobby/roles/co-op, §31 1v1 online modes, ground/naval forces and carriers (§21–§22) with the last two §27 mission types (Carrier Defense, Fleet Battle), larger battles (Huge) and the Performance Governor (§60.7.3), additional regions (≥ 20), improved procedural generation, replay completeness (OSR), UGC editor v1 (§51).
 *Exit criteria:* 16-client soak (`AC-33.*`), hit registration under impairment (§33.14), bandwidth ≤ budget (`AC-60.8`), Gate G5 (network), LAN-only play without internet verified (`AC-61.8`).
 
 ### M6 — Campaign (outline §131)
@@ -10184,13 +10186,15 @@ See §66.7.
 | **G4 Art/audio** | M2 look-dev, M4 audio, before each content drop | Reference boards signed off (AC-46.5), aircraft sound distinctiveness (AC-56.7), HUD readability checks, icon/symbol audit (AC-57.1) |
 | **G5 Network** | End of M5 | §33.14 criteria; 16-client soak; LAN-only verified; NAT-less invite flow success ≥ 95 % on 20 home networks [target] |
 | **G6 Campaign loop** | End of M6 | ≥ 60 % of testers continue past their third operation voluntarily; campaign completes in 6–15 hours for Normal; zero soft-locks in the 20-run soak |
-| **G7 Accessibility** | M4 baseline, M5 full, M7 external review | §57.9 criteria; external accessibility testers |
+| **G7 Accessibility** | M4 baseline, M5 full, external review before 1.0 | §57.9 criteria; external accessibility testers |
 | **G8 Licence & IP** | Each datapack/content release | Descriptor audit (AC-45.4); naming/IP review of fictional content (ADR-11); music/audio licences |
 | **G9 Release readiness** | Before each public release | All AC for the milestone green; no P0/P1 bugs; performance gates; security/CSP audit (AC-61.6); crash-free session rate ≥ 99.5 % in beta (opt-in telemetry) |
 
 Playtest programme: weekly internal sessions from M1; monthly external sessions from M2; structured protocol (script, think-aloud, SUS usability score ≥ 75 target at M4, telemetry with consent). Findings feed the design priorities (§68).
 
 *Clarified in 0.2.4 (ADR-45, owner decision D1 of 2026-11-08, OQ-11):* for a **solo project at M1**, G1 is (b) the Kestrel's conformance test, (c) the NN-2 audit (the control system never moves the aircraft, and its turn depends on speed) and the **bot playtester's** sorties (take off, shoot the bandit down and land, at least 40 of 50 under Standard, Reduced and Manual), with the owner's own questionnaire and 10-minute task recorded and not blocking. G1(a), the blind panel of 12 testers, is open as OQ-11 and is not scheduled; it does not block M2.
+
+*Clarified in 0.2.5 (ADR-50, owner decision of 2026-11-12, OQ-12):* the **human panels** of G2, G3, G5, G6 and G7, the §67.2 run and the beat-sheet sessions are handled as G1(a) was. Each version's gates ADR names the automated proxy that decides the gate; for G2 that is the automated 11-step run (`AC-67.1`) with the owner's own sorties recorded. The owner's runs do not block. The thresholds above stay as the target of any panel that is run. The external accessibility review that §71.6 requires before 1.0 is not changed by this.
 
 ## 66.5 Workstreams and critical path
 
@@ -10215,7 +10219,7 @@ Playtest programme: weekly internal sessions from M1; monthly external sessions 
 If the schedule slips, features are cut in the order of §68 from the bottom, within these rules:
 
 1. A cut system keeps its interface and a stub (§61.5): nothing already integrated is removed.
-2. M3 may ship with 12 weapons instead of 26 (stores keep the schema), with 8 aircraft instead of 12 (roster slots keep the schema).
+2. The first public product (M5) may ship with 12 weapons instead of 26 (stores keep the schema), with 8 aircraft instead of 12 (roster slots keep the schema).
 3. M5 may ship 1v1 and co-op without WebTransport/voice (WebRTC data channels and WebSocket LAN remain).
 4. M6 may ship a 2-faction campaign without the storylet system (the event stream remains).
 5. The WebGL2 compatibility path may be dropped if WebGPU coverage in the target browsers is sufficient at release [verify], with a documented compat message.
@@ -10226,7 +10230,7 @@ The architecture must eventually support: many aircraft; many weapons; fictional
 
 | Track | Planned content / capability | Enabled by |
 |---|---|---|
-| **Aircraft & weapons** | Roster growth beyond 12 aircraft (target 30), new weapon classes (anti-ship, cruise missiles, glide bombs, directed-energy research item), era packs (G3 → G5) | §62 data packs |
+| **Aircraft & weapons** | Roster growth beyond 12 aircraft (target 30), more weapons in the anti-ship, cruise-missile and glide-bomb classes, a directed-energy research item, era packs (G3 → G5) | §62 data packs |
 | **Factions** | Additional fictional factions and variant doctrines; faction-specific campaigns | §37, §62 |
 | **Regions & data** | More pre-packaged regions; improved building coverage; seasonal imagery-free styles; polar support (§45.8) | §45 |
 | **Large-scale battles** | Increase of caps with performance work (WASM threads, GPU culling); 250+ aircraft entertainment mode | §60 |
@@ -11528,7 +11532,7 @@ All names are fictional working names pending the IP/naming review (ADR-11, gate
 | Weapons | 26 | §15.12 |
 | Non-weapon store types | 6 | §15.12 |
 | Ground unit classes | 11 (≈ 30 unit types) | §21.2, D.3 |
-| Ship classes | 8 (≈ 10 ship types) | §22.2, D.4 |
+| Ship classes | 7 (≈ 9 ship types; the submarine `sub_1` is post-launch, §22.7) | §22.2, D.4 |
 | Factions | 4 | §37.3 |
 | Mission types | 16 | §27 |
 | Pre-packaged regions | ≥ 20 (worldwide streaming for all) | §66.3 |
@@ -11971,6 +11975,7 @@ Each template has ≥ 6 weighted variants and urgency variants (calm/urgent/pani
 | 0.2.2 | Clarifications from building the v0.1b control and ground work (ADR-32 to ADR-38): §11.11.2 the control laws are incremental dynamic inversion; §11.11.3 Full Assist is a bank-angle command and the recovery button's behaviour; §11.13.2 tanh-regularised, additive friction; §11.13.3 how the touchdown thresholds are judged, and that they govern over §18.8.1; §11.13.4 the debounce; §11.14 `n_z` at the CG, the dial, the AC-11.9 figures; §11.15 lateral tables against α, `C_nβ,dyn` and no break-up before §18; §48.2 Runway hot as built; §54.9 the Auto-GCAS timing conflict; §58.2 InputFrame v3; §58.4 mouse-aim runs in the sim; AC-58.3 measured from the source event; AC-58.4 scaled to the aircraft (owner decision, ADR-33 amendment 1); A.1 `fcs/1`; A.2 gear, contacts, `n_max_by_config`, `fcs.gains_ref`; C.8 the ground-roll segments and the C.7/C.8 landing-roll note (target kept). The header version, left at 0.2.0 in 0.2.1, is corrected. No gate or target changed except as the owner decided (AC-58.4) |
 | 0.2.3 | Clarifications from building the v0.1c presentation work (ADR-39 to ADR-44): §7.4.4 the render-only level L3 passes the 1 000 km extent; §44 "basic" is four levels from the sim's terrain function plus an analytic globe; §53.11 the first run ends at the main menu and the runway start; §54.2 the HUD is drawn directly as directions at infinity with an analytic aperture and a stroke font, the render target deferred to the MFDs; AC-54.1 compares against the horizon plus its dip; §54.3 the Mach rule, the G meter's shape cue, radar altitude and the AoA bracket; §54.11 the chase camera's height, lag and near plane; §56.2 the worklet is TypeScript and the state travels as AudioParams; §56.9 tones stand in for voice; §58.5 the view keys; §60.10 the screenshot tests are measurements at 1280 x 720, SSIM goldens not built; §61.12 update on request; A.1 `model/1` and `stroke_font/1`; A.2 presentation references and A.11 `hud_glass` corners live in the presentation bundle. No gate or target changed except as ADR-39 records (S6 cut, A1 and A7 methods).
 | 0.2.4 | Clarifications from building the v0.1d combat stub (ADR-45 to ADR-49): §15.2 and A.4 `weapon/1` as built; §15.4.2 the swept round test against capsules; §15.4.4 aggregate damage linear in impact energy; §15.5.2 RK4 at 120 Hz always and constant thrust; §15.6 the swept fuze and `damage_j`; §15.7 the rear-aspect cut-off and the C.11 intensities; §15.10 refusal in every assist and automatic arming; §16.6.2 the perception stub; §18.8.2 capsule overlap; §19 the M1 state machine, three skills, the Recruit's held fire, no morale or fuel logic, AI g-effects off; §54.4 the director pipper computed in the sim, a ranging stub, no funnel; §54.5 `IN RNG` from a fly-out prediction, no DLZ ladder; §56.3 and §56.7 the combat voices; §58.5 the weapon keys and the moved pad and joystick bindings; §60.9 the 30-minute soak as M1's precursor of PS-7; §65 the subset as built (`stats/1`, `feel/1`); §66.4 G1 at M1 for a solo project (D1, OQ-11); A.1 index rows `weapon/1` (as built), `ai_skill/1`, `stats/1`, `feel/1`; A.2 `internal_weapons.gun`, `loadout.rails`, `signatures` (as built), `damage` (aggregate); C.10 to C.12 the Kestrel's v0.1d data. No gate or target changed except as the owner decided (G1 at v0.1d, ADR-45). |
+| 0.2.5 | Roadmap 2.0 accepted and the owner's decisions before M2 (ADR-50): §0.5 OQ-02 closed (solo), OQ-03 decided for M2 (the GeoPacks on Cloudflare R2), OQ-04 kept open until the beta with commercial-safe data only, OQ-11 and OQ-12 added; the staging of chapters by milestone as `docs/roadmap.md` section 19 reconciles it: §1.4 the first public product is the M5 beta and the campaign is part of 1.0 (R12); the tags of §20 (R17), §21 (R18), §22 (R1), §37 (R19), §52 (R15) and §58 (R22); §57.8 and G7 the external review before 1.0 (R10); §61.5 the damage, radar, missile and pilot models final at M3 and line of sight by M3/M4 (R3), and the first damage, missile and pilot implementations dated to v0.1d (M1); §66.3 M2 adds basic navigation and the basic tactical map (R4, R5), M3 loses civilian traffic to M4 (R6), M4 has 14 mission types and the full weather (R2, R7), M5 the carriers and the last two mission types (R1, R2); §66.4 the human panels of the later gates (OQ-12); §66.6.2 the cut line applies to the M5 product (R20); §66.7 the post-launch weapons (R25); D.1 seven ship classes (R13); §45.3 and §45.9 the host and the licence rule. No gate threshold changed; who decides the panel gates did (OQ-12). |
 
 ## I.3 Ownership
 
@@ -12008,7 +12013,7 @@ Each chapter has a content owner (role) responsible for keeping text, tables and
 
 ## I.7 Known open items
 
-1. OQ-01…OQ-10 (§0.5) remain open and have deadlines before the milestones shown.
+1. The open questions of §0.5 that are not closed, with the deadlines shown there; the live register is `docs/open-questions.md`.
 2. Final names of aircraft/weapons/factions are pending the IP/naming review (G8).
 3. Calibration of weapons, sensors and AI tuning tables (M3–M4).
 4. Final list of target languages (OQ in §53.10).
