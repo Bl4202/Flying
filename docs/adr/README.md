@@ -54,6 +54,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-47](0047-combat-ai-and-the-bot.md) | Combat AI: the bandit's state machine, the manoeuvre controller and the bot playtester (amendment 1: what the gates asked; amendment 2: the bandit's gun puts the pipper on the player) | Accepted |
 | [ADR-48](0048-combat-in-the-core.md) | Combat in the core: the duel scenario, ABI v5, snapshot v5, events and the combat hash | Accepted |
 | [ADR-49](0049-debrief-statistics-and-the-feel-questionnaire.md) | The dogfight in the app: mode, debrief, statistics and the feel questionnaire | Accepted |
+| [ADR-50](0050-entering-m2.md) | Entering M2: roadmap 2.0 accepted, world data on Cloudflare R2, commercial-safe data, the six pilot regions, automated proxies for human panels (OQ-12) | Accepted |
 
 ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist before any tuning
 (AC-66.4).
@@ -67,3 +68,5 @@ ADR-39 (the v0.1c gates) and ADR-40 (the renderer stays custom, superseding ADR-
 first in v0.1c, before any render, HUD or audio code (AC-66.4).
 
 ADR-45 (the v0.1d gates) was written first in v0.1d, before any weapon, AI or combat code (AC-66.4).
+
+ADR-50 records the owner's decisions of 2026-11-12, taken between M1 and M2 (roadmap 2.0, OQ-02, OQ-03, OQ-04, OQ-12).

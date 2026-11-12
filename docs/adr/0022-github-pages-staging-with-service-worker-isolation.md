@@ -1,6 +1,6 @@
 # ADR-22: GitHub Pages staging with Service-Worker-assisted isolation
 
-- **Status:** Accepted (staging only; production hosting is still OQ-03)
+- **Status:** Accepted (staging only; the world data's host is decided in ADR-50, amendment 2)
 - **Owner:** Bl4202
 - **Date:** 2026-10-10
 - **Affects:** GDD 61.12, ADR-17, ADR-19, NN-8; `packages/platform-web`, `packages/app-shell`, `.github/workflows/ci.yml`
@@ -62,3 +62,11 @@ wrong once the game had a menu to put a choice in.
   only place that offers it, so a flight is never interrupted; a player who never opens the menu keeps
   the build they have, which still works offline.
 
+
+## Amendment 2 (2026-11-12): the world data's host
+
+*Amended by [ADR-50](0050-entering-m2.md).* OQ-03 is decided for M2. The app stays on GitHub Pages
+under this ADR. The GeoPacks (the base pack, `world.gpk` and the region cells) are served from a
+Cloudflare R2 bucket, with range requests and CORS. The bucket's CORS rule must allow the staging
+origin and the `Range` header, and expose `Content-Range`. The page is isolated with COEP
+`require-corp`, so it fetches the packs in CORS mode.
