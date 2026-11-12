@@ -76,8 +76,14 @@ The owner decided each point on 2026-11-12.
 
 ## Consequences
 
-- **GDD 0.2.5** amends the chapter tags of §20, §21, §22, §37, §52 and §58, and §1.4, §57.8, §61.5,
-  §66.3 (M2, M3, M4), §66.4 (G7), §66.6 and §66.7, and D.1. Its §0.5 records OQ-02, OQ-03 and
+- **GDD 0.2.5** amends:
+  - the chapter tags of §20, §21, §22, §37, §52 and §58;
+  - §1.4, §57.8 and §61.5 (which also dates the first damage, missile and pilot implementations to
+    v0.1d);
+  - §66.3 (M2 to M5), §66.4 (G7, and the panels of OQ-12), §66.6 and §66.7;
+  - D.1.
+
+  It also adds the host to §45.3 and the licence rule to §45.9. Its §0.5 records OQ-02, OQ-03 and
   OQ-04, and adds OQ-11 and OQ-12.
 - **v0.2a's plan assumes R2.** Before v0.2a needs the bucket, the owner sets up a Cloudflare
   account and an R2 bucket. A custom domain is recommended, because the `r2.dev` address is
