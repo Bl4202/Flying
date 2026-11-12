@@ -131,61 +131,102 @@ provisional and these reports are what they will be tuned against.
 | Compat verdict fatal, `SYS-103` | hardware acceleration is off, or the GPU is on the browser's blocklist (`chrome://gpu`) |
 | A "graphics device was lost" notice | note when it happened; the renderer rebuilds once, then falls back to WebGL2. Send the console log |
 
-## The owner's dogfight checklist (v0.1d, not blocking)
+## The owner's M1 session (not blocking)
 
-The bots gate the tag (owner decision, 2026-11-08); this is recorded in `docs/exit/v0.1d.md` and does not
-block it. On staging, on the Mac with a keyboard and mouse:
+The four hands-on checklists of M1, in one sitting of about 90 minutes. Before 2026-11-12 they were
+four lists, one per sub-milestone. The bots gate every one of those milestones; what you see and
+hear is recorded beside their evidence and blocks nothing. The checklists stay open until you do
+them (owner decision, 2026-11-12).
+
+| Part | Closes |
+|---|---|
+| 1 First visit and the app | v0.1c items 9 and 17 (first run, settings) |
+| 2 Free flight | v0.1a item 13 (manual flight on WebGPU and WebGL2); v0.1b's manual circuit per assist; v0.1c item 17 (views, HUD, horizon, sound) |
+| 3 Dogfight | v0.1d item 19 (Appendix E: the feel questionnaire, the 10-minute task, look and sound) |
+| 4 Install and offline | v0.1c items 9 and 17 (the PWA) |
+
+**Setup:** staging (`https://bl4202.github.io/Flying/`), current stable Chrome, headed, sound on, the
+Mac on mains, keyboard and mouse. Keep one notes file. For each step, write what you saw or heard and
+anything that surprised you, such as a control too sensitive, a warning at the wrong moment, or a crash
+and its cause. Send the file, and it is recorded in the exit docs. Gamepad and HOTAS are not part of it
+(no hardware; their look is not built).
+
+### Part 1: first visit and the app (about 10 minutes)
+
+1. A fresh profile or a private window. Check the compat screen, then the first-run steps in order (try
+   them with the keyboard alone), then the main menu. A second visit should go straight to the menu.
+2. **Settings:** look through all six tabs. Make a change and check that it survives a reload. Export
+   the settings file and import it again.
+
+### Part 2: free flight (about 35 minutes)
+
+Fly the circuit once per assist level (Full, Standard, Reduced, Manual). Choose the level in the
+menu, or in the pause menu (`Esc`).
+
+1. **The circuit**, each time:
+   1. From the runway, take the parking brake off (`P`), go to full afterburner (`Z`) and keep the
+      centreline with `Q`/`E`.
+   2. Rotate at about 70 m/s. Gear up (`L`) once climbing, flaps up (`V`) by 120 m/s.
+   3. Fly a left-hand circuit at about 300 m above the field.
+   4. On final: gear down (`L`), flaps to landing (`V` twice), airbrake (`N`), about 3 degrees.
+   5. Flare, touch down, brake (`B`) and stop on the runway.
+
+   Note per level whether it flew and the display rate.
+2. **Across the four circuits**, also:
+   - fly once in each arena (Rugged, Plain);
+   - **Main menu**, then Fly again: the sortie should start clean;
+   - **Cockpit and chase** (`C`): head look (`,` `.` `ArrowUp` `ArrowDown`, `X` with the mouse), zoom
+     (right button), `/` to recentre. The chase camera should sit behind and above the aircraft at
+     every speed;
+   - **the HUD:** it should be readable on the runway, in the climb and on final. `I` changes the
+     detail level, `-` and `=` the brightness. Note anything out of place against the horizon. Two
+     things the bots' look noticed at v0.1c, for you to judge:
+     - the cockpit's glare shield and panel fill the lower third of the view;
+     - in the chase view on the runway, the mode line runs to the edge of the engine block's column;
+   - **sound:**
+     - the engine at idle, military and afterburner (and the light-off thump);
+     - the wind rising with speed;
+     - the stall horn, the over-G tone and PULL UP;
+     - the gear chime.
+
+     Note anything harsh, clipped or too quiet.
+3. **Once, away from the circuit:**
+   - a pull to the stall warning;
+   - trim;
+   - a hard pull until the screen greys out;
+   - mouse-aim (`O`, then click the picture);
+   - a deliberate crash and the respawn (`R`).
+4. **The horizon:** with `?debug=1` (the overlay shows the height), climb to 10 km and look. The dip
+   should look right, the edge crisp, and there should be no gaps in the ground.
+5. **Controls:** in the pause menu's Controls, rebind one key, reload, and check that the binding held.
+6. **WebGL2:** open `?renderer=webgl2` and fly for a minute (take-off, afterburner, a turn). Look for
+   stutter, a black or flickering picture, and any notice at the bottom of the screen.
+
+`C` does nothing while a scripted pilot flies (`?script=…`). This is by design: a scripted run takes
+no keyboard, mouse or pad input.
+
+### Part 3: dogfight (about 35 minutes)
 
 1. For each assist level (Full, Standard, Reduced, Manual): main menu, Mode **Dogfight**, Bandit
-   **Recruit**, Fly. Take off, find the bandit, shoot it down (gun or missile), land and stop. Note the
-   debrief's "Take-off, kill and landing" time. Then **Rate this flight** (three answers, and a comment if
-   you like).
-2. After the four: Statistics, **Export**, and send the file (it holds the four answers and times).
-3. Look and listen: the tracers against the sky and the ground; the missile and its explosion; the bandit's
-   wreck; the HUD's box, arrow, pipper, ring, seeker circle and diamond, readable in daylight; the seeker's
-   growl rising as you line up and the lock tone; the gun; being hit by a **Regular** bandit.
-4. Hold `Ctrl` (throttle down) and press `Space`: does the gun fire, or does macOS switch the input source?
+   **Recruit**, Fly.
+   1. Take off, find the bandit, shoot it down (gun or missile), then land and stop.
+   2. Note the debrief's "Take-off, kill and landing" time.
+   3. Choose **Rate this flight**: three answers, and a comment if you like.
+2. After the four: Statistics, **Export**. Send the file; it holds the four answers and times.
+3. **Look and listen:**
+   - the tracers against the sky and the ground;
+   - the missile and its explosion;
+   - the bandit's wreck;
+   - the HUD's box, arrow, pipper, ring, seeker circle and diamond, readable in daylight;
+   - the seeker's growl rising as you line up, and the lock tone;
+   - the gun;
+   - being hit by a **Regular** bandit.
+4. Hold `Ctrl` (throttle down) and press `Space`. Does the gun fire, or does macOS switch the input
+   source?
 5. Anything that felt wrong, one line each.
 
-## The owner's look-and-listen checklist (v0.1c, not blocking)
+### Part 4: install and offline (about 10 minutes)
 
-The bots gate the exit; the owner's own look is recorded and does not block the tag. On the staging build,
-in a stable headed Chrome with sound on, note what you saw and heard:
-
-1. **First visit** (a fresh profile or a private window): the compat screen, then the first-run steps in
-   order (try it with the keyboard alone), then the main menu. A second visit goes straight to the menu.
-2. **Fly** in each arena (Rugged, Plain) and **Main menu**, then Fly again: a clean sortie each time.
-3. **Cockpit and chase** (`C`): head look (`,` `.` `ArrowUp` `ArrowDown`, `X` with the mouse), zoom (right
-   button), `/` to recentre. The chase camera should sit behind and above the aircraft at every speed.
-4. **The HUD**: readable on the runway, in the climb and on final; `I` for the detail levels, `-` and `=` for
-   brightness. Is anything out of place against the horizon?
-5. **The horizon**: climb to 10 km (the overlay with `?debug=1` shows the height) and look: the dip should
-   look right, the edge crisp, no gaps in the ground.
-6. **Sound**: engine at idle, military and afterburner (the light-off thump); wind rising with speed; the
-   stall horn, the over-G tone and PULL UP; the gear chime. Anything harsh, clipped or too quiet?
-7. **Settings** (all six tabs), a change that persists over a reload, export and import of the settings file.
-8. **Install** (the menu's Install button, or the browser's), then **offline**: close the tab, go offline
-   and open the installed app; it should start and fly. With a newer build deployed, "Update ready" appears in
-   the menu, never in flight.
-
-Record per item what you saw or heard and anything that surprised you. Gamepad and HOTAS look are not built;
-the owner's devices are not tested for the view keys.
-
-## The owner's manual circuit (v0.1b, not blocking)
-
-The virtual tester gates the exit (`cargo xtask circuit`, ADR-33); the owner's own flights are
-recorded and do not block the tag. On the staging build with a keyboard and mouse, once per assist
-level (pause menu, `Esc`, then the level; or `?assist=full|standard|reduced|manual`), note what
-happened:
-
-1. Runway start: parking brake off (`P`), full afterburner (`Z`), keep the centreline with `Q`/`E`.
-2. Rotate at about 70 m/s, gear up (`L`) once climbing, flaps up (`V`) by 120 m/s.
-3. Fly a left-hand circuit at about 300 m above the field.
-4. Gear down (`L`), flaps to landing (`V` twice), airbrake (`N`), about 3 degrees on final.
-5. Flare, touch down, brake (`B`), stop on the runway.
-6. Also once: mouse-aim (`O`, click the picture), a hard pull until the screen greys out, and
-   rebinding one key in the pause menu's Controls and reloading.
-
-Record per level: whether it flew, anything that surprised you (a control too sensitive, a warning
-at the wrong moment, a crash and its cause), and the display rate. Gamepad and HOTAS are not
-hand-verified for v0.1b (no hardware).
+1. Install the app (the menu's Install button, or the browser's).
+2. Close the tab and go offline. Open the installed app: it should start and fly.
+3. Once a newer build is deployed, "Update ready" should appear in the menu, and never in flight.
