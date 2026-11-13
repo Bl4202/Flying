@@ -127,7 +127,7 @@ Several GDD gates need people the project does not have. v0.1d set the precedent
 |---|---|---|---|---|---|---|---|---|
 | **v0.0** | Foundations | M0 | — (§125) | infrastructure | a, b | 2 mo | a done, b done (the owner waived laptop runs C and D on 2026-10-16); not tagged | Tech demo: render + sim + input + CI loop |
 | **v0.1** | Flight Prototype | M1 | §126 | P1 | a, b, c, d | 4 mo | a ✅ b ✅ c ✅ d ✅ (M1 complete on bot evidence; G1(a) open, OQ-11) | One aircraft that flies well, a gun, an IR missile, one bandit |
-| **v0.2** | Geographic Sandbox | M2 | §127 | P2 | a, b, c, d | 5 mo | ▶ entry met 2026-11-12 (section 7.0); v0.2a's plan is next | Pick two places on Earth and fly between them |
+| **v0.2** | Geographic Sandbox | M2 | §127 | P2 | a, b, c, d | 5 mo | ▶ v0.2a in progress (gates fixed 2026-11-12, ADR-51) | Pick two places on Earth and fly between them |
 | **v0.3** | Combat | M3 | §128, §132, §133 | P3, P4 | a, b, c, d | 6 mo | ○ | **First Playable** (v0.3b), **Second Playable** (v0.3d) |
 | **v0.4** | Procedural Missions | M4 | §129 | P5 (P4) | a, b, c | 5 mo | ○ | Generated, escalating missions anywhere; 14 mission types |
 | **v0.5** | Multiplayer | M5 | §130, §134 | P6, P7, P8 | a, b, c, d, e | 5 mo | ○ | **Third Playable**; public beta of the sandbox product |
@@ -628,6 +628,8 @@ Each cell says what the version adds to the chapter: **stub** (interface and a d
 1. Seamless zoom from orbit to the ground; no holes in a scripted descent (`AC-44.1` precursor).
 2. Geodesy round-trip tests (`AC-7.*`) and battlefield validator tests (`AC-8.*`) pass on native and WASM.
 3. The licence descriptor audit passes for the pilot pack (`AC-45.4`).
+
+**Note (2026-11-12):** the gates are fixed first in [ADR-51](adr/0051-v0-2a-gates.md), before any geodesy, battlefield, pipeline, streaming or world-rendering code. Owner decisions (2026-11-12): **D1** the whole Earth streams to z10 (about 150 m posts) from Copernicus DEM GLO-90, and the six pilot regions to z12 (about 38 m posts) from GLO-30; worldwide z11–z12 is v0.2b's; **D2** the datapack is built and uploaded to R2 by a manual GitHub Actions workflow with a scoped token kept as repository secrets; **D3** the bucket is read through its `r2.dev` address until a custom domain before the public beta (v0.5e); **D4** the six regions are in the main menu's Arena list (air start, a Medium battlefield with its boundary) beside a Globe view, and the test arenas and the dogfight stay as they are. The five existing determinism goldens must not change. The scope is larger than the 6-week slot (about 19.5 engineer-weeks): expect the slot to slip. Work is on branch `v0.2a`. The exit checklist is [docs/exit/v0.2a.md](exit/v0.2a.md).
 
 ## 7.2 v0.2b: World map and airports (about 6 weeks)
 
