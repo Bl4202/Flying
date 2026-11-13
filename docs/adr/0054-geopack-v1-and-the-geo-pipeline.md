@@ -175,6 +175,23 @@ The gates are GP1 to GP7 and LA1 to LA3 of ADR-51. The data facts were measured 
   the 11 GB of ADR-51's Appendix D. That is about $0.14 a month on R2 (ADR-50's prices), recorded
   in ADR-55.
 
+### The Copernicus DEM descriptor (WP4, 2026-11-13)
+
+`content/world/sources/copernicus_dem.json` was filled from the licence texts of the two public
+instances, COP-DEM-GLO-30-F and COP-DEM-GLO-90-F ("Full, Free & Open"). How each field was read is
+recorded, with quotes, in `content/world/README.md`:
+
+- `commercial_ok`, `cache_allowed` and `redistribution_allowed` are all true: the rights of Article 4
+  (reproduction, distribution, communication to the public, adaptation) are worldwide, unlimited in
+  time and free of charge, and nothing restricts the purpose of use.
+- The required notices are the two "produced using Copernicus WorldDEM-30 / -90 …" lines, because
+  the tiles are adapted, and the two liability sentences that Article 6(c) requires in the legal
+  notice of anyone who distributes the data.
+- Article 6(d) also requires that the game never suggests it is endorsed by ESA, the EU or Airbus.
+
+The v0.2a plan expected only an attribution line, so the liability sentences and the no-endorsement
+rule are additions.
+
 ## Alternatives considered
 
 - *zstd:* about 10 to 20 % smaller [estimate], but a second decoder in the browser.

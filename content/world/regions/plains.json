@@ -1,0 +1,30 @@
+{
+  "schema": "region/1",
+  "id": "plains",
+  "menu_order": 3,
+  "name_key": "region.plains.name",
+  "preview_key": "region.plains.preview",
+  "cells": [[14, 9]],
+  "character": "flat",
+  "battlefield": {
+    "shape": {
+      "kind": "rect",
+      "center_deg": [37.75, -100.0],
+      "width_m": 120000,
+      "height_m": 120000,
+      "rotation_deg": 0
+    },
+    "ceiling_m": 30000,
+    "warn_width_m": 0,
+    "countdown_s": 30,
+    "policy": "mission_fail",
+    "spawn_level": 12
+  },
+  "spawn": {
+    "lat_deg": 37.75,
+    "lon_deg": -100.0,
+    "alt_msl_m": 2000,
+    "hdg_deg": 90,
+    "tas_mps": 200
+  }
+}

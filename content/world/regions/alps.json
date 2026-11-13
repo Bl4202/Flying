@@ -1,0 +1,30 @@
+{
+  "schema": "region/1",
+  "id": "alps",
+  "menu_order": 1,
+  "name_key": "region.alps.name",
+  "preview_key": "region.alps.preview",
+  "cells": [[33, 7]],
+  "character": "alpine",
+  "battlefield": {
+    "shape": {
+      "kind": "rect",
+      "center_deg": [46.55, 8.0],
+      "width_m": 120000,
+      "height_m": 120000,
+      "rotation_deg": 0
+    },
+    "ceiling_m": 30000,
+    "warn_width_m": 0,
+    "countdown_s": 30,
+    "policy": "mission_fail",
+    "spawn_level": 12
+  },
+  "spawn": {
+    "lat_deg": 46.55,
+    "lon_deg": 8.0,
+    "alt_msl_m": 5000,
+    "hdg_deg": 90,
+    "tas_mps": 200
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "schema": "region/1",
+  "id": "fjords",
+  "menu_order": 5,
+  "name_key": "region.fjords.name",
+  "preview_key": "region.fjords.preview",
+  "cells": [[32, 5], [33, 5]],
+  "character": "coast",
+  "battlefield": {
+    "shape": {
+      "kind": "rect",
+      "center_deg": [61.1, 6.8],
+      "width_m": 120000,
+      "height_m": 120000,
+      "rotation_deg": 0
+    },
+    "ceiling_m": 30000,
+    "warn_width_m": 0,
+    "countdown_s": 30,
+    "policy": "mission_fail",
+    "spawn_level": 12
+  },
+  "spawn": {
+    "lat_deg": 61.1,
+    "lon_deg": 6.8,
+    "alt_msl_m": 3000,
+    "hdg_deg": 90,
+    "tas_mps": 200
+  }
+}

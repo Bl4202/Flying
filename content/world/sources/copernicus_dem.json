@@ -1,0 +1,20 @@
+{
+  "schema": "geo_source/1",
+  "id": "copernicus_dem",
+  "name": "Copernicus DEM GLO-30 and GLO-90",
+  "licence": "Licence for the use of the Copernicus WorldDEM-30 (COP-DEM-GLO-30-F) and the Copernicus WorldDEM-90 (COP-DEM-GLO-90-F), Full, Free & Open",
+  "attribution": "Terrain produced using Copernicus WorldDEM-30 and WorldDEM-90 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved",
+  "url": "https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM",
+  "commercial_ok": true,
+  "cache_allowed": true,
+  "redistribution_allowed": true,
+  "share_alike": false,
+  "terms_checked": "2026-11-13",
+  "required_notices": [
+    "produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved",
+    "produced using Copernicus WorldDEM-90 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved",
+    "The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30",
+    "The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-90"
+  ],
+  "products": ["Copernicus_DSM_COG_10_", "Copernicus_DSM_COG_30_"]
+}

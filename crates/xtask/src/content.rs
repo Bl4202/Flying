@@ -1,4 +1,5 @@
-//! Content pipeline entry points: bake the core pack, regenerate or verify the JSON Schemas.
+//! Content pipeline entry points: bake the core pack and the world bundle, regenerate or verify the
+//! JSON Schemas.
 //!
 //! The work is done by the `content-bake` binary; this only fixes the paths so that every caller
 //! (developers, `pnpm build`, CI) uses the same ones.
@@ -11,6 +12,7 @@ use crate::util::{run, workspace_root};
 pub const OUT_DIR: &str = "content-out";
 const PACK_DIR: &str = "content/core";
 const SCHEMA_DIR: &str = "content/schemas";
+const WORLD_DIR: &str = "content/world";
 
 pub fn run_command(args: &[String]) -> Result<(), String> {
     let mode = match args {
@@ -28,7 +30,10 @@ pub fn run_command(args: &[String]) -> Result<(), String> {
         run(&mut cmd)
     };
     match mode {
-        Mode::Bake => bake(&["bake", PACK_DIR, OUT_DIR]),
+        Mode::Bake => {
+            bake(&["bake", PACK_DIR, OUT_DIR])?;
+            bake(&["world", WORLD_DIR, OUT_DIR])
+        }
         Mode::WriteSchemas => bake(&["schema", SCHEMA_DIR]),
         Mode::CheckSchemas => bake(&["schema", "--check", SCHEMA_DIR]),
     }

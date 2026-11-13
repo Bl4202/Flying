@@ -1,0 +1,30 @@
+{
+  "schema": "region/1",
+  "id": "nevada",
+  "menu_order": 2,
+  "name_key": "region.nevada.name",
+  "preview_key": "region.nevada.preview",
+  "cells": [[11, 9]],
+  "character": "rugged",
+  "battlefield": {
+    "shape": {
+      "kind": "rect",
+      "center_deg": [36.6, -116.2],
+      "width_m": 120000,
+      "height_m": 120000,
+      "rotation_deg": 0
+    },
+    "ceiling_m": 30000,
+    "warn_width_m": 0,
+    "countdown_s": 30,
+    "policy": "mission_fail",
+    "spawn_level": 12
+  },
+  "spawn": {
+    "lat_deg": 36.6,
+    "lon_deg": -116.2,
+    "alt_msl_m": 4500,
+    "hdg_deg": 90,
+    "tas_mps": 200
+  }
+}

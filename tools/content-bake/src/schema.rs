@@ -122,6 +122,9 @@ pub const DIMENSIONLESS: &[&str] = &[
     "skin_per_mach2",
     "hp",
     "joules_per_hp",
+    // World data (ADR-53): a menu position and a quadtree level.
+    "menu_order",
+    "spawn_level",
 ];
 
 fn render_schema<T: schemars::JsonSchema>() -> Value {
@@ -259,9 +262,11 @@ pub fn all() -> Vec<(&'static str, Value)> {
         ("engine.schema.json", engine_schema()),
         ("fcs.schema.json", fcs_schema()),
         ("font.schema.json", font_schema()),
+        ("geo_source.schema.json", crate::world::geo_source_schema()),
         ("hud.schema.json", hud_schema()),
         ("model.schema.json", model_schema()),
         ("pack.schema.json", pack_schema()),
+        ("region.schema.json", crate::world::region_schema()),
         ("weapon.schema.json", weapon_schema()),
     ]
 }

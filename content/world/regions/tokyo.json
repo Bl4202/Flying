@@ -1,0 +1,30 @@
+{
+  "schema": "region/1",
+  "id": "tokyo",
+  "menu_order": 6,
+  "name_key": "region.tokyo.name",
+  "preview_key": "region.tokyo.preview",
+  "cells": [[56, 9]],
+  "character": "city",
+  "battlefield": {
+    "shape": {
+      "kind": "rect",
+      "center_deg": [35.45, 139.75],
+      "width_m": 120000,
+      "height_m": 120000,
+      "rotation_deg": 0
+    },
+    "ceiling_m": 30000,
+    "warn_width_m": 0,
+    "countdown_s": 30,
+    "policy": "mission_fail",
+    "spawn_level": 12
+  },
+  "spawn": {
+    "lat_deg": 35.45,
+    "lon_deg": 139.75,
+    "alt_msl_m": 2000,
+    "hdg_deg": 90,
+    "tas_mps": 200
+  }
+}
