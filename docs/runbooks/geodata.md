@@ -25,8 +25,9 @@ app itself stays on GitHub Pages. Geodata is never committed to this repository.
    `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`; variables `R2_BUCKET` = `flying-geo` and
    `GEO_PUBLIC_BASE` = `https://pub-<id>.r2.dev/` (with the trailing slash).
 7. Tell the agent the r2.dev URL. **Never paste the keys into a chat or an issue.**
-8. Cost (prices of 2026-11-12, ADR-50 [verify]): about 11 GB stored → about $0.02 a month above the
-   10 GB free tier; reads are free up to 10 million a month; no egress fee; no hard spending cap.
+8. Cost (prices of 2026-11-12, ADR-50 [verify]): about 19 GB stored (measured compression, ADR-54;
+   the plan estimated 11 GB) → about $0.14 a month above the 10 GB free tier; reads are free up to
+   10 million a month; no egress fee; no hard spending cap.
 
 ## How a datapack is published
 

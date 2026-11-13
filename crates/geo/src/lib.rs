@@ -11,6 +11,7 @@
 //! * [`sample`]: the bicubic (Catmull–Rom) height sampler over a tile's posts (GDD 44.6).
 //! * [`crc32c`]: CRC-32C (Castagnoli), the checksum of every `GeoPack` blob.
 //! * [`gpk`]: the `GeoPack` v1 byte layout and its header and directory parsing (no decompression).
+//! * [`sim_tile`]: the decoded tile record the host commits to the core (ABI v6).
 //! * `testkit` (feature `testkit` or tests): the deterministic random points the gate tests use.
 //!
 //! Conventions (GDD 0.3.2): angles in radians, lengths in metres. ECEF has +Z through the north pole
@@ -27,6 +28,7 @@ pub mod frame;
 pub mod geodetic;
 pub mod gpk;
 pub mod sample;
+pub mod sim_tile;
 #[cfg(any(test, feature = "testkit"))]
 pub mod testkit;
 pub mod tile;
@@ -35,4 +37,8 @@ pub mod wgs84;
 pub use distance::{Accuracy, Geodesic};
 pub use frame::Wgs84Frame;
 pub use geodetic::{Geodetic, ecef_to_geodetic, geodetic_to_ecef};
+/// The deterministic maths the crate is built on, for the tools that use `geo` without `simmath`.
+pub use simmath::dmath;
+/// The vector type of the frame and ECEF functions.
+pub use simmath::math::DVec3;
 pub use tile::{TileBounds, TileId};

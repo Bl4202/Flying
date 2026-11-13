@@ -42,6 +42,14 @@ pub fn wrap_tau(x: f64) -> f64 {
     if w >= TAU { 0.0 } else { w }
 }
 
+/// The unit vector `(cos φ cos λ, cos φ sin λ, sin φ)` of a direction on the sphere.
+#[must_use]
+pub fn unit_vector(lat_rad: f64, lon_rad: f64) -> [f64; 3] {
+    let (sp, cp) = (simmath::dmath::sin(lat_rad), simmath::dmath::cos(lat_rad));
+    let (sl, cl) = (simmath::dmath::sin(lon_rad), simmath::dmath::cos(lon_rad));
+    [cp * cl, cp * sl, sp]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

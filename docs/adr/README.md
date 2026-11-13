@@ -58,6 +58,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-51](0051-v0-2a-gates.md) | v0.2a gates: geodesy, the battlefield, the GeoPack pipeline, licences, world sessions, streaming and the globe | Proposed |
 | [ADR-52](0052-geodesy-frames-and-world-sessions.md) | Geodesy, the WGS84 battlefield frame and world sessions | Proposed |
 | [ADR-53](0053-battlefield-system.md) | The battlefield system: shapes, the anchor, the SDF, presets, the validator, the boundary and the sim terrain plan | Proposed |
+| [ADR-54](0054-geopack-v1-and-the-geo-pipeline.md) | GeoPack v1, cells and the geo-pipeline | Proposed |
 
 ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist before any tuning
 (AC-66.4).
