@@ -7,6 +7,7 @@ mod content;
 mod content_ids;
 mod determinism;
 mod genabi;
+mod genabi_geo;
 mod golden_diff;
 mod layers;
 mod repro;

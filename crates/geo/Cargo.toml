@@ -1,0 +1,26 @@
+[package]
+name = "geo"
+description = "WGS84 geodesy, the battlefield frame, tile identity, the height codec, the bicubic sampler, CRC32C and the GeoPack v1 layout"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# The deterministic random points the gate tests draw from (`geo::testkit`); also used by the
+# world crate's tests and by sim-core's selftests.
+testkit = []
+
+[dependencies]
+simmath.workspace = true
+
+[dev-dependencies]
+# The gate tests (tests/) draw their points from `geo::testkit`.
+geo = { path = ".", features = ["testkit"] }
+# The geodesic reference for GE7 only (ADR-51). Never a normal dependency.
+geographiclib-rs = "=0.2.7"

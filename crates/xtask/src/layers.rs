@@ -11,6 +11,7 @@ use serde_json::Value;
 /// `(crate, allowed dependencies)`. `xtask` is tooling and is not constrained.
 const RULES: &[(&str, &[&str])] = &[
     ("simmath", &["libm"]),
+    ("geo", &["simmath"]),
     ("flight", &["simmath", "content"]),
     ("fcs", &["content", "flight", "simmath"]),
     ("weapons", &["content", "flight", "simmath"]),
@@ -143,6 +144,7 @@ mod tests {
     fn good() -> BTreeMap<String, Vec<String>> {
         map(&[
             ("simmath", &["libm"]),
+            ("geo", &["simmath"]),
             ("flight", &["content", "simmath"]),
             ("fcs", &["content", "flight", "simmath"]),
             ("weapons", &["content", "flight", "simmath"]),
@@ -168,6 +170,17 @@ mod tests {
     #[test]
     fn accepts_the_intended_graph() {
         assert!(violations(&good()).is_ok());
+    }
+
+    #[test]
+    fn geodesy_sits_on_simmath_alone() {
+        // ADR-52: `geo` is a sim crate below everything but `simmath`.
+        for dep in ["sim-core", "content", "flight", "serde_json"] {
+            let mut g = good();
+            g.get_mut("geo").unwrap().push(dep.into());
+            let err = violations(&g).unwrap_err();
+            assert!(err.contains(&format!("`geo` depends on `{dep}`")), "{err}");
+        }
     }
 
     #[test]

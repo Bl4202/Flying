@@ -22,6 +22,7 @@ use crate::util::workspace_root;
 /// The crates that make up the simulation (GDD 61.7).
 const SIM_CRATES: &[&str] = &[
     "simmath",
+    "geo",
     "flight",
     "fcs",
     "weapons",

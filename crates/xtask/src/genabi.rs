@@ -6,6 +6,8 @@
 //!   Vitest, so the two languages are tested against the same numbers.
 //! * `tests/vectors/present_bundle.json`: the Kestrel's presentation bundle (ADR-43), so the
 //!   TypeScript parsers are tested against what the baker writes without a content build.
+//! * `tests/vectors/tiles.json` and `tests/vectors/geodesy.json`: the `geo` crate's tile maths and
+//!   WGS84 frame (ADR-51 GE9), checked by `geo-stream`'s Vitest suite (`genabi_geo.rs`).
 //! * `tests/vectors/rugged_heights.bin` and its description `rugged_heights.json`: the `rugged`
 //!   arena's ground around the airfield, for the camera-clearance test (ADR-39 K1), which runs in
 //!   the `test` job without WebAssembly.
@@ -107,6 +109,14 @@ fn generate() -> Vec<Generated> {
             contents: heights_bin,
         },
         Generated::text(root.join("tests/vectors/rugged_heights.json"), heights_json),
+        Generated::text(
+            root.join("tests/vectors/tiles.json"),
+            crate::genabi_geo::tiles_vectors(),
+        ),
+        Generated::text(
+            root.join("tests/vectors/geodesy.json"),
+            crate::genabi_geo::geodesy_vectors(),
+        ),
     ]
 }
 
@@ -191,7 +201,7 @@ fn arr4(q: DQuat) -> Value {
 }
 
 /// One entry per line, so diffs stay readable.
-fn lines(entries: &[Value]) -> String {
+pub(crate) fn lines(entries: &[Value]) -> String {
     let body: Vec<String> = entries.iter().map(|e| format!("    {e}")).collect();
     format!("[\n{}\n  ]", body.join(",\n"))
 }

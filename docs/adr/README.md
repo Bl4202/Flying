@@ -56,6 +56,7 @@ To add one, copy [TEMPLATE.md](TEMPLATE.md), take the next number, and add it be
 | [ADR-49](0049-debrief-statistics-and-the-feel-questionnaire.md) | The dogfight in the app: mode, debrief, statistics and the feel questionnaire | Accepted |
 | [ADR-50](0050-entering-m2.md) | Entering M2: roadmap 2.0 accepted, world data on Cloudflare R2, commercial-safe data, the six pilot regions, automated proxies for human panels (OQ-12) | Accepted |
 | [ADR-51](0051-v0-2a-gates.md) | v0.2a gates: geodesy, the battlefield, the GeoPack pipeline, licences, world sessions, streaming and the globe | Proposed |
+| [ADR-52](0052-geodesy-frames-and-world-sessions.md) | Geodesy, the WGS84 battlefield frame and world sessions | Proposed |
 
 ADR-31 was written before ADR-29 and ADR-30 because its gates had to exist before any tuning
 (AC-66.4).
