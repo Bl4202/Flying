@@ -12,6 +12,7 @@ use serde_json::Value;
 const RULES: &[(&str, &[&str])] = &[
     ("simmath", &["libm"]),
     ("geo", &["simmath"]),
+    ("world", &["geo", "simmath"]),
     ("flight", &["simmath", "content"]),
     ("fcs", &["content", "flight", "simmath"]),
     ("weapons", &["content", "flight", "simmath"]),
@@ -145,6 +146,7 @@ mod tests {
         map(&[
             ("simmath", &["libm"]),
             ("geo", &["simmath"]),
+            ("world", &["geo", "simmath"]),
             ("flight", &["content", "simmath"]),
             ("fcs", &["content", "flight", "simmath"]),
             ("weapons", &["content", "flight", "simmath"]),
@@ -180,6 +182,20 @@ mod tests {
             g.get_mut("geo").unwrap().push(dep.into());
             let err = violations(&g).unwrap_err();
             assert!(err.contains(&format!("`geo` depends on `{dep}`")), "{err}");
+        }
+    }
+
+    #[test]
+    fn the_battlefield_sits_on_geodesy_alone() {
+        // ADR-53: `world` knows the geodesy and nothing of the core, the aircraft or the content.
+        for dep in ["sim-core", "content", "flight", "ai-pilot"] {
+            let mut g = good();
+            g.get_mut("world").unwrap().push(dep.into());
+            let err = violations(&g).unwrap_err();
+            assert!(
+                err.contains(&format!("`world` depends on `{dep}`")),
+                "{err}"
+            );
         }
     }
 

@@ -526,6 +526,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "world"
+version = "0.1.0"
+dependencies = [
+ "geo",
+ "simmath",
+]
+
+[[package]]
 name = "xtask"
 version = "0.1.0"
 dependencies = [

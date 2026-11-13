@@ -23,6 +23,7 @@ use crate::util::workspace_root;
 const SIM_CRATES: &[&str] = &[
     "simmath",
     "geo",
+    "world",
     "flight",
     "fcs",
     "weapons",
