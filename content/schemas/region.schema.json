@@ -1,0 +1,461 @@
+{
+  "$defs": {
+    "BattlefieldFile": {
+      "additionalProperties": false,
+      "description": "A battlefield (GDD 8.1, ADR-53).",
+      "properties": {
+        "ceiling_m": {
+          "description": "The hard ceiling (GDD 8.4).",
+          "format": "double",
+          "maximum": 30000.0,
+          "minimum": 1000.0,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "countdown_s": {
+          "description": "The countdown.",
+          "format": "double",
+          "maximum": 300.0,
+          "minimum": 5.0,
+          "type": "number",
+          "x-unit": "s"
+        },
+        "policy": {
+          "$ref": "#/$defs/PolicyName",
+          "description": "The enforcement policy."
+        },
+        "shape": {
+          "$ref": "#/$defs/ShapeFile",
+          "description": "The playable area."
+        },
+        "spawn_level": {
+          "description": "The level wanted under the spawn: 12 (regions) or 10.",
+          "format": "uint8",
+          "maximum": 12,
+          "minimum": 10,
+          "type": "integer"
+        },
+        "warn_width_m": {
+          "description": "The warning band; 0 means `max(2 km, 3 % of the shorter edge)` (GDD 8.5).",
+          "format": "double",
+          "maximum": 100000.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m"
+        }
+      },
+      "required": [
+        "shape",
+        "ceiling_m",
+        "warn_width_m",
+        "countdown_s",
+        "policy",
+        "spawn_level"
+      ],
+      "type": "object"
+    },
+    "Character": {
+      "description": "A region's terrain character.",
+      "oneOf": [
+        {
+          "const": "alpine",
+          "description": "High mountains.",
+          "type": "string"
+        },
+        {
+          "const": "rugged",
+          "description": "Ranges and basins.",
+          "type": "string"
+        },
+        {
+          "const": "flat",
+          "description": "Plains.",
+          "type": "string"
+        },
+        {
+          "const": "rolling",
+          "description": "Hills and farmland.",
+          "type": "string"
+        },
+        {
+          "const": "coast",
+          "description": "Coast and sea.",
+          "type": "string"
+        },
+        {
+          "const": "city",
+          "description": "A dense city.",
+          "type": "string"
+        }
+      ]
+    },
+    "PolicyName": {
+      "description": "What happens when the boundary countdown runs out (GDD 8.5).",
+      "oneOf": [
+        {
+          "const": "assist_turn",
+          "description": "An autopilot turns back.",
+          "type": "string"
+        },
+        {
+          "const": "mission_fail",
+          "description": "The aircraft is lost.",
+          "type": "string"
+        },
+        {
+          "const": "deserter",
+          "description": "Lost, and counted as a loss in a campaign.",
+          "type": "string"
+        }
+      ]
+    },
+    "ShapeFile": {
+      "description": "A battlefield shape (GDD 8.2). Points are `[lat, lon]` in degrees; rotations are clockwise\nfrom north.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A rectangle.",
+          "properties": {
+            "center_deg": {
+              "description": "Centre `[lat, lon]`.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "deg"
+            },
+            "height_m": {
+              "description": "North–south size before rotation.",
+              "format": "double",
+              "maximum": 1000000.0,
+              "minimum": 1000.0,
+              "type": "number",
+              "x-unit": "m"
+            },
+            "kind": {
+              "const": "rect",
+              "type": "string"
+            },
+            "rotation_deg": {
+              "description": "Clockwise rotation.",
+              "format": "double",
+              "maximum": 180.0,
+              "minimum": -180.0,
+              "type": "number",
+              "x-unit": "deg"
+            },
+            "width_m": {
+              "description": "East–west size before rotation.",
+              "format": "double",
+              "maximum": 1000000.0,
+              "minimum": 1000.0,
+              "type": "number",
+              "x-unit": "m"
+            }
+          },
+          "required": [
+            "kind",
+            "center_deg",
+            "width_m",
+            "height_m",
+            "rotation_deg"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A circle.",
+          "properties": {
+            "center_deg": {
+              "description": "Centre `[lat, lon]`.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "deg"
+            },
+            "kind": {
+              "const": "circle",
+              "type": "string"
+            },
+            "radius_m": {
+              "description": "Radius.",
+              "format": "double",
+              "maximum": 500000.0,
+              "minimum": 600.0,
+              "type": "number",
+              "x-unit": "m"
+            }
+          },
+          "required": [
+            "kind",
+            "center_deg",
+            "radius_m"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An ellipse.",
+          "properties": {
+            "a_m": {
+              "description": "East–west half-axis before rotation.",
+              "format": "double",
+              "maximum": 500000.0,
+              "minimum": 600.0,
+              "type": "number",
+              "x-unit": "m"
+            },
+            "b_m": {
+              "description": "North–south half-axis before rotation.",
+              "format": "double",
+              "maximum": 500000.0,
+              "minimum": 600.0,
+              "type": "number",
+              "x-unit": "m"
+            },
+            "center_deg": {
+              "description": "Centre `[lat, lon]`.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "deg"
+            },
+            "kind": {
+              "const": "ellipse",
+              "type": "string"
+            },
+            "rotation_deg": {
+              "description": "Clockwise rotation.",
+              "format": "double",
+              "maximum": 180.0,
+              "minimum": -180.0,
+              "type": "number",
+              "x-unit": "deg"
+            }
+          },
+          "required": [
+            "kind",
+            "center_deg",
+            "a_m",
+            "b_m",
+            "rotation_deg"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A capsule (corridor).",
+          "properties": {
+            "a_deg": {
+              "description": "One end `[lat, lon]`.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "deg"
+            },
+            "b_deg": {
+              "description": "The other end `[lat, lon]`.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "x-unit": "deg"
+            },
+            "kind": {
+              "const": "capsule",
+              "type": "string"
+            },
+            "radius_m": {
+              "description": "Half-width.",
+              "format": "double",
+              "maximum": 500000.0,
+              "minimum": 1000.0,
+              "type": "number",
+              "x-unit": "m"
+            }
+          },
+          "required": [
+            "kind",
+            "a_deg",
+            "b_deg",
+            "radius_m"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A simple polygon of 3 to 64 vertices `[lat, lon]`.",
+          "properties": {
+            "kind": {
+              "const": "polygon",
+              "type": "string"
+            },
+            "vertices_deg": {
+              "description": "The vertices.",
+              "items": {
+                "items": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "maxItems": 64,
+              "minItems": 3,
+              "type": "array",
+              "x-unit": "deg"
+            }
+          },
+          "required": [
+            "kind",
+            "vertices_deg"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SpawnFile": {
+      "additionalProperties": false,
+      "description": "The air spawn.",
+      "properties": {
+        "alt_msl_m": {
+          "description": "Altitude above mean sea level.",
+          "format": "double",
+          "maximum": 30000.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "m"
+        },
+        "hdg_deg": {
+          "description": "True heading, clockwise from north.",
+          "format": "double",
+          "maximum": 360.0,
+          "minimum": 0.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "lat_deg": {
+          "description": "Latitude.",
+          "format": "double",
+          "maximum": 85.0,
+          "minimum": -85.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "lon_deg": {
+          "description": "Longitude.",
+          "format": "double",
+          "maximum": 180.0,
+          "minimum": -180.0,
+          "type": "number",
+          "x-unit": "deg"
+        },
+        "tas_mps": {
+          "description": "True airspeed.",
+          "format": "double",
+          "maximum": 400.0,
+          "minimum": 60.0,
+          "type": "number",
+          "x-unit": "mps"
+        }
+      },
+      "required": [
+        "lat_deg",
+        "lon_deg",
+        "alt_msl_m",
+        "hdg_deg",
+        "tas_mps"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`region/1`: one pilot region (plan section 9.4).",
+  "properties": {
+    "battlefield": {
+      "$ref": "#/$defs/BattlefieldFile",
+      "description": "The default battlefield."
+    },
+    "cells": {
+      "description": "The z5 cells (x, y) whose archives hold the region at z12.",
+      "items": {
+        "items": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxItems": 2,
+        "minItems": 2,
+        "type": "array"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "type": "array"
+    },
+    "character": {
+      "$ref": "#/$defs/Character",
+      "description": "Its terrain character (the reference regions of `AC-46.7`)."
+    },
+    "id": {
+      "description": "The region's id (a slug, the file's name).",
+      "type": "string"
+    },
+    "menu_order": {
+      "description": "Its place in the main menu's Arena list, after the test arenas (1 first).",
+      "format": "uint32",
+      "maximum": 99,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "name_key": {
+      "description": "Locale key of the region's name.",
+      "type": "string"
+    },
+    "preview_key": {
+      "description": "Locale key of its one-line preview.",
+      "type": "string"
+    },
+    "schema": {
+      "const": "region/1",
+      "description": "Format tag, always `region/1`.",
+      "type": "string"
+    },
+    "spawn": {
+      "$ref": "#/$defs/SpawnFile",
+      "description": "The air spawn."
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "menu_order",
+    "name_key",
+    "preview_key",
+    "cells",
+    "character",
+    "battlefield",
+    "spawn"
+  ],
+  "title": "RegionFile",
+  "type": "object"
+}

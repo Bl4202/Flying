@@ -2,6 +2,9 @@
 resolver = "3"
 members = [
     "crates/simmath",
+    "crates/geo",
+    "crates/world",
+    "crates/geo-pack",
     "crates/flight",
     "crates/fcs",
     "crates/weapons",
@@ -15,9 +18,13 @@ members = [
     "crates/server",
     "crates/xtask",
     "tools/content-bake",
+    "tools/geo-pipeline",
 ]
 default-members = [
     "crates/simmath",
+    "crates/geo",
+    "crates/world",
+    "crates/geo-pack",
     "crates/flight",
     "crates/fcs",
     "crates/ai-pilot",
@@ -30,6 +37,7 @@ default-members = [
     "crates/server",
     "crates/xtask",
     "tools/content-bake",
+    "tools/geo-pipeline",
 ]
 
 [workspace.package]
@@ -45,6 +53,9 @@ repository = "https://github.com/Bl4202/Flying"
 # which would break cross-architecture bit-exactness (ADR-10).
 libm = { version = "=0.2.16", default-features = false }
 simmath = { path = "crates/simmath" }
+geo = { path = "crates/geo" }
+world = { path = "crates/world" }
+geo-pack = { path = "crates/geo-pack" }
 flight = { path = "crates/flight" }
 fcs = { path = "crates/fcs" }
 weapons = { path = "crates/weapons" }

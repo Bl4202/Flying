@@ -15,6 +15,7 @@ ADR-30, ADR-34, ADR-46), which is what the sim loads.
 | `core/skills/*.json` | One AI skill level per file (`ai_skill/1`, v0.1d, ADR-47): how well a computer pilot flies and fights. Found by `rank`, never by id. Its `README.md` has the ladder |
 | `core/hud/*.json`, `core/cockpit/*.json`, `core/models/*.json`, `core/fonts/*.json`, `core/audio/*.json` | **Presentation data** (v0.1c, ADR-43): one aircraft's HUD layout, cockpit, exterior model, the HUD stroke font and the audio profile. Baked into `content-out/core.present.json`, **not** into the sim pack. Each directory has a `README.md` with the format and the design *targets* |
 | `core/locales/en.json` | Display strings by key. Every key must be used, every used key must exist |
+| `world/regions/*.json`, `world/sources/*.json`, `world/locales/en.json` | **The world bundle** (v0.2a, ADR-53, ADR-54): the six pilot regions (`region/1`: cells, battlefield, air spawn), the data-source descriptors (`geo_source/1`: licence terms, GDD 45.9) and their strings. Baked into `content-out/world.json` (`world-bundle/1`), **not** into the sim pack. `world/README.md` records how the Copernicus DEM descriptor was read from its licence |
 | `schemas/*.schema.json` | **Generated** from the Rust types in `tools/content-bake/src/model.rs`; do not edit |
 
 **Presentation data is separate from the sim pack.** The pack's SHA-256 is part of the state hash,

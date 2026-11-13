@@ -7,6 +7,8 @@
 //!                                              any) and <out-dir>/content-manifest.json
 //! content-bake export <file.cpack>             print the pack as JSON
 //! content-bake schema [--check] <schemas-dir>  write (or verify) the JSON Schemas
+//! content-bake world <world-dir> <out-dir>     validate and write <out-dir>/world.json and add it
+//!                                              to <out-dir>/content-manifest.json
 //! ```
 //!
 //! Exit status: 0 success, 1 validation or freshness failure, 2 usage or I/O error.
@@ -15,12 +17,13 @@ use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
-use content_bake::{bake, export, present, schema};
+use content_bake::{bake, export, present, schema, world};
 
 const USAGE: &str = "usage:
   content-bake bake <pack-dir> <out-dir>
   content-bake export <file.cpack>
-  content-bake schema [--check] <schemas-dir>";
+  content-bake schema [--check] <schemas-dir>
+  content-bake world <world-dir> <out-dir>";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -30,6 +33,7 @@ fn main() -> ExitCode {
         ["export", file] => run_export(Path::new(file)),
         ["schema", "--check", dir] => run_schema_check(Path::new(dir)),
         ["schema", dir] => run_schema_write(Path::new(dir)),
+        ["world", world_dir, out_dir] => run_world(Path::new(world_dir), Path::new(out_dir)),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
@@ -186,4 +190,49 @@ fn lint_failed(problems: &[String]) -> ExitCode {
         "content-bake: rename the key with a unit suffix, or add it to DIMENSIONLESS in schema.rs"
     );
     ExitCode::from(1)
+}
+
+fn run_world(world_dir: &Path, out_dir: &Path) -> ExitCode {
+    let baked = match world::bake_world_dir(world_dir) {
+        Ok(w) => w,
+        Err(problems) => {
+            for p in &problems {
+                eprintln!("{p}");
+            }
+            eprintln!(
+                "\ncontent-bake: {} error(s) in {}; nothing was written",
+                problems.len(),
+                world_dir.display()
+            );
+            return ExitCode::from(1);
+        }
+    };
+    let manifest_path = out_dir.join("content-manifest.json");
+    let mut manifest: serde_json::Value = match fs::read(&manifest_path) {
+        Ok(b) => match serde_json::from_slice(&b) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("content-bake: {}: {e}", manifest_path.display());
+                return ExitCode::from(2);
+            }
+        },
+        Err(_) => serde_json::json!({}),
+    };
+    manifest["world"] = world::manifest_entry(&baked, "world.json");
+    let text = serde_json::to_string_pretty(&manifest).expect("manifest is JSON") + "\n";
+    let written = fs::create_dir_all(out_dir)
+        .and_then(|()| fs::write(out_dir.join("world.json"), &baked.json))
+        .and_then(|()| fs::write(&manifest_path, text));
+    if let Err(e) = written {
+        eprintln!("content-bake: cannot write to {}: {e}", out_dir.display());
+        return ExitCode::from(2);
+    }
+    println!(
+        "content-bake: world -> {} ({} bytes: {} regions, {} sources)",
+        out_dir.join("world.json").display(),
+        baked.json.len(),
+        baked.regions,
+        baked.sources
+    );
+    ExitCode::SUCCESS
 }

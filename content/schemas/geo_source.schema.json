@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`geo_source/1`: one data source's licence terms (GDD 45.9). The pipeline's licence audit reads\nthe same files (`tools/geo-pipeline/src/descriptors.rs`).",
+  "properties": {
+    "attribution": {
+      "description": "The short attribution line.",
+      "type": "string"
+    },
+    "cache_allowed": {
+      "description": "The terms allow caching.",
+      "type": "boolean"
+    },
+    "commercial_ok": {
+      "description": "The terms allow commercial use.",
+      "type": "boolean"
+    },
+    "dump": {
+      "description": "For a share-alike database: where its public dump is.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "id": {
+      "description": "The id archives name in their `licences` (a slug).",
+      "type": "string"
+    },
+    "licence": {
+      "description": "The licence's name.",
+      "type": "string"
+    },
+    "name": {
+      "description": "The source's name.",
+      "type": "string"
+    },
+    "products": {
+      "default": [],
+      "description": "The file-name prefixes the descriptor covers.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "redistribution_allowed": {
+      "description": "The terms allow redistributing derived data.",
+      "type": "boolean"
+    },
+    "required_notices": {
+      "description": "The notices the terms require, word for word; the Credits & data screen shows each.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "const": "geo_source/1",
+      "description": "Format tag, always `geo_source/1`.",
+      "type": "string"
+    },
+    "share_alike": {
+      "description": "The terms require share-alike.",
+      "type": "boolean"
+    },
+    "terms_checked": {
+      "description": "When the terms were last read, `YYYY-MM-DD`.",
+      "type": "string"
+    },
+    "url": {
+      "description": "Where the terms are (https).",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "name",
+    "licence",
+    "attribution",
+    "url",
+    "commercial_ok",
+    "cache_allowed",
+    "redistribution_allowed",
+    "share_alike",
+    "terms_checked",
+    "required_notices"
+  ],
+  "title": "GeoSourceFile",
+  "type": "object"
+}

@@ -1,0 +1,30 @@
+{
+  "schema": "region/1",
+  "id": "normandy",
+  "menu_order": 4,
+  "name_key": "region.normandy.name",
+  "preview_key": "region.normandy.preview",
+  "cells": [[31, 7], [32, 7]],
+  "character": "rolling",
+  "battlefield": {
+    "shape": {
+      "kind": "rect",
+      "center_deg": [49.2, -0.4],
+      "width_m": 120000,
+      "height_m": 120000,
+      "rotation_deg": 0
+    },
+    "ceiling_m": 30000,
+    "warn_width_m": 0,
+    "countdown_s": 30,
+    "policy": "mission_fail",
+    "spawn_level": 12
+  },
+  "spawn": {
+    "lat_deg": 49.2,
+    "lon_deg": -0.4,
+    "alt_msl_m": 1500,
+    "hdg_deg": 90,
+    "tas_mps": 200
+  }
+}

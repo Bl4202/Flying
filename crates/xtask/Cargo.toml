@@ -13,6 +13,10 @@ workspace = true
 
 [dependencies]
 sim-core.workspace = true
+# The tile and geodesy vectors (ADR-51 GE9) and their seeded points.
+geo = { workspace = true, features = ["testkit"] }
+# The GeoPack format vectors (ADR-51 GP5).
+geo-pack.workspace = true
 # The snapshot vectors fly the core pack's aircraft.
 content-bake = { path = "../../tools/content-bake" }
 brotli = "9.0.0"
